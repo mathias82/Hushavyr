@@ -16,6 +16,13 @@ const sensitive: Array<[string, RegExp]> = [
   ["confidential-marker", /\b(?:confidential|strictly private|internal only|εμπιστευτικ[όά])\b/i],
   ["personal-data-hint", /\b(?:customer records|employee records|personal data|προσωπικά δεδομένα)\b/i],
 ];
+const piiPatterns: Array<[string, RegExp]> = [
+  ["email-address", /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i],
+  ["greek-afm-labeled", /(?:ΑΦΜ|AFM|tax\s*id)\s*[:#=-]?\s*\d{9}\b/i],
+  ["greek-amka-labeled", /(?:ΑΜΚΑ|AMKA)\s*[:#=-]?\s*\d{11}\b/i],
+  ["iban", /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b/i],
+  ["phone-labeled", /(?:phone|mobile|τηλέφωνο|κινητό)\s*[:#=-]?\s*\+?\d[\d\s()-]{7,}\d/i],
+];
 const restrictedPath = /(?:^|\/)(?:\.env(?:\..*)?|secrets?\b|credentials?\b)|\.(?:p12|pfx|pem|key)$/i;
 const coding = /\b(?:java|spring|junit|unit tests?|refactor|debug|function|class|typescript|python|compile)\b/i;
 const document = /\b(?:pdf|document|contract|invoice|report|σύμβαση|έγγραφο)\b/i;
@@ -26,7 +33,7 @@ export function classifyInput(input: ClassificationInput): Decision {
   const attachments = input.attachments ?? [];
   const combined = [input.prompt, ...attachments.map(a => a.content ?? "")].join("\n");
   const task: Task = coding.test(input.prompt) ? "coding" : document.test(input.prompt) ? "document" : "general";
-  for (const [name, regex] of sensitive) if (regex.test(combined)) reasons.push(name);
+  for (const [name, regex] of [...sensitive, ...piiPatterns]) if (regex.test(combined)) reasons.push(name);
   for (const attachment of attachments) {
     if (restrictedPath.test(attachment.path)) reasons.push("restricted-path");
     if (attachment.label === "internal" || attachment.label === "confidential") reasons.push("restricted-label");
