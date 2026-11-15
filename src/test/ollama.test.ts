@@ -19,7 +19,7 @@ test("never falls back to cloud on connection failure", async () => {
   assert.equal(calls,1);
 });
 test("invalid model is rejected", () => {
-  assert.throws(() => new LocalOllama({model:"https://external.example/"}));
+  assert.throws(() => new LocalOllama({model:"invalid model name"}));
 });
 test("empty prompts do not reach the transport", async () => {
   const client = new LocalOllama({model:"qwen2.5-coder:7b"}, async () => { throw new Error("Should not call"); });
