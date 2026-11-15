@@ -12,6 +12,7 @@
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
     "onCommand:aiPrivacyRouter.askLocalSelection",
+    "onCommand:aiPrivacyRouter.reviewCloudOverride",
     "onCommand:aiPrivacyRouter.privacyPreview"
   ],
   "contributes": {
@@ -27,6 +28,10 @@
       {
         "command": "aiPrivacyRouter.askLocalSelection",
         "title": "AI Privacy Router: Ask Local Qwen About Selection"
+      },
+      {
+        "command": "aiPrivacyRouter.reviewCloudOverride",
+        "title": "AI Privacy Router: Review Cloud Override (No Transfer)"
       },
       {
         "command": "aiPrivacyRouter.privacyPreview",
@@ -46,11 +51,13 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "package:vsix": "npm run build && vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@vscode/vsce": "^3.6.0"
   }
 }
