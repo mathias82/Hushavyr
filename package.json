@@ -9,15 +9,30 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCommand:aiPrivacyRouter.classifySelection"
+    "onCommand:aiPrivacyRouter.classifySelection",
+    "onCommand:aiPrivacyRouter.askLocal"
   ],
   "contributes": {
     "commands": [
       {
         "command": "aiPrivacyRouter.classifySelection",
         "title": "AI Privacy Router: Classify Selection"
+      },
+      {
+        "command": "aiPrivacyRouter.askLocal",
+        "title": "AI Privacy Router: Ask Local Qwen"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "AI Privacy Router",
+      "properties": {
+        "aiPrivacyRouter.ollamaModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Locally installed Ollama model name"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc -p .",
