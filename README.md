@@ -12,3 +12,31 @@ Private prototype of a privacy-first AI router for VS Code.
 
 ## MVP
 TypeScript classifier, local Ollama adapter, VS Code command and tests. Cloud adapters will be added only after explicit opt-in and security review.
+
+## Install and smoke-test locally (macOS / VS Code)
+
+Prerequisites: Node.js 22, VS Code 1.90+, and Ollama running **on the same machine as the VS Code extension host**.
+
+```bash
+git clone https://github.com/mathias82/ai-privacy-router.git
+cd ai-privacy-router
+npm install
+npm test
+ollama pull qwen2.5-coder:7b
+ollama serve  # only if Ollama is not already running
+```
+
+In another terminal:
+
+```bash
+npm run package:vsix
+code --install-extension ai-privacy-router-0.0.1.vsix
+```
+
+Reload VS Code. Open a text file, select some text, open the Command Palette and run **AI Privacy Router: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **AI Privacy Router: Classify Selection** and **AI Privacy Router: Review Cloud Override (No Transfer)**.
+
+For a negative test, stop Ollama and repeat the local command. It must show a local error, **not** fall back to a cloud model.
+
+The Ollama endpoint is hard-coded to `127.0.0.1:11434`; in Remote SSH, containers, or WSL, this refers to the extension host, not necessarily your laptop. The default model can be changed in VS Code Settings under `aiPrivacyRouter.ollamaModel`.
+
+**Important limitations:** Privacy detection is heuristic; no content is certified safe for cloud use. The override UI is a **review-only prototype**; it records local audit metadata but does not send anything to Sonnet. The VSIX is for private local testing, not Marketplace publication. Do not test with actual company secrets or production personal data until the extension has been independently reviewed.
