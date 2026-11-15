@@ -1,0 +1,15 @@
+**/.git/**
+**/.github/**
+**/src/**
+**/node_modules/**
+**/test/**
+**/*.test.js
+**/*.test.js.map
+**/*.ts
+**/tsconfig.json
+**/package-lock.json
+**/*.vsix
+**/.env*
+**/*.log
+**/.vscode-test/**
+!dist/**
