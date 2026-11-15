@@ -11,7 +11,8 @@
   "activationEvents": [
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
-    "onCommand:aiPrivacyRouter.askLocalSelection"
+    "onCommand:aiPrivacyRouter.askLocalSelection",
+    "onCommand:aiPrivacyRouter.privacyPreview"
   ],
   "contributes": {
     "commands": [
@@ -26,6 +27,10 @@
       {
         "command": "aiPrivacyRouter.askLocalSelection",
         "title": "AI Privacy Router: Ask Local Qwen About Selection"
+      },
+      {
+        "command": "aiPrivacyRouter.privacyPreview",
+        "title": "AI Privacy Router: Privacy Preview of Selection"
       }
     ],
     "configuration": {
