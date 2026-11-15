@@ -22,12 +22,14 @@ export function requestCloudOverride(input: ClassificationInput, policy: Overrid
   const decision = classifyInput(input);
   const reasons: string[] = [];
   if (!policy.cloudEnabled) reasons.push("cloud-disabled");
+  if (input.workspaceTrusted !== true) reasons.push("untrusted-workspace");
+  if (!input.prompt.trim() && !(input.attachments?.length)) reasons.push("empty-context");
   if (!policy.allowOverrides) reasons.push("overrides-disabled");
   if (policy.mandatoryLocalOnly) reasons.push("mandatory-local-only");
   if (!request.confirmedCloudTransfer) reasons.push("cloud-transfer-not-confirmed");
   if (request.reason.trim().length < 15) reasons.push("insufficient-justification");
   if (policy.requireReviewer && !request.reviewerApproved) reasons.push("reviewer-approval-required");
-  if (decision.reasons.some(r => ["private-key", "credential", "restricted-path", "restricted-label", "unscanned-attachment", "email-address", "greek-afm-labeled", "greek-amka-labeled", "iban", "phone-labeled", "personal-data-hint"].includes(r))) {
+  if (decision.reasons.some(r => ["private-key", "credential", "restricted-path", "restricted-label", "unscanned-attachment", "email-address", "greek-afm-labeled", "greek-amka-labeled", "iban", "phone-labeled", "personal-data-hint", "confidential-marker"].includes(r))) {
     reasons.push("non-overridable-risk");
   }
   // A heuristic classifier cannot establish that personal data is absent.
