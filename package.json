@@ -10,7 +10,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onCommand:aiPrivacyRouter.classifySelection",
-    "onCommand:aiPrivacyRouter.askLocal"
+    "onCommand:aiPrivacyRouter.askLocal",
+    "onCommand:aiPrivacyRouter.askLocalSelection"
   ],
   "contributes": {
     "commands": [
@@ -21,6 +22,10 @@
       {
         "command": "aiPrivacyRouter.askLocal",
         "title": "AI Privacy Router: Ask Local Qwen"
+      },
+      {
+        "command": "aiPrivacyRouter.askLocalSelection",
+        "title": "AI Privacy Router: Ask Local Qwen About Selection"
       }
     ],
     "configuration": {
