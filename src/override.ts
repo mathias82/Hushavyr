@@ -27,7 +27,7 @@ export function requestCloudOverride(input: ClassificationInput, policy: Overrid
   if (!request.confirmedCloudTransfer) reasons.push("cloud-transfer-not-confirmed");
   if (request.reason.trim().length < 15) reasons.push("insufficient-justification");
   if (policy.requireReviewer && !request.reviewerApproved) reasons.push("reviewer-approval-required");
-  if (decision.reasons.some(r => ["private-key", "credential", "restricted-path", "restricted-label", "unscanned-attachment"].includes(r))) {
+  if (decision.reasons.some(r => ["private-key", "credential", "restricted-path", "restricted-label", "unscanned-attachment", "email-address", "greek-afm-labeled", "greek-amka-labeled", "iban", "phone-labeled", "personal-data-hint"].includes(r))) {
     reasons.push("non-overridable-risk");
   }
   // A heuristic classifier cannot establish that personal data is absent.
