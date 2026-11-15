@@ -11,7 +11,8 @@
   "activationEvents": [
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
-    "onCommand:aiPrivacyRouter.askLocalSelection"
+    "onCommand:aiPrivacyRouter.askLocalSelection",
+    "onCommand:aiPrivacyRouter.reviewCloudOverride"
   ],
   "contributes": {
     "commands": [
@@ -26,6 +27,10 @@
       {
         "command": "aiPrivacyRouter.askLocalSelection",
         "title": "AI Privacy Router: Ask Local Qwen About Selection"
+      },
+      {
+        "command": "aiPrivacyRouter.reviewCloudOverride",
+        "title": "AI Privacy Router: Review Cloud Override (No Transfer)"
       }
     ],
     "configuration": {
