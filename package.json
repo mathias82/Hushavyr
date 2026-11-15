@@ -12,7 +12,8 @@
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
     "onCommand:aiPrivacyRouter.askLocalSelection",
-    "onCommand:aiPrivacyRouter.reviewCloudOverride"
+    "onCommand:aiPrivacyRouter.reviewCloudOverride",
+    "onCommand:aiPrivacyRouter.privacyPreview"
   ],
   "contributes": {
     "commands": [
@@ -31,6 +32,10 @@
       {
         "command": "aiPrivacyRouter.reviewCloudOverride",
         "title": "AI Privacy Router: Review Cloud Override (No Transfer)"
+      },
+      {
+        "command": "aiPrivacyRouter.privacyPreview",
+        "title": "AI Privacy Router: Privacy Preview of Selection"
       }
     ],
     "configuration": {
