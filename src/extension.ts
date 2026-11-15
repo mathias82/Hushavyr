@@ -61,6 +61,30 @@ export function activate(context: vscode.ExtensionContext): void {
       : "Override denied and audited: " + result.reasons.join(", "));
   }));
 
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.privacyPreview", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.selection.isEmpty) {
+      void vscode.window.showWarningMessage("Select text for privacy review.");
+      return;
+    }
+    const decision = classifyInput({prompt:editor.document.getText(editor.selection),workspaceTrusted:vscode.workspace.isTrusted});
+    const report = [
+      "# AI Privacy Router — Privacy Preview", "",
+      "**Route:** " + decision.route,
+      "**Sensitivity:** " + decision.sensitivity,
+      "**Task:** " + decision.task,
+      "**Workspace trusted:** " + vscode.workspace.isTrusted,
+      "**Cloud dispatch:** Disabled in MVP", "",
+      "## Detection reasons",
+      ...decision.reasons.map(reason => "- " + reason), "",
+      "No selected content is included in this report.",
+      "Classification is heuristic and does not certify that content is safe to share.",
+      "No cloud approval or transfer was performed."
+    ].join("\n");
+    const document = await vscode.workspace.openTextDocument({content:report,language:"markdown"});
+    await vscode.window.showTextDocument(document,{preview:true});
+  }));
+
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.askLocal", async () => {
     const prompt = await vscode.window.showInputBox({prompt:"Ask local Qwen (never sent to cloud)",ignoreFocusOut:true});
     if (!prompt?.trim()) return;
