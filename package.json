@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "AI Privacy Router",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -83,3 +83,4 @@
     "url": "https://github.com/mathias82/ai-privacy-router.git"
   }
 }
+
