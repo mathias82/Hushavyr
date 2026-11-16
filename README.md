@@ -62,3 +62,7 @@ You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Ke
 ## Local Qwen in VS Code Chat
 
 Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@privacy Find bugs in the selected Java code`. The `@privacy` participant uses local Ollama and reports structured review findings in the Chat panel. It is separate from Copilot/Auto and does not use cloud fallback. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
+
+### Sticky Chat mode
+
+Use `@ai-privacy` once to select the local assistant. It is marked sticky, so subsequent turns in the same Chat conversation stay with this participant unless you switch agents. Use `/review` while this participant is active for code review. The configured local model defaults to `qwen2.5-coder:7b` via `aiPrivacyRouter.ollamaModel` and persists in VS Code Settings. VS Code does not expose this local Ollama model as a Copilot model-picker entry; `/ai-privacy` is not a global Chat slash command. Use `@ai-privacy` for the participant and `/review` for its command.
