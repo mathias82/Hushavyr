@@ -8,11 +8,17 @@ import { randomUUID } from "node:crypto";
 export function activate(context: vscode.ExtensionContext): void {
   // Remember the last non-empty editor selection when focus moves into Chat.
   let lastSelection: {uri: string; text: string} | undefined;
+  let lastCodeEditor: vscode.TextEditor | undefined;
+  const isCodeEditor = (editor: vscode.TextEditor): boolean => editor.document.uri.scheme === "file" && editor.document.languageId !== "markdown";
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+    if (editor && isCodeEditor(editor)) lastCodeEditor = editor;
+  }));
   context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
     const text = event.textEditor.document.getText(event.selections[0]);
     if (text.trim()) lastSelection = {uri:event.textEditor.document.uri.toString(),text};
   }));
   const current = vscode.window.activeTextEditor;
+  if (current && isCodeEditor(current)) lastCodeEditor = current;
   if (current && !current.selection.isEmpty) {
     lastSelection = {uri:current.document.uri.toString(),text:current.document.getText(current.selection)};
   }
@@ -41,6 +47,18 @@ export function activate(context: vscode.ExtensionContext): void {
         if (content.trim()) attachments.push("Attached file: " + uri.toString() + "\n```\n" + content + "\n```");
       } catch {
         stream.markdown("Unable to read an attached file. Nothing was sent.");
+        return;
+      }
+    }
+    // If no explicit attachment or selection is available, use the last focused code editor.
+    // Never scan the whole workspace; keep the context bounded to a single visible file.
+    if (attachments.length === 0 && !selected?.trim() && lastCodeEditor) {
+      const doc = lastCodeEditor.document;
+      const text = doc.getText();
+      if (text.trim() && Buffer.byteLength(text, "utf8") <= 100_000) {
+        attachments.push("Open editor: " + doc.uri.toString() + "\n```" + doc.languageId + "\n" + text + "\n```");
+      } else if (Buffer.byteLength(text, "utf8") > 100_000) {
+        stream.markdown("The open file is larger than 100 KB. Select a smaller section. Nothing was sent.");
         return;
       }
     }
