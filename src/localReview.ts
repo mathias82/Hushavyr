@@ -1,11 +1,13 @@
 import { LocalOllama } from "./ollama";
 import { ReviewResult, reviewPrompt, reviewSchema, validateReview } from "./review";
+import { ReviewInput, reviewSources, validateContext } from "./context";
+import { verifyReview } from "./verifyReview";
 
 /** At most two local requests. Every attempt goes through the same evidence gate. */
-export async function runLocalReview(
+async function collectFindings(
   client: Pick<LocalOllama, "generate">,
   instruction: string,
-  source: string,
+  source: ReviewInput,
   cancelled: () => boolean = () => false
 ): Promise<ReviewResult | undefined> {
   if (cancelled()) return;
@@ -19,7 +21,7 @@ export async function runLocalReview(
   try {
     const repaired = await client.generate(prompt +
       "\n\nLOCAL VALIDATOR FEEDBACK: " + feedback +
-      "\nReview the source again. Correct the response shape or quote the exact source expression. " +
+      "\nReview the source again. Correct the response shape and choose a valid source path and line range. " +
       "Discard any unsupported claim; return an empty findings array if no concrete issue is supported.",
       {schema: reviewSchema});
     if (cancelled()) return;
@@ -29,4 +31,15 @@ export async function runLocalReview(
   } catch {
     if (!cancelled()) return {...first, retryFailed: true};
   }
+}
+
+/** Review + one possible repair + one separate verification pass; all local. */
+export async function runLocalReview(
+  client: Pick<LocalOllama, "generate">, instruction: string, source: ReviewInput,
+  cancelled: () => boolean = () => false, verifier?: Pick<LocalOllama, "generate">
+): Promise<ReviewResult | undefined> {
+  validateContext(instruction, reviewSources(source));
+  const result = await collectFindings(client, instruction, source, cancelled);
+  if (!result || cancelled()) return;
+  return verifier ? verifyReview(verifier, result, source, cancelled) : result;
 }

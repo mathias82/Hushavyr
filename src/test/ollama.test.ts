@@ -35,3 +35,44 @@ test("structured review requests Ollama JSON mode and temperature zero", async (
   });
   assert.equal(await client.generate("Review Java", {json:true}), '{"findings":[]}');
 });
+
+
+test("rejects remote endpoints, credentials, paths and insecure redirect handling", async () => {
+  for (const endpoint of ["https://example.test", "http://example.test", "http://127.0.0.1:11434/path", "http://user:pass@127.0.0.1:11434", "http://127.0.0.1:11434?target=remote"]) {
+    assert.throws(() => new LocalOllama({model: "qwen", endpoint}));
+  }
+  let target = "";
+  const client = new LocalOllama({model: "qwen", endpoint: "http://localhost:11435"}, async (url, init) => {
+    target = url; assert.equal(init.redirect, "error");
+    return new Response(JSON.stringify({response: "local"}));
+  });
+  await client.generate("test");
+  assert.equal(target, "http://127.0.0.1:11435/api/generate");
+});
+test("checks installed local models without invoking generation or pulling", async () => {
+  for (const installed of [true, false]) {
+    const client = new LocalOllama({model: "qwen"}, async (url, init) => {
+      assert.equal(url, "http://127.0.0.1:11434/api/tags"); assert.equal(init.method, "GET");
+      return new Response(JSON.stringify({models: installed ? [{name: "qwen:latest"}] : []}));
+    });
+    if (installed) await client.ensureAvailable();
+    else await assert.rejects(client.ensureAvailable(), /not installed locally/);
+  }
+});
+test("local request timeout and cancellation abort the actual transport signal", async () => {
+  const client = new LocalOllama({model: "qwen", timeoutMs: 15}, async (_url, init) => new Promise((_, reject) => {
+    init.signal!.addEventListener("abort", () => reject(new Error("aborted")), {once: true});
+  }));
+  await assert.rejects(client.generate("test"), /No cloud fallback/);
+  const controller = new AbortController();
+  const pending = client.generate("test", {signal: controller.signal});
+  controller.abort();
+  await assert.rejects(pending, /No cloud fallback/);
+});
+
+test("oversized structured prompts fail before local transport", async () => {
+  let calls = 0;
+  const client = new LocalOllama({model: "qwen"}, async () => {calls++; throw new Error("unexpected");});
+  await assert.rejects(client.generate("x".repeat(28001), {schema: {type: "object"}}), /context budget/);
+  assert.equal(calls, 0);
+});
