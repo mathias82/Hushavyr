@@ -66,3 +66,7 @@ Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@
 ### Sticky Chat mode
 
 Use `@ai-privacy` once to select the local assistant. It is marked sticky, so subsequent turns in the same Chat conversation stay with this participant unless you switch agents. Use `/review` while this participant is active for code review. The configured local model defaults to `qwen2.5-coder:7b` via `aiPrivacyRouter.ollamaModel` and persists in VS Code Settings. VS Code does not expose this local Ollama model as a Copilot model-picker entry; `/ai-privacy` is not a global Chat slash command. Use `@ai-privacy` for the participant and `/review` for its command.
+
+## Evidence-gated local code review
+
+`@ai-privacy /review` requests JSON findings from local Qwen, checks exact evidence snippets against the supplied source, and filters unsupported SQL-injection and getter-exception claims. Remaining findings are labeled **potential**, never confirmed, because no runtime tests are executed. Invalid JSON fails closed with a clear message. This is a conservative heuristic, not a formal verification or Sonnet-equivalent model. Normal chat prompts still use the existing local inference path. Run `npm test` and a VS Code smoke test before merging.
