@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "AI Privacy Router",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -15,7 +15,8 @@
     "onCommand:aiPrivacyRouter.reviewCloudOverride",
     "onCommand:aiPrivacyRouter.privacyPreview",
     "onChatParticipant:ai-privacy-router.privacy",
-    "onCommand:aiPrivacyRouter.runTests"
+    "onCommand:aiPrivacyRouter.runTests",
+    "onCommand:aiPrivacyRouter.askAuto"
   ],
   "contributes": {
     "commands": [
@@ -42,6 +43,10 @@
       {
         "command": "aiPrivacyRouter.runTests",
         "title": "AI Privacy Router: Run Existing Regression Tests"
+      },
+      {
+        "command": "aiPrivacyRouter.askAuto",
+        "title": "AI Privacy Router: Route Typed Prompt (Local by Default)"
       }
     ],
     "configuration": {
@@ -76,14 +81,24 @@
         "aiPrivacyRouter.mandatoryLocalOnly": {
           "type": "boolean",
           "default": false,
-          "description": "Deny even review-only cloud override approvals. Cloud dispatch remains disabled regardless.",
+          "description": "Prevent all cloud routing through this extension, including reviewed public prompts and review-only override approvals.",
           "scope": "application"
         },
         "aiPrivacyRouter.requireReviewer": {
           "type": "boolean",
           "default": false,
-          "description": "Require verified reviewer approval. No reviewer identity provider is connected, so enabling this denies override approvals.",
+          "description": "Require verified reviewer approval. No identity provider is connected, so enabling this prevents cloud routing and override approvals.",
           "scope": "application"
+        },
+        "aiPrivacyRouter.routingMode": {
+          "type": "string",
+          "enum": [
+            "local-only",
+            "hybrid-public-prompts"
+          ],
+          "default": "local-only",
+          "scope": "application",
+          "description": "Local-only by default. Hybrid mode offers Copilot only for complex, explicitly approved typed public prompts in an empty window with no project or files open. Never filters independent Copilot usage."
         }
       }
     },
@@ -92,7 +107,7 @@
         "id": "ai-privacy-router.privacy",
         "name": "ai-privacy",
         "fullName": "AI Privacy Router",
-        "description": "Private local Qwen assistant via Ollama",
+        "description": "Local-first assistant; optional isolated public-prompt Copilot routing",
         "isSticky": true,
         "commands": [
           {
@@ -102,6 +117,10 @@
           {
             "name": "test",
             "description": "Choose and run the existing local project test suite"
+          },
+          {
+            "name": "auto",
+            "description": "Route only the typed prompt; sensitive/project context stays local, reviewed public tasks may use Copilot"
           }
         ]
       }
