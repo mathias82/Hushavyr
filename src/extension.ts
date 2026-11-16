@@ -29,22 +29,38 @@ export function activate(context: vscode.ExtensionContext): void {
       ? editor.document.getText(editor.selection) : undefined;
     const selected = activeSelection?.trim() ? activeSelection : lastSelection?.text;
     const selectedUri = activeSelection?.trim() ? editor?.document.uri.toString() : lastSelection?.uri;
-    const asksForSelection = /\\b(select(?:ed|ion)?|this code|this file|highlighted)\\b/i.test(instruction);
-    if (asksForSelection && !selected?.trim()) {
-      stream.markdown("Select code in an editor first, then ask `@privacy` again. No content was sent.");
+    // Explicit Chat file attachments are not automatically part of request.prompt.
+    const attachments: string[] = [];
+    for (const ref of request.references) {
+      const value = ref.value;
+      const uri = value instanceof vscode.Uri ? value : value instanceof vscode.Location ? value.uri : undefined;
+      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled")) continue;
+      try {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const content = value instanceof vscode.Location ? doc.getText(value.range) : doc.getText();
+        if (content.trim()) attachments.push("Attached file: " + uri.toString() + "\n```\n" + content + "\n```");
+      } catch {
+        stream.markdown("Unable to read an attached file. Nothing was sent.");
+        return;
+      }
+    }
+    const asksForSelection = /\b(select(?:ed|ion)?|this code|this file|highlighted)\b/i.test(instruction);
+    if (asksForSelection && !selected?.trim() && attachments.length === 0) {
+      stream.markdown("Select code or attach a file first, then ask `@privacy` again. No content was sent.");
       return;
     }
-    const prompt = selected?.trim()
-      ? instruction + "\\n\\nSelected content (" + (selectedUri ?? "editor") + "):\\n```\\n" + selected + "\\n```"
-      : instruction;
+    const sections = [instruction];
+    if (attachments.length) sections.push(...attachments);
+    else if (selected?.trim()) sections.push("Selected content (" + (selectedUri ?? "editor") + "):\n```\n" + selected + "\n```");
+    const prompt = sections.join("\n\n");
     const decision = classifyInput({prompt,workspaceTrusted:vscode.workspace.isTrusted});
     if (decision.route === "blocked") {
       stream.markdown("Blocked by local privacy policy. Nothing was transmitted.");
       return;
     }
-    stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\\n\\n");
+    stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\n\n");
     const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
-    const reviewPrompt = "You are a cautious senior Java reviewer. For each verified bug give severity, evidence tied to the provided code, a concrete fix and a regression test. Distinguish definite bugs from hypotheses. Do not invent other files or test results.\\n\\n" + prompt;
+    const reviewPrompt = "You are a cautious senior Java reviewer. For each verified bug give severity, evidence tied to the provided code, a concrete fix and a regression test. Distinguish definite bugs from hypotheses. Do not invent other files or test results.\n\n" + prompt;
     try {
       if (token.isCancellationRequested) return;
       const result = await new LocalOllama({model}).generate(reviewPrompt);
