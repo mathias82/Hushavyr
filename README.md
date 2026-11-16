@@ -58,3 +58,7 @@ npm run ai:serve
 ```
 
 You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Keep the VS Code `aiPrivacyRouter.ollamaModel` setting consistent. The script contacts only the local Ollama endpoint, except that `ollama pull` downloads a missing model. Do not start a second server if one is already running.
+
+## Local Qwen in VS Code Chat
+
+Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@privacy Find bugs in the selected Java code`. The `@privacy` participant uses local Ollama and reports structured review findings in the Chat panel. It is separate from Copilot/Auto and does not use cloud fallback. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
