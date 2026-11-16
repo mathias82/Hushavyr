@@ -52,7 +52,9 @@
   "scripts": {
     "build": "tsc -p .",
     "test": "npm run build && node --test dist/test/*.test.js",
-    "package:vsix": "npm run build && vsce package --no-dependencies"
+    "package:vsix": "npm run build && vsce package --no-dependencies",
+    "ai:start": "bash scripts/start-local-ai.sh",
+    "ai:serve": "bash scripts/start-local-ai.sh --serve-only"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
