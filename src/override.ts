@@ -23,7 +23,7 @@ export function requestCloudOverride(input: ClassificationInput, policy: Overrid
   const reasons: string[] = [];
   if (!policy.cloudEnabled) reasons.push("cloud-disabled");
   if (input.workspaceTrusted !== true) reasons.push("untrusted-workspace");
-  if (!input.prompt.trim() && !(input.attachments?.length)) reasons.push("empty-context");
+  if (decision.reasons.includes("empty-context")) reasons.push("empty-context");
   if (!policy.allowOverrides) reasons.push("overrides-disabled");
   if (policy.mandatoryLocalOnly) reasons.push("mandatory-local-only");
   if (!request.confirmedCloudTransfer) reasons.push("cloud-transfer-not-confirmed");
@@ -42,3 +42,4 @@ export function requestCloudOverride(input: ClassificationInput, policy: Overrid
     reasons: ["human-override"]
   };
 }
+
