@@ -44,9 +44,8 @@ export function classifyInput(input: ClassificationInput): Decision {
   const definitelySensitive = reasons.some(r => !["untrusted-workspace", "empty-context", "unscanned-attachment"].includes(r));
   const sensitivity: Sensitivity = definitelySensitive ? "sensitive" : "uncertain";
   if (reasons.length === 0) reasons.push("unverified-sensitivity");
-  if (input.cloudEnabled && input.cloudApproved && sensitivity === "public") {
-    return { route: "cloud-eligible", sensitivity, task, reasons };
-  }
+  // No input is classified as proven public in MVP; cloud eligibility
+  // must never be inferred solely from user approval or workspace trust.
   return { route: "local", sensitivity, task, reasons };
 }
 

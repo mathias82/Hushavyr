@@ -24,3 +24,15 @@ test("restricted paths remain local", () => {
   const d=classifyInput({prompt:"Debug",attachments:[{path:".env",content:"test"}],workspaceTrusted:true});
   assert.ok(d.reasons.includes("restricted-path"));
 });
+
+test("explicit cloud approval does not bypass conservative classification", () => {
+  const d = classifyInput({
+    prompt: "Explain a Java method",
+    workspaceTrusted: true,
+    cloudEnabled: true,
+    cloudApproved: true,
+  });
+  assert.equal(d.sensitivity, "uncertain");
+  assert.equal(d.route, "local");
+  assert.ok(d.reasons.includes("unverified-sensitivity"));
+});
