@@ -13,7 +13,8 @@
     "onCommand:aiPrivacyRouter.askLocal",
     "onCommand:aiPrivacyRouter.askLocalSelection",
     "onCommand:aiPrivacyRouter.reviewCloudOverride",
-    "onCommand:aiPrivacyRouter.privacyPreview"
+    "onCommand:aiPrivacyRouter.privacyPreview",
+    "onChatParticipant:ai-privacy-router.privacy"
   ],
   "contributes": {
     "commands": [
@@ -47,7 +48,16 @@
           "description": "Locally installed Ollama model name"
         }
       }
-    }
+    },
+    "chatParticipants": [
+      {
+        "id": "ai-privacy-router.privacy",
+        "name": "privacy",
+        "fullName": "AI Privacy Router",
+        "description": "Private local Qwen assistant via Ollama",
+        "isSticky": false
+      }
+    ]
   },
   "scripts": {
     "build": "tsc -p .",
