@@ -3,13 +3,14 @@ import { classifyInput } from "./classifier";
 import { LocalOllama } from "./ollama";
 import { formatReview } from "./review";
 import { runLocalReview } from "./localReview";
-import { requestCloudOverride } from "./override";
-import { writeAuditEvent } from "./audit";
-import { randomUUID } from "node:crypto";
+import { reviewOverride } from "./overrideFlow";
+import { writeRetainedAuditEvent } from "./audit";
+import { ReviewSource, sourcePrompt, validateContext } from "./context";
+import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
 
 export function activate(context: vscode.ExtensionContext): void {
   // Remember the last non-empty editor selection when focus moves into Chat.
-  let lastSelection: {uri: string; text: string} | undefined;
+  let lastSelection: {uri: string; text: string; startLine: number} | undefined;
   let lastCodeEditor: vscode.TextEditor | undefined;
   const isCodeEditor = (editor: vscode.TextEditor): boolean => editor.document.uri.scheme === "file" && editor.document.languageId !== "markdown";
   context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -17,16 +18,28 @@ export function activate(context: vscode.ExtensionContext): void {
   }));
   context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
     const text = event.textEditor.document.getText(event.selections[0]);
-    if (text.trim()) lastSelection = {uri:event.textEditor.document.uri.toString(),text};
+    if (text.trim()) lastSelection = {uri:event.textEditor.document.uri.toString(),text,startLine:event.selections[0].start.line+1};
   }));
   const current = vscode.window.activeTextEditor;
   if (current && isCodeEditor(current)) lastCodeEditor = current;
   if (current && !current.selection.isEmpty) {
-    lastSelection = {uri:current.document.uri.toString(),text:current.document.getText(current.selection)};
+    lastSelection = {uri:current.document.uri.toString(),text:current.document.getText(current.selection),startLine:current.selection.start.line+1};
   }
 
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.runTests", async () => {
+    const receipt = await runWorkspaceTests();
+    if (!receipt) return;
+    const document = await vscode.workspace.openTextDocument({content: formatTestReceipt(receipt), language: "markdown"});
+    await vscode.window.showTextDocument(document, {preview: true});
+  }));
+
   const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, _context, stream, token) => {
-    const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find verified bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    if (request.command === "test") {
+      const receipt = await runWorkspaceTests(token);
+      if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
+      return;
+    }
+    const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected Java code`.");
       return;
@@ -38,15 +51,22 @@ export function activate(context: vscode.ExtensionContext): void {
     const selected = activeSelection?.trim() ? activeSelection : lastSelection?.text;
     const selectedUri = activeSelection?.trim() ? editor?.document.uri.toString() : lastSelection?.uri;
     // Explicit Chat file attachments are not automatically part of request.prompt.
-    const attachments: string[] = [];
+    const attachments: ReviewSource[] = [];
     for (const ref of request.references) {
       const value = ref.value;
       const uri = value instanceof vscode.Uri ? value : value instanceof vscode.Location ? value.uri : undefined;
-      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled")) continue;
+      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled")) {
+        stream.markdown("An attached context item cannot be inspected. Remove it or attach readable local files. Nothing was sent.");
+        return;
+      }
       try {
         const doc = await vscode.workspace.openTextDocument(uri);
         const content = value instanceof vscode.Location ? doc.getText(value.range) : doc.getText();
-        if (content.trim()) attachments.push("Attached file: " + uri.toString() + "\n```\n" + content + "\n```");
+        if (content.trim()) {
+          const path = uri.toString();
+          if (!attachments.some(s => s.path === path)) attachments.push({path, text: content,
+            startLine: value instanceof vscode.Location ? value.range.start.line + 1 : 1});
+        }
       } catch {
         stream.markdown("Unable to read an attached file. Nothing was sent.");
         return;
@@ -72,7 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const doc = fallbackDoc;
       const text = doc.getText();
       if (text.trim() && Buffer.byteLength(text, "utf8") <= 100_000) {
-        attachments.push("Open editor: " + doc.uri.toString() + "\n```" + doc.languageId + "\n" + text + "\n```");
+        attachments.push({path: doc.uri.toString(), text});
       } else if (Buffer.byteLength(text, "utf8") > 100_000) {
         stream.markdown("The open file is larger than 100 KB. Select a smaller section. Nothing was sent.");
         return;
@@ -83,32 +103,52 @@ export function activate(context: vscode.ExtensionContext): void {
       stream.markdown("Select code or attach a file first, then ask `@ai-privacy` again. No content was sent.");
       return;
     }
-    const sections = [instruction];
-    if (attachments.length) sections.push(...attachments);
-    else if (selected?.trim()) sections.push("Selected content (" + (selectedUri ?? "editor") + "):\n```\n" + selected + "\n```");
-    const prompt = sections.join("\n\n");
-    const decision = classifyInput({prompt,workspaceTrusted:vscode.workspace.isTrusted});
+    const sources: ReviewSource[] = attachments.length ? attachments : selected?.trim()
+      ? [{path: selectedUri ?? "selection", text: selected,
+          startLine: activeSelection?.trim() ? editor!.selection.start.line + 1 : lastSelection?.startLine}] : [];
+    try { validateContext(instruction, sources); }
+    catch (error) { stream.markdown(error instanceof Error ? error.message : "Invalid context."); return; }
+    const prompt = instruction + (sources.length ? "\n\n" + sourcePrompt(sources) : "");
+    const decision = classifyInput({prompt: instruction,
+      attachments: sources.map(s => ({path: s.path, content: s.text})), workspaceTrusted: vscode.workspace.isTrusted});
     if (decision.route === "blocked") {
       stream.markdown("Blocked by local privacy policy. Nothing was transmitted.");
       return;
     }
     stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\n\n");
     const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
-    const sourceCode = attachments.length ? attachments.join("\n\n") : (selected ?? "");
+
     const isReview = request.command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
+    if (isReview && !sources.length) {
+      stream.markdown("Select code or attach local files first. Nothing was sent.");
+      return;
+    }
+    const controller = new AbortController();
+    const subscription = token.onCancellationRequested(() => controller.abort());
     try {
       if (token.isCancellationRequested) return;
-      const client = new LocalOllama({model, timeoutMs: 180000});
+      const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+      const endpoint = config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434");
+      const timeoutMs = config.get<number>("timeoutSeconds", 180) * 1000;
+      const client = new LocalOllama({model, endpoint, timeoutMs});
+      await client.ensureAvailable(controller.signal);
+      const withSignal = (local: LocalOllama) => ({generate: (text: string, options = {}) =>
+        local.generate(text, {...options, signal: controller.signal})});
       if (!isReview) {
-        const result = await client.generate(prompt);
+        const result = await client.generate(prompt, {signal: controller.signal});
         if (!token.isCancellationRequested) stream.markdown(result);
       } else {
-        const validated = await runLocalReview(client, instruction, sourceCode, () => token.isCancellationRequested);
+        const verifierModel = config.get<string>("verifierModel", "").trim() || model;
+        const verifier = verifierModel === model ? client : new LocalOllama({model: verifierModel, endpoint, timeoutMs});
+        // Each pass has a fresh prompt; the same model may serve both passes.
+        const validated = await runLocalReview(withSignal(client), instruction, sources,
+          () => token.isCancellationRequested, withSignal(verifier));
         if (validated && !token.isCancellationRequested) stream.markdown(formatReview(validated));
       }
     } catch {
-      stream.markdown("Local Ollama unavailable or request failed. **No cloud fallback.** Start it with `npm run ai:serve`.");
-    }
+      if (!token.isCancellationRequested) stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");
+    } finally { subscription.dispose(); }
+
   });
   context.subscriptions.push(participant);
 
@@ -130,41 +170,32 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const selected = editor.document.getText(editor.selection);
-    const input = {prompt:selected,workspaceTrusted:vscode.workspace.isTrusted};
-    const decision = classifyInput(input);
-    const answer = await vscode.window.showWarningMessage(
-      "Cloud transfer review only. Destination: Anthropic Sonnet (NOT CONNECTED). " +
-      "Sensitivity: " + decision.sensitivity + ". Reasons: " + decision.reasons.join(", ") +
-      ". Selected content could leave your device if a cloud adapter is enabled later. No transfer will happen now.",
-      {modal:true}, "Review override"
-    );
-    if (answer !== "Review override") return;
-    const reason = await vscode.window.showInputBox({prompt:"Why is this content safe for external processing? (not logged verbatim)",ignoreFocusOut:true});
-    if (!reason?.trim()) return;
-    const confirmation = await vscode.window.showWarningMessage(
-      "Confirm review of possible future external processing by Anthropic Sonnet. No data will be sent in this MVP.",
-      {modal:true}, "Confirm review"
-    );
-    if (confirmation !== "Confirm review") return;
-    const result = requestCloudOverride(input,
-      {cloudEnabled:true,allowOverrides:true},
-      {reason,confirmedCloudTransfer:true});
-    const event = {
-      action: result.allowed ? "cloud-approval" as const : "cloud-denial" as const,
-      actorId:"local-user",provider:"anthropic",model:"sonnet",
-      requestId:randomUUID(),policyVersion:"mvp-v1",
-      reasonCode:result.allowed ? "manual-review" : "policy-denied",
-      outcome:result.allowed ? "approved" as const : "denied" as const
-    };
+    const input = {prompt: "Review selected content for possible external processing",
+      selectedCode: [{path: editor.document.uri.toString(), content: selected}], workspaceTrusted: vscode.workspace.isTrusted};
+    const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+    // The review preview shows the complete candidate context locally. No cloud adapter is connected.
+    const preview = await vscode.workspace.openTextDocument({content: JSON.stringify(input, null, 2), language: "json"});
+    await vscode.window.showTextDocument(preview, {preview: true, viewColumn: vscode.ViewColumn.Beside});
     try {
-      await writeAuditEvent(context.globalStorageUri.fsPath + "/cloud-review.jsonl",event);
+      const outcome = await reviewOverride(input,
+        {cloudEnabled: true, allowOverrides: true,
+          mandatoryLocalOnly: config.get<boolean>("mandatoryLocalOnly", false),
+          requireReviewer: config.get<boolean>("requireReviewer", false)}, {
+          confirmWarning: async () => await vscode.window.showWarningMessage(
+            "Review only: Anthropic Sonnet (NOT CONNECTED). The local preview shows the entire candidate context: " +
+            Buffer.byteLength(selected, "utf8") + " bytes from one selected file. Nothing will be sent.",
+            {modal: true}, "Review override") === "Review override",
+          justification: async () => vscode.window.showInputBox({prompt: "Why is this content safe for external processing? (not logged verbatim)", ignoreFocusOut: true}),
+          confirmReview: async () => await vscode.window.showWarningMessage(
+            "Record this review locally? This does not enable cloud transfer.", {modal: true}, "Confirm review") === "Confirm review"
+          // No verified reviewer identity provider is connected. requireReviewer therefore denies approval.
+        }, event => writeRetainedAuditEvent(context.globalStorageUri.fsPath + "/audit", event));
+      void vscode.window.showInformationMessage(outcome === "approved"
+        ? "Review approved and audited locally. Cloud dispatch remains disabled."
+        : "Review " + outcome + " and audited locally. Nothing was sent.");
     } catch {
-      void vscode.window.showErrorMessage("Audit write failed. Approval is not recorded; cloud remains disabled.");
-      return;
+      void vscode.window.showErrorMessage("Audit write failed. No approval or transfer is permitted.");
     }
-    void vscode.window.showInformationMessage(result.allowed
-      ? "Review approved and audited locally. Cloud dispatch is NOT implemented."
-      : "Override denied and audited: " + result.reasons.join(", "));
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.privacyPreview", async () => {
@@ -215,6 +246,11 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 async function runLocal(prompt: string): Promise<void> {
+  try { validateContext(prompt, []); }
+  catch {
+    void vscode.window.showWarningMessage("Context exceeds 20 KB. Select less content.");
+    return;
+  }
   const decision = classifyInput({prompt, workspaceTrusted: vscode.workspace.isTrusted});
   // MVP: only local inference is implemented. Never auto-dispatch to cloud.
   if (decision.route === "blocked") {
@@ -226,12 +262,44 @@ async function runLocal(prompt: string): Promise<void> {
     const result = await vscode.window.withProgress({
       location:vscode.ProgressLocation.Notification,
       title:"AI Privacy Router: local Qwen"
-    }, () => new LocalOllama({model}).generate(prompt));
+    }, async () => {
+      const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+      const client = new LocalOllama({model, endpoint: config.get<string>("ollamaEndpoint"),
+        timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000});
+      await client.ensureAvailable();
+      return client.generate(prompt);
+    });
     const document = await vscode.workspace.openTextDocument({content:result,language:"markdown"});
     await vscode.window.showTextDocument(document,{preview:true});
   } catch {
     void vscode.window.showErrorMessage("Local Ollama failed. No cloud fallback or external transfer was attempted.");
   }
+}
+async function runWorkspaceTests(externalToken?: vscode.CancellationToken) {
+  if (externalToken?.isCancellationRequested) return;
+  if (!vscode.workspace.isTrusted) {
+    void vscode.window.showWarningMessage("Trust this workspace before running its tests.");
+    return;
+  }
+  const folder = await vscode.window.showWorkspaceFolderPick({placeHolder: "Choose the project whose existing tests will run"});
+  if (!folder || folder.uri.scheme !== "file") return;
+  const items = (Object.keys(testProfiles) as TestProfile[]).map(profile => ({label: testProfiles[profile].label, profile}));
+  const choice = await vscode.window.showQuickPick(items, {placeHolder: "Run existing tests locally (project scripts may execute code)"});
+  if (!choice) return;
+  return vscode.window.withProgress({location: vscode.ProgressLocation.Notification,
+    title: "Running " + choice.label, cancellable: true}, async (_, token) => {
+    const controller = new AbortController();
+    const subscription = token.onCancellationRequested(() => controller.abort());
+    const externalSubscription = externalToken?.onCancellationRequested(() => controller.abort());
+    if (token.isCancellationRequested || externalToken?.isCancellationRequested) controller.abort();
+    try {
+      return await runRegressionTests({cwd: folder.uri.fsPath, profile: choice.profile,
+        trusted: vscode.workspace.isTrusted, signal: controller.signal});
+    } catch {
+      void vscode.window.showErrorMessage("Unable to run the existing local test suite. Check the selected project and runner.");
+      return;
+    } finally { subscription.dispose(); externalSubscription?.dispose(); }
+  });
 }
 export function deactivate(): void {}
 
