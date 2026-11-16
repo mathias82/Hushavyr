@@ -18,9 +18,9 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, _context, stream, token) => {
-    const instruction = request.prompt.trim();
+    const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find verified bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
-      stream.markdown("Ask a question, e.g. `@privacy Find bugs in the selected Java code`.");
+      stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected Java code`.");
       return;
     }
     // VS Code may change editor focus when Chat opens. Use the last non-empty selection.
@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const asksForSelection = /\b(select(?:ed|ion)?|this code|this file|highlighted)\b/i.test(instruction);
     if (asksForSelection && !selected?.trim() && attachments.length === 0) {
-      stream.markdown("Select code or attach a file first, then ask `@privacy` again. No content was sent.");
+      stream.markdown("Select code or attach a file first, then ask `@ai-privacy` again. No content was sent.");
       return;
     }
     const sections = [instruction];
