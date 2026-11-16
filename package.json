@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "AI Privacy Router",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -14,7 +14,8 @@
     "onCommand:aiPrivacyRouter.askLocalSelection",
     "onCommand:aiPrivacyRouter.reviewCloudOverride",
     "onCommand:aiPrivacyRouter.privacyPreview",
-    "onChatParticipant:ai-privacy-router.privacy"
+    "onChatParticipant:ai-privacy-router.privacy",
+    "onCommand:aiPrivacyRouter.runTests"
   ],
   "contributes": {
     "commands": [
@@ -37,6 +38,10 @@
       {
         "command": "aiPrivacyRouter.privacyPreview",
         "title": "AI Privacy Router: Privacy Preview of Selection"
+      },
+      {
+        "command": "aiPrivacyRouter.runTests",
+        "title": "AI Privacy Router: Run Existing Regression Tests"
       }
     ],
     "configuration": {
@@ -45,7 +50,40 @@
         "aiPrivacyRouter.ollamaModel": {
           "type": "string",
           "default": "qwen2.5-coder:7b",
-          "description": "Locally installed Ollama model name"
+          "description": "Locally installed Ollama model name",
+          "scope": "application"
+        },
+        "aiPrivacyRouter.ollamaEndpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "Loopback HTTP Ollama origin only; remote hosts and redirects are rejected.",
+          "scope": "application"
+        },
+        "aiPrivacyRouter.timeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 1,
+          "maximum": 600,
+          "description": "Timeout for each local model request.",
+          "scope": "application"
+        },
+        "aiPrivacyRouter.verifierModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional second locally installed model for the verification pass. Empty uses the review model.",
+          "scope": "application"
+        },
+        "aiPrivacyRouter.mandatoryLocalOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "Deny even review-only cloud override approvals. Cloud dispatch remains disabled regardless.",
+          "scope": "application"
+        },
+        "aiPrivacyRouter.requireReviewer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require verified reviewer approval. No reviewer identity provider is connected, so enabling this denies override approvals.",
+          "scope": "application"
         }
       }
     },
@@ -60,6 +98,10 @@
           {
             "name": "review",
             "description": "Review selected or attached code with local Qwen"
+          },
+          {
+            "name": "test",
+            "description": "Choose and run the existing local project test suite"
           }
         ]
       }
@@ -70,7 +112,8 @@
     "test": "npm run build && node --test dist/test/*.test.js",
     "package:vsix": "npm run build && vsce package --no-dependencies",
     "ai:start": "bash scripts/start-local-ai.sh",
-    "ai:serve": "bash scripts/start-local-ai.sh --serve-only"
+    "ai:serve": "bash scripts/start-local-ai.sh --serve-only",
+    "review:benchmark": "npm run build && node dist/benchmark.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -83,4 +126,3 @@
     "url": "https://github.com/mathias82/ai-privacy-router.git"
   }
 }
-

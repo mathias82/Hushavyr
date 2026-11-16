@@ -1,9 +1,17 @@
 export type Route = "local" | "cloud-eligible" | "blocked";
 export type Sensitivity = "sensitive" | "uncertain" | "public";
 export type Task = "coding" | "document" | "general";
+export interface ContextPart {
+  path: string;
+  content?: string;
+  label?: "public" | "internal" | "confidential";
+}
 export interface ClassificationInput {
   prompt: string;
-  attachments?: Array<{ path: string; content?: string; label?: "public" | "internal" | "confidential" }>;
+  attachments?: readonly ContextPart[];
+  selectedCode?: readonly ContextPart[];
+  toolOutputs?: readonly ContextPart[];
+  retrievedContext?: readonly ContextPart[];
   workspaceTrusted?: boolean;
   cloudEnabled?: boolean;
   cloudApproved?: boolean;
@@ -13,7 +21,7 @@ export interface Decision { route: Route; sensitivity: Sensitivity; task: Task; 
 const sensitive: Array<[string, RegExp]> = [
   ["private-key", /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i],
   ["credential", /\b(?:api[_-]?key|password|client[_-]?secret|access[_-]?token)\s*[:=]\s*["']?[^\s"']{4,}/i],
-  ["confidential-marker", /\b(?:confidential|strictly private|internal only|εμπιστευτικ[όά])\b/i],
+  ["confidential-marker", /\b(?:confidential|strictly private|internal only)\b|εμπιστευτικ[όά]/iu],
   ["personal-data-hint", /\b(?:customer records|employee records|personal data|προσωπικά δεδομένα)\b/i],
 ];
 const piiPatterns: Array<[string, RegExp]> = [
@@ -30,14 +38,15 @@ const document = /\b(?:pdf|document|contract|invoice|report|σύμβαση|έγ�
 /** Conservative classifier: absence of a match is not proof of public data. */
 export function classifyInput(input: ClassificationInput): Decision {
   const reasons: string[] = [];
-  const attachments = input.attachments ?? [];
+  const attachments = [...(input.attachments ?? []), ...(input.selectedCode ?? []),
+    ...(input.toolOutputs ?? []), ...(input.retrievedContext ?? [])];
   const combined = [input.prompt, ...attachments.map(a => a.content ?? "")].join("\n");
   const task: Task = coding.test(input.prompt) ? "coding" : document.test(input.prompt) ? "document" : "general";
   for (const [name, regex] of [...sensitive, ...piiPatterns]) if (regex.test(combined)) reasons.push(name);
   for (const attachment of attachments) {
-    if (restrictedPath.test(attachment.path)) reasons.push("restricted-path");
+    if (restrictedPath.test(attachment.path.replace(/\\/g, "/"))) reasons.push("restricted-path");
     if (attachment.label === "internal" || attachment.label === "confidential") reasons.push("restricted-label");
-    if (attachment.content === undefined) reasons.push("unscanned-attachment");
+    if (typeof attachment.content !== "string") reasons.push("unscanned-attachment");
   }
   if (input.workspaceTrusted !== true) reasons.push("untrusted-workspace");
   if (!input.prompt.trim() && attachments.length === 0) reasons.push("empty-context");
@@ -53,3 +62,4 @@ export function classifyInput(input: ClassificationInput): Decision {
 export function classify(text: string): Decision {
   return classifyInput({ prompt: text });
 }
+
