@@ -113,7 +113,8 @@
     "package:vsix": "npm run build && vsce package --no-dependencies",
     "ai:start": "bash scripts/start-local-ai.sh",
     "ai:serve": "bash scripts/start-local-ai.sh --serve-only",
-    "review:benchmark": "npm run build && node dist/benchmark.js"
+    "review:benchmark": "npm run build && node dist/benchmark.js",
+    "update:local": "node scripts/update-local.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
