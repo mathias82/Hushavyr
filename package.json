@@ -59,5 +59,9 @@
     "@types/vscode": "^1.90.0",
     "typescript": "^5.6.0",
     "@vscode/vsce": "^3.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mathias82/ai-privacy-router.git"
   }
 }
