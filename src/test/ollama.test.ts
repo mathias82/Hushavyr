@@ -25,3 +25,13 @@ test("empty prompts do not reach the transport", async () => {
   const client = new LocalOllama({model:"qwen2.5-coder:7b"}, async () => { throw new Error("Should not call"); });
   await assert.rejects(client.generate("  "), /Empty prompt/);
 });
+
+test("structured review requests Ollama JSON mode and temperature zero", async () => {
+  const client = new LocalOllama({model:"qwen2.5-coder:7b"}, async (_url, init) => {
+    const payload = JSON.parse(String(init.body));
+    assert.equal(payload.format,"json");
+    assert.equal(payload.options.temperature,0);
+    return new Response(JSON.stringify({response:'{"findings":[]}'}),{status:200});
+  });
+  assert.equal(await client.generate("Review Java", {json:true}), '{"findings":[]}');
+});
