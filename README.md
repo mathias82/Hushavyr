@@ -37,9 +37,44 @@ Reload VS Code. Open a text file, select some text, open the Command Palette and
 
 For a negative test, stop Ollama and repeat the local command. It must show a local error, **not** fall back to a cloud model.
 
-The Ollama endpoint is hard-coded to `127.0.0.1:11434`; in Remote SSH, containers, or WSL, this refers to the extension host, not necessarily your laptop. The default model can be changed in VS Code Settings under `aiPrivacyRouter.ollamaModel`.
+The Ollama endpoint defaults to `127.0.0.1:11434` and can be changed to another loopback HTTP origin with `aiPrivacyRouter.ollamaEndpoint`; in Remote SSH, containers, or WSL, this refers to the extension host, not necessarily your laptop. The default model can be changed in VS Code Settings under `aiPrivacyRouter.ollamaModel`.
 
 **Important limitations:** Privacy detection is heuristic; no content is certified safe for cloud use. The override UI is a **review-only prototype**; it records local audit metadata but does not send anything to Sonnet. The VSIX is for private local testing, not Marketplace publication. Do not test with actual company secrets or production personal data until the extension has been independently reviewed.
+
+
+## Update an existing checkout safely
+
+After this updater is present, run from the repository:
+
+```bash
+npm run update:local
+npm ci --ignore-scripts
+npm test
+npm run package:vsix
+code --install-extension ai-privacy-router-0.0.3.vsix --force
+```
+
+The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
+
+It stops for local commits that cannot fast-forward, tracked edits, another branch, or an in-progress merge/rebase/cherry-pick/revert. If an update fails before HEAD changes, it attempts to restore moved files to unoccupied original paths; otherwise backups remain at the reported location. Do not run another Git operation concurrently.
+
+### First upgrade from a checkout without the updater
+
+An old locally generated `package-lock.json` can prevent Git from adopting the newly tracked lockfile. Run this from the repository to preserve that specific file before pulling:
+
+```bash
+(
+set -e
+if [ -e package-lock.json ] && ! git ls-files --error-unmatch -- package-lock.json >/dev/null 2>&1; then
+  backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/ai-privacy-router-lock.XXXXXX")"
+  mv package-lock.json "$backup_dir/package-lock.json"
+  printf 'Saved local lockfile: %s\n' "$backup_dir/package-lock.json"
+fi
+git pull --ff-only origin main
+)
+```
+
+Stop if Git reports any other conflict or local edits; do not discard them. After a successful pull, use `npm ci --ignore-scripts`, then test, package, install the VSIX and reload VS Code. Previous in-repository `package-lock.local.*.bak` backups are now excluded from Git and VSIX packaging, but are not deleted. The tracked lockfile remains versioned for reproducible CI.
 
 ## One-command local AI startup (macOS)
 
