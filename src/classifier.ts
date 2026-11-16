@@ -19,8 +19,11 @@ export interface ClassificationInput {
 export interface Decision { route: Route; sensitivity: Sensitivity; task: Task; reasons: string[] }
 
 const sensitive: Array<[string, RegExp]> = [
-  ["private-key", /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i],
-  ["credential", /\b(?:api[_-]?key|password|client[_-]?secret|access[_-]?token)\s*[:=]\s*["']?[^\s"']{4,}/i],
+  ["private-key", /-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/i],
+  ["credential", /\b(?:api[_-]?key|password|passphrase|secret|account[_-]?key|shared[_-]?access[_-]?key|authorization|client[_-]?secret|access[_-]?token)\s*[:=]\s*["']?[^\s"']{1,}/i],
+  ["token-pattern", /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b/],
+  ["jwt-pattern", /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/],
+  ["credential-uri", /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?):\/\/[^@\s/]+:[^@\s/]+@/i],
   ["confidential-marker", /\b(?:confidential|strictly private|internal only)\b|εμπιστευτικ[όά]/iu],
   ["personal-data-hint", /\b(?:customer records|employee records|personal data|προσωπικά δεδομένα)\b/i],
 ];

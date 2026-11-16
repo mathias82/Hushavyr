@@ -5,7 +5,7 @@ import { OverridePolicy, OverrideRequest, requestCloudOverride } from "./overrid
 
 export interface TransferMetadata { actorId: string; provider: string; model: string }
 export interface TransferReceipt { outcome: "denied" | "cancelled" | "sent" | "failed"; requestId: string }
-/** Future adapter boundary. The extension supplies no cloud transport in this release. */
+/** Audited transfer boundary; the optional public-prompt Copilot adapter is the only live caller. */
 export async function guardedCloudTransfer(
   input: ClassificationInput, policy: OverridePolicy, approval: OverrideRequest,
   metadata: TransferMetadata, audit: (event: AuditEvent) => Promise<unknown>,

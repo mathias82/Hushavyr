@@ -10,8 +10,8 @@ Private prototype of a privacy-first AI router for VS Code.
 - Human overrides cannot bypass mandatory policy.
 - No document contents or secrets in logs.
 
-## MVP
-TypeScript classifier, local Ollama adapter, VS Code command and tests. Cloud adapters will be added only after explicit opt-in and security review.
+## Implementation
+TypeScript classifier, local Ollama adapter, VS Code commands and tests. An optional, default-disabled Copilot route handles only explicitly reviewed public typed prompts in an isolated empty window.
 
 ## Install and smoke-test locally (macOS / VS Code)
 
@@ -30,7 +30,7 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.3.vsix
+code --install-extension ai-privacy-router-0.0.4.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **AI Privacy Router: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **AI Privacy Router: Classify Selection** and **AI Privacy Router: Review Cloud Override (No Transfer)**.
@@ -51,7 +51,7 @@ npm run update:local
 npm ci --ignore-scripts
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.3.vsix --force
+code --install-extension ai-privacy-router-0.0.4.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -96,11 +96,46 @@ You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Ke
 
 ## Local Qwen in VS Code Chat
 
-Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@ai-privacy Find bugs in the selected Java code`. The `@ai-privacy` participant uses local Ollama and reports structured review findings in the Chat panel. It is separate from Copilot/Auto and does not use cloud fallback. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
+Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@ai-privacy Find bugs in the selected Java code`. The `@ai-privacy` participant uses local Ollama and reports structured review findings in the Chat panel. Its ordinary requests stay local; the optional `/auto` public-prompt workflow below is the only Copilot route. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
 
 ### Sticky Chat mode
 
 Use `@ai-privacy` once to select the local assistant. It is marked sticky, so subsequent turns in the same Chat conversation stay with this participant unless you switch agents. Use `/review` while this participant is active for code review. The configured local model defaults to `qwen2.5-coder:7b` via `aiPrivacyRouter.ollamaModel` and persists in VS Code Settings. VS Code does not expose this local Ollama model as a Copilot model-picker entry; `/ai-privacy` is not a global Chat slash command. Use `@ai-privacy` for the participant and `/review` for its command.
+
+
+## Ollama / Copilot routing (0.0.4)
+
+Default mode remains **local-only**. Use `@ai-privacy /auto <typed prompt>`, or **AI Privacy Router: Route Typed Prompt (Local by Default)**. Ordinary Chat, `/review`, selected-file commands and attached-source review remain local.
+
+The router first checks privacy policy, then task complexity. Known sensitive patterns, uncertain project/file context, untrusted workspaces, mandatory-local policy and required-but-unavailable reviewer approval stay local. A simple typed task stays on Ollama. A complex typed prompt is only a **Copilot candidate**, not automatically classified public.
+
+Copilot eligibility requires all of the following:
+- Application setting `aiPrivacyRouter.routingMode` explicitly set to `hybrid-public-prompts`.
+- A trusted empty window, no workspace folders and no open file/untitled documents. Internal Chat/output buffers are not included in requests.
+- No attached context: attachments use the existing local path.
+- A supported model selected through the official VS Code Copilot Language Model API.
+- Per-request approval that every part of the exact payload is public and authorized for external processing.
+
+The router never treats absence of a regex match as proof of public content. Without explicit public approval, no cloud prompt is sent. The full immutable payload is shown in an escaped, read-only webview with scripts, commands and resource access disabled. It is not opened as a source text document for inline completion. Close the preview or dismiss the notification to deny sending. Model discovery may request VS Code's normal Copilot consent; it receives no prompt from this extension.
+
+Only that approved string is sent as one user message. No editor content, cached selection, Chat history, workspace search, tools, retrieval, or test output is appended. The actual model ID is hashed for metadata-only audit. Approval and attempted-dispatch records must succeed before sending. Policy, isolation and cancellation are rechecked before dispatch. Opening a project/file or enabling mandatory-local policy during approval prevents sending. No failed Ollama request silently falls back to Copilot; failed Copilot requests are not automatically retried on another provider. Copilot answers are model output, not executed tests or applied patches.
+
+### Two-profile setup
+
+These settings are templates, not automatically applied. Nothing in this PR changes the user's VS Code or account settings.
+
+1. **Sensitive work profile:** disable the Copilot extensions in that profile. Copy [local-only settings](profiles/local-only.settings.json) into its user settings and use the standalone **Ask Local Qwen** / **Ask Local Qwen About Selection** commands. Disabling built-in AI hides Chat, so `@ai-privacy` will not be available there; standalone local commands still register.
+2. **Public-prompt profile/window:** enable Copilot in a separate empty window, with no project or documents open. The [public-prompt settings](profiles/public-prompts.settings.json) disable inline and next-edit suggestions while allowing Chat.
+3. In **Preferences: Open Application Settings (JSON)**, explicitly configure:
+```json
+{"aiPrivacyRouter.routingMode": "hybrid-public-prompts"}
+```
+Application-scoped settings apply across profiles. The independent empty-window and disabled-AI guards keep private/project windows local even when this global mode is enabled. Setting `aiPrivacyRouter.mandatoryLocalOnly` to `true` disables every cloud route through this extension across profiles.
+4. Use `/auto` for a typed public question. Complex tasks offer the model picker and exact-payload approval; simple tasks use Ollama.
+
+**Boundary:** this extension controls its own requests only. It cannot intercept independent Copilot Chat, completions, other extensions, tools or operating-system network traffic. Pattern checks and public-content attestation are not complete DLP or a universal no-exfiltration guarantee. Keep Copilot disabled in the sensitive profile; organizational/OS isolation is needed when a hard cross-application boundary is required.
+
+Public-only smoke test: after installing 0.0.4, verify default local mode, synthetic secret routing, no model discovery in a project window, public preview cancellation, exact approved payload, and model/account/quota failures. Use no actual secrets for the test. No real Copilot request or local runtime test was executed while authoring this change.
 
 ## Evidence-gated local code review
 
@@ -128,7 +163,7 @@ Settings are application-scoped, so repository settings cannot relax the user's 
 | `aiPrivacyRouter.ollamaEndpoint` | `http://127.0.0.1:11434` | Loopback HTTP origin only; redirects rejected; localhost canonicalized to 127.0.0.1 |
 | `aiPrivacyRouter.timeoutSeconds` | 180 | Per model request |
 | `aiPrivacyRouter.verifierModel` | empty | Reuses reviewer unless another local model is selected |
-| `aiPrivacyRouter.mandatoryLocalOnly` | false | When true, denies even review-only cloud approvals |
+| `aiPrivacyRouter.mandatoryLocalOnly` | false | When true, prevents all cloud routes and review-only approvals |
 | `aiPrivacyRouter.requireReviewer` | false | Denies approvals without a verified reviewer callback |
 
 Chat checks Ollama's local model inventory before generation. Review requests reserve a 32,768-token context window and cap output at 4,096 tokens. The conservative source and prompt byte budgets reduce accidental context truncation; model compatibility and quality still need local measurement. The startup script manages the default endpoint; custom loopback servers must be started separately.
@@ -139,7 +174,7 @@ Classification covers prompts, selected code, attachments, tool outputs and retr
 
 **Review Cloud Override (No Transfer)** opens the entire candidate context in a local preview, names the hypothetical destination, requests a reason and explicit confirmation, and rechecks policy. Cancellation defaults to denial. Required reviewer approval cannot be granted in the UI because no reviewer identity provider is connected. The reusable workflow supports a verified reviewer callback for a future integration; self-confirmation is not treated as reviewer identity.
 
-Cloud dispatch remains disabled. A transport-independent guarded transfer boundary is tested with fake transports only, ready for a separately authorized future adapter. It scans an immutable snapshot and awaits separate approval and attempted-dispatch audit events before invoking any transport. Failure, cancellation and completed dispatch are separate outcomes. A post-send audit error propagates without retrying a send.
+Cloud dispatch remains disabled by default. The legacy override command never sends. The optional public-prompt Copilot adapter uses the guarded transfer boundary when explicitly enabled and each exact payload is approved. It scans an immutable snapshot and awaits separate approval and attempted-dispatch audit events before invoking any transport. Failure, cancellation and completed dispatch are separate outcomes. A post-send audit error propagates without retrying a send.
 
 Audit logs contain only allowlisted metadata, IDs, reason codes, approval type, outcome and optional token counts. Unexpected runtime fields, invalid event pairs and free-form reasons are rejected. Files use append mode, reject symlinks and restrict permissions to 0600 on POSIX. New logs live in the extension's private `audit` directory as daily segments, with 30-day retention. Existing legacy `cloud-review.jsonl` files are not automatically removed. Access control depends on the local OS account; this is not a tamper-proof remote audit service.
 
@@ -160,7 +195,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.3.vsix
+code --install-extension ai-privacy-router-0.0.4.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
