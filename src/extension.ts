@@ -50,10 +50,24 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
     }
+    // Chat focus can clear activeTextEditor, including when the extension activates lazily.
+    // Prefer the visible code editor, then the last editor, then the active text tab.
+    let fallbackDoc: vscode.TextDocument | undefined;
+    if (attachments.length === 0 && !selected?.trim()) {
+      const visible = vscode.window.visibleTextEditors.filter(isCodeEditor);
+      if (visible.length === 1) fallbackDoc = visible[0].document;
+      else if (lastCodeEditor && isCodeEditor(lastCodeEditor)) fallbackDoc = lastCodeEditor.document;
+      else {
+        const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        if (activeTab?.input instanceof vscode.TabInputText && activeTab.input.uri.scheme === "file") {
+          try { fallbackDoc = await vscode.workspace.openTextDocument(activeTab.input.uri); } catch { /* no implicit fallback */ }
+        }
+      }
+    }
     // If no explicit attachment or selection is available, use the last focused code editor.
     // Never scan the whole workspace; keep the context bounded to a single visible file.
-    if (attachments.length === 0 && !selected?.trim() && lastCodeEditor) {
-      const doc = lastCodeEditor.document;
+    if (attachments.length === 0 && !selected?.trim() && fallbackDoc) {
+      const doc = fallbackDoc;
       const text = doc.getText();
       if (text.trim() && Buffer.byteLength(text, "utf8") <= 100_000) {
         attachments.push("Open editor: " + doc.uri.toString() + "\n```" + doc.languageId + "\n" + text + "\n```");
