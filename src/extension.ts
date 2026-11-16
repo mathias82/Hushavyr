@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { classifyInput } from "./classifier";
+import { createAutoPrompt, formatRouted } from "./autoPrompt";
 import { LocalOllama } from "./ollama";
 import { formatReview } from "./review";
 import { runLocalReview } from "./localReview";
@@ -33,7 +34,38 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.window.showTextDocument(document, {preview: true});
   }));
 
+  const autoPrompt = createAutoPrompt(context);
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.askAuto", async () => {
+    const prompt = await vscode.window.showInputBox({
+      prompt: "Route a typed prompt only. No editor contents, files or history are added.",
+      ignoreFocusOut: true
+    });
+    if (!prompt?.trim()) return;
+    try {
+      const result = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification, title: "AI Privacy Router", cancellable: true
+      }, (_, token) => autoPrompt(prompt, token));
+      if (result.reason === "cancelled") return;
+      const document = await vscode.workspace.openTextDocument({content: formatRouted(result), language: "markdown"});
+      await vscode.window.showTextDocument(document, {preview: true});
+    } catch {
+      void vscode.window.showErrorMessage("AI request stopped. No automatic provider fallback; inspect local setup and audit availability.");
+    }
+  }));
+
+  // Standalone local commands remain available when built-in Chat/Copilot is disabled.
+  if (!vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false)) {
   const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, _context, stream, token) => {
+    if (request.command === "auto" && request.references.length === 0) {
+      try {
+        const result = await autoPrompt(request.prompt, token);
+        if (!token.isCancellationRequested) stream.markdown(formatRouted(result));
+      } catch {
+        if (!token.isCancellationRequested) stream.markdown("AI request stopped. No automatic provider fallback; check provider setup and audit availability.");
+      }
+      return;
+    }
+    if (request.command === "auto") stream.markdown("Attached context stays local; Copilot is not considered for this request.\n\n");
     if (request.command === "test") {
       const receipt = await runWorkspaceTests(token);
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
@@ -151,6 +183,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   });
   context.subscriptions.push(participant);
+  }
 
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.classifySelection", async () => {
     const editor = vscode.window.activeTextEditor;
@@ -173,7 +206,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const input = {prompt: "Review selected content for possible external processing",
       selectedCode: [{path: editor.document.uri.toString(), content: selected}], workspaceTrusted: vscode.workspace.isTrusted};
     const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
-    // The review preview shows the complete candidate context locally. No cloud adapter is connected.
+    // This legacy command is review-only; it cannot dispatch to Copilot or any other provider.
     const preview = await vscode.workspace.openTextDocument({content: JSON.stringify(input, null, 2), language: "json"});
     await vscode.window.showTextDocument(preview, {preview: true, viewColumn: vscode.ViewColumn.Beside});
     try {
@@ -191,7 +224,7 @@ export function activate(context: vscode.ExtensionContext): void {
           // No verified reviewer identity provider is connected. requireReviewer therefore denies approval.
         }, event => writeRetainedAuditEvent(context.globalStorageUri.fsPath + "/audit", event));
       void vscode.window.showInformationMessage(outcome === "approved"
-        ? "Review approved and audited locally. Cloud dispatch remains disabled."
+        ? "Review approved and audited locally. This command never sends content."
         : "Review " + outcome + " and audited locally. Nothing was sent.");
     } catch {
       void vscode.window.showErrorMessage("Audit write failed. No approval or transfer is permitted.");
@@ -211,7 +244,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "**Sensitivity:** " + decision.sensitivity,
       "**Task:** " + decision.task,
       "**Workspace trusted:** " + vscode.workspace.isTrusted,
-      "**Cloud dispatch:** Disabled in MVP", "",
+      "**Cloud dispatch:** This command is local-only; optional public-prompt routing is configured separately.", "",
       "## Detection reasons",
       ...decision.reasons.map(reason => "- " + reason), "",
       "No selected content is included in this report.",
@@ -252,7 +285,7 @@ async function runLocal(prompt: string): Promise<void> {
     return;
   }
   const decision = classifyInput({prompt, workspaceTrusted: vscode.workspace.isTrusted});
-  // MVP: only local inference is implemented. Never auto-dispatch to cloud.
+  // This standalone local command never selects or dispatches to a cloud provider.
   if (decision.route === "blocked") {
     void vscode.window.showErrorMessage("Content blocked by privacy policy.");
     return;

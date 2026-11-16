@@ -11,6 +11,8 @@ const disposable = {dispose() {}};
 let handler: (request: any, context: any, stream: any, token: any) => Promise<unknown>;
 let docs = new Map<string, string>();
 const configuration: Record<string, unknown> = {};
+const registeredCommands = new Set<string>();
+let copilotLookups = 0, participantRegistrations = 0;
 const fake = {
   Uri, Location, TabInputText,
   window: {
@@ -19,13 +21,16 @@ const fake = {
     showWarningMessage: async () => undefined, showErrorMessage: async () => undefined,
     showInformationMessage: async () => undefined
   },
-  commands: {registerCommand: () => disposable},
+  commands: {registerCommand: (id: string) => {registeredCommands.add(id); return disposable;}},
+  lm: {selectChatModels: async () => {copilotLookups++; throw new Error("Unexpected cloud discovery");}},
   workspace: {
     isTrusted: true,
+    workspaceFolders: undefined,
+    textDocuments: [] as any[],
     getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback}),
     openTextDocument: async (uri: Uri) => ({getText: () => docs.get(uri.toString()) ?? ""})
   },
-  chat: {createChatParticipant: (_id: string, callback: typeof handler) => {handler = callback; return disposable;}}
+  chat: {createChatParticipant: (_id: string, callback: typeof handler) => {participantRegistrations++; handler = callback; return disposable;}}
 };
 // Load the extension against a small VS Code API double; no Electron or network needed.
 const Module = require("node:module") as { _load: (name: string, ...args: any[]) => unknown };
@@ -36,7 +41,7 @@ try {
   activate = require("../extension").activate;
 } finally { Module._load = originalLoad; }
 
-async function chat(files: Record<string, string>, responses: string[], prompt = "check code for bugs", unknown = false) {
+async function chat(files: Record<string, string>, responses: string[], prompt = "check code for bugs", unknown = false, commandOverride?: string) {
   docs = new Map(Object.entries(files));
   const requests: {url: string; payload?: any}[] = [];
   const output: string[] = [];
@@ -51,7 +56,7 @@ async function chat(files: Record<string, string>, responses: string[], prompt =
   };
   try {
     activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
-    await handler({command: prompt === "Explain" ? undefined : "review", prompt,
+    await handler({command: commandOverride ?? (prompt === "Explain" ? undefined : "review"), prompt,
       references: unknown ? [{value: "unreadable"}] : Object.keys(files).map(path => ({value: new Uri(path)}))}, {},
     {markdown: (text: string) => output.push(text)}, {isCancellationRequested: false, onCancellationRequested: () => disposable});
     return {requests, output: output.join('\n')};
@@ -83,4 +88,30 @@ test("normal Chat keeps the ordinary generation path", async () => {
   assert.equal(result.requests.length, 2);
   assert.equal(result.requests[1].payload.format, undefined);
   assert.match(result.output, /Local explanation/);
+});
+
+test("auto defaults to local without Copilot discovery or implicit file context", async () => {
+  const before = copilotLookups;
+  const result = await chat({}, ["local routed answer"], "Design a Java queue", false, "auto");
+  assert.equal(copilotLookups, before);
+  assert.equal(result.requests.length, 2);
+  assert.equal(result.requests[1].payload.prompt, "Design a Java queue");
+  assert.match(result.output, /Route:\*\* ollama/);
+});
+test("auto attachments stay on the local review path", async () => {
+  const before = copilotLookups;
+  const result = await chat({"file:///Private.java": "public class Private {}"}, ['{"findings":[]}'], "review", false, "auto");
+  assert.equal(copilotLookups, before);
+  assert.match(result.output, /Attached context stays local/);
+  assert.equal(result.requests.length, 2);
+});
+test("local commands register even when built-in AI and Copilot are disabled", () => {
+  const before = participantRegistrations;
+  configuration.disableAIFeatures = true;
+  try {
+    activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
+    assert.equal(participantRegistrations, before);
+    assert.ok(registeredCommands.has("aiPrivacyRouter.askLocal"));
+    assert.ok(registeredCommands.has("aiPrivacyRouter.askLocalSelection"));
+  } finally {delete configuration.disableAIFeatures;}
 });
