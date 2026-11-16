@@ -6,6 +6,55 @@ import { writeAuditEvent } from "./audit";
 import { randomUUID } from "node:crypto";
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Remember the last non-empty editor selection when focus moves into Chat.
+  let lastSelection: {uri: string; text: string} | undefined;
+  context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
+    const text = event.textEditor.document.getText(event.selections[0]);
+    if (text.trim()) lastSelection = {uri:event.textEditor.document.uri.toString(),text};
+  }));
+  const current = vscode.window.activeTextEditor;
+  if (current && !current.selection.isEmpty) {
+    lastSelection = {uri:current.document.uri.toString(),text:current.document.getText(current.selection)};
+  }
+
+  const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, _context, stream, token) => {
+    const instruction = request.prompt.trim();
+    if (!instruction) {
+      stream.markdown("Ask a question, e.g. `@privacy Find bugs in the selected Java code`.");
+      return;
+    }
+    // VS Code may change editor focus when Chat opens. Use the last non-empty selection.
+    const editor = vscode.window.activeTextEditor;
+    const activeSelection = editor && !editor.selection.isEmpty
+      ? editor.document.getText(editor.selection) : undefined;
+    const selected = activeSelection?.trim() ? activeSelection : lastSelection?.text;
+    const selectedUri = activeSelection?.trim() ? editor?.document.uri.toString() : lastSelection?.uri;
+    const asksForSelection = /\\b(select(?:ed|ion)?|this code|this file|highlighted)\\b/i.test(instruction);
+    if (asksForSelection && !selected?.trim()) {
+      stream.markdown("Select code in an editor first, then ask `@privacy` again. No content was sent.");
+      return;
+    }
+    const prompt = selected?.trim()
+      ? instruction + "\\n\\nSelected content (" + (selectedUri ?? "editor") + "):\\n```\\n" + selected + "\\n```"
+      : instruction;
+    const decision = classifyInput({prompt,workspaceTrusted:vscode.workspace.isTrusted});
+    if (decision.route === "blocked") {
+      stream.markdown("Blocked by local privacy policy. Nothing was transmitted.");
+      return;
+    }
+    stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\\n\\n");
+    const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
+    const reviewPrompt = "You are a cautious senior Java reviewer. For each verified bug give severity, evidence tied to the provided code, a concrete fix and a regression test. Distinguish definite bugs from hypotheses. Do not invent other files or test results.\\n\\n" + prompt;
+    try {
+      if (token.isCancellationRequested) return;
+      const result = await new LocalOllama({model}).generate(reviewPrompt);
+      if (!token.isCancellationRequested) stream.markdown(result);
+    } catch {
+      stream.markdown("Local Ollama unavailable or request failed. **No cloud fallback.** Start it with `npm run ai:serve`.");
+    }
+  });
+  context.subscriptions.push(participant);
+
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.classifySelection", async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.selection.isEmpty) {
