@@ -30,7 +30,7 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.4.vsix
+code --install-extension ai-privacy-router-0.0.5.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **AI Privacy Router: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **AI Privacy Router: Classify Selection** and **AI Privacy Router: Review Cloud Override (No Transfer)**.
@@ -51,7 +51,7 @@ npm run update:local
 npm ci --ignore-scripts
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.4.vsix --force
+code --install-extension ai-privacy-router-0.0.5.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -147,6 +147,74 @@ If parsing fails or all findings are rejected, one bounded repair request receiv
 
 Every finding remains **potential**. Neither model agreement nor a successful existing suite proves an individual bug or fix. No generated tests or patches are applied automatically. Source matching and the SQL/getter filters are heuristics, not formal verification or complete DLP.
 
+
+## Local Java regression-proof agent (0.0.5)
+
+Run **AI Privacy Router: Propose and Verify Local Java Fix** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
+
+### What it does
+
+1. Choose a leaf Maven project, 1–6 tracked production Java files and one observable bug description.
+2. Export a bounded, consistent copy of the committed Git HEAD into a private snapshot. Staged changes, differing tracked file bytes, symlinks and submodules stop preparation. Untracked files and unsaved edits are not part of the proof; save and commit first. Git object reads are used rather than checkout hooks, smudge filters, or executing repository scripts on the host. The active checkout, index and branch are not patched or reset.
+3. Run the existing selected project's suite in the offline container. A passing baseline with actual Surefire test cases is required before generating a test.
+4. Local Ollama proposes one behavioral regression test in the first selected production file's package. Review its complete source before it is written into the snapshot.
+5. Run that test against the original production code. Only a reported assertion failure with exit code 1 counts as reproduction. Compile errors, runtime errors, timeouts, skipped tests, missing XML or zero cases do not.
+6. Ollama proposes one fix to existing selected production files only. Review all replacement source before applying it to the snapshot. POMs, dependencies, settings, other sources and tests cannot be changed by the fix. The approved regression test remains byte-for-byte frozen.
+7. Rerun the same regression identities, then the complete selected project's unit-test suite. Every previously passing test and every regression case must still be reported as passing. Missing, renamed or newly skipped required cases fail acceptance.
+8. Only then export `verified.patch` and a content-bound `receipt.json`. Nothing is automatically applied, committed or pushed to the active checkout.
+
+There is one test proposal and one fix proposal per run, with at most four test executions: baseline, red, green and suite. A failed or declined stage stops the workflow. There is no autonomous retry loop or provider fallback.
+
+### Execution boundary
+
+Prerequisites: non-root macOS/Linux, trusted local Docker with a Unix-socket context, an already-installed Maven/JDK image, and a complete local `~/.m2/repository` cache. `aiPrivacyRouter.fixMavenImage` defaults to `maven:3.9-eclipse-temurin-21`; choose a JDK compatible with the project. The image is resolved to its immutable local ID and never pulled by the agent. The Maven repository is privately copied (copy-on-write where supported), hashed, and mounted read-only so concurrent host builds cannot change dependencies between red and green. The host cache is never mounted into the test container or modified.
+
+The container has no network, no added capabilities, no new privileges, a read-only root and source tree, a read-only Maven cache, and a non-root UID. Only the selected project's generated `target` and a bounded private `/tmp` are writable. Host home, Maven settings, credentials, SSH keys and Docker socket are not mounted. Maven runs offline with fixed arguments; stdout/stderr is not persisted or supplied to a model. Docker container logging is disabled. Timeout/cancellation stops the attach process and forcibly removes the named container/anonymous volumes; uncertain cleanup prevents normal snapshot deletion and requires attention.
+
+The first version supports standard Surefire XML reports for a standalone or leaf Maven project that builds without host Git metadata. Aggregators, custom output/report locations, services/network-dependent tests, filtered/LFS worktrees and symlink/submodule repositories may be declined rather than weakened into an unverified pass. Each test stage is limited to two minutes, two CPUs, 4 GB memory and 256 processes.
+
+Bounds: at most 10,000 tracked files, 64 MB total exported bytes and 2 MB per file. Local model context is limited to 12 KB for the POM plus selected sources, with a 1.5 KB bug description and an 8 KB generated test. Only the POM, explicitly selected production Java files, bug description and approved regression test are supplied to the local model. The dependency-cache snapshot is limited to 4 GB, 100,000 files and 256 MB per file, with symlinks refused. Use a small prepopulated repository via `aiPrivacyRouter.fixMavenCache` if the default cache exceeds these bounds.
+
+### Receipts and artifacts
+
+Private per-run directories under the extension's `verified-fixes` storage contain metadata receipts and, when approved, the proposed test source. A verified run also contains the patch. Directories are private and files use 0600 permissions. Receipts record the base commit, image ID, dependency-snapshot hash/size, configured local model name, test-source hash, patch hash, test counts, case-set hashes, exit codes, durations and interruptions. Raw parameterized test names can contain personal data and are not persisted in receipts.
+
+Source, dependency-cache and build snapshots are removed after the run when container cleanup succeeds. Proposal/patch artifacts contain source and can be sensitive: they stay local and are never uploaded or added to cloud context. Keep only the artifacts you need; this release has no automatic artifact retention policy. A receipt is local execution evidence for the reviewed test, not a signed attestation, a proof of all behavior, or proof that the model is superior to Sonnet.
+
+Review `verified.patch` before applying it, and verify the active branch still matches the receipt's base commit. Re-run tests after manual application. A fresh test run in a different checkout/environment is separate evidence.
+
+### Public smoke fixture
+
+The intentionally buggy [Price fixture](fixtures/java-fix/src/main/java/demo/Price.java) multiplies two ints before returning a long. Its existing small-input test passes; the large-input regression should fail before a cast is added.
+
+First preload the chosen Docker image and populate a compatible Maven cache using your normal trusted build setup. These are explicit setup steps outside the agent; no image or dependency downloads are performed by the verifier. For the public fixture, an installed Maven/JDK 17+ can prewarm common dependencies with:
+
+```bash
+mvn -f fixtures/java-fix/pom.xml test
+```
+
+Cache/plugin versions must also match the selected container image. After the cache and image are ready:
+
+```bash
+AI_PRIVACY_DOCKER_SMOKE=1 npm test
+```
+
+The opt-in smoke test uses real Git, Docker and Surefire with handwritten proposals. It checks red/green behavior, network/source restrictions, patch applicability and preservation of original files. It is disabled in ordinary unit runs and does not measure Qwen's ability to invent the fix. You can also select the fixture folder and Price.java in the local-fix command for a live Ollama experiment.
+
+No real Docker execution, VS Code fix UX or live model-quality measurement was performed while authoring this release. Build/tests/package verification is still required before relying on it.
+
+## Ollama daemon must also be local-only
+
+A loopback URL alone does not prove on-device inference: Ollama supports cloud-backed models and aliases. Before each generation the adapter now reads model metadata with `/api/show`, rejects remote host/model metadata or missing local model information, and refuses cloud-labelled model names. Inventory checks also reject remote entries. Only model metadata is requested before this gate; no prompt is included.
+
+For the sensitive-data profile, merge [the local-only server setting](profiles/ollama-server.local-only.json) into `~/.ollama/server.json`, preserving existing settings, and restart Ollama:
+
+```json
+{"disable_ollama_cloud": true}
+```
+
+Alternatively start a dedicated daemon with `OLLAMA_NO_CLOUD=1`. Setting a client process environment variable does not reconfigure an already-running daemon. These settings are not changed automatically by this PR. The workflow assumes a trusted local Ollama daemon; model metadata is not a defense against a malicious local proxy or compromised host. Use an OS-level network boundary when that stronger guarantee is required.
+
 ## Existing regression tests
 
 Use `@ai-privacy /test` or **AI Privacy Router: Run Existing Regression Tests**. Choose a trusted workspace folder and a fixed runner: `npm test`, `mvn test`, `./mvnw test`, `gradle test`, `./gradlew test`, or `python -m pytest`.
@@ -163,10 +231,11 @@ Settings are application-scoped, so repository settings cannot relax the user's 
 | `aiPrivacyRouter.ollamaEndpoint` | `http://127.0.0.1:11434` | Loopback HTTP origin only; redirects rejected; localhost canonicalized to 127.0.0.1 |
 | `aiPrivacyRouter.timeoutSeconds` | 180 | Per model request |
 | `aiPrivacyRouter.verifierModel` | empty | Reuses reviewer unless another local model is selected |
+| `aiPrivacyRouter.fixMavenImage` | `maven:3.9-eclipse-temurin-21` | Preloaded image for offline Java regression proof; resolved to local immutable image ID |
 | `aiPrivacyRouter.mandatoryLocalOnly` | false | When true, prevents all cloud routes and review-only approvals |
 | `aiPrivacyRouter.requireReviewer` | false | Denies approvals without a verified reviewer callback |
 
-Chat checks Ollama's local model inventory before generation. Review requests reserve a 32,768-token context window and cap output at 4,096 tokens. The conservative source and prompt byte budgets reduce accidental context truncation; model compatibility and quality still need local measurement. The startup script manages the default endpoint; custom loopback servers must be started separately.
+Chat checks Ollama's local model inventory, and every generation verifies local model metadata before sending its prompt. Review requests reserve a 32,768-token context window and cap output at 4,096 tokens. The conservative source and prompt byte budgets reduce accidental context truncation; model compatibility and quality still need local measurement. The startup script manages the default endpoint; custom loopback servers must be started separately.
 
 ## Full-context privacy and review-only overrides
 
@@ -195,7 +264,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.4.vsix
+code --install-extension ai-privacy-router-0.0.5.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.

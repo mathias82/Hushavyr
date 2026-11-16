@@ -17,6 +17,7 @@ export class LocalOllama {
   constructor(private readonly config: LocalModelConfig, private readonly transport: OllamaTransport = fetch) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(config.model)) throw new Error("Invalid local model name");
     if (config.timeoutMs !== undefined && (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0)) throw new Error("Invalid timeout");
+    if (/(?:^|[:/-])cloud(?:$|[:/-])/i.test(config.model)) throw new Error("Cloud models are not allowed on the local route");
     this.base = localEndpoint(config.endpoint);
   }
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<unknown> {
@@ -40,13 +41,30 @@ export class LocalOllama {
     const data = await this.request("/api/tags", {method: "GET"}, signal);
     if (!data || typeof data !== "object" || !("models" in data) || !Array.isArray(data.models)) throw new Error("Invalid local model inventory. No cloud fallback.");
     const expected = this.config.model.includes(":") ? this.config.model : this.config.model + ":latest";
-    if (!data.models.some(m => m && typeof m === "object" && (m.name === this.config.model || m.name === expected))) {
+    const installed = data.models.find(m => m && typeof m === "object" && (m.name === this.config.model || m.name === expected));
+    if (installed && (("remote_model" in installed && installed.remote_model !== "") || ("remote_host" in installed && installed.remote_host !== ""))) throw new Error("Remote Ollama model rejected. No prompt sent.");
+    if (!installed) {
       throw new Error("Configured model is not installed locally. Run npm run ai:serve or install it with Ollama. No cloud fallback.");
+    }
+  }
+  async assertLocalModel(signal?: AbortSignal): Promise<void> {
+    // Model aliases can reference remote inference despite a loopback server URL.
+    const metadata = await this.request("/api/show", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({model: this.config.model})
+    }, signal);
+    if (!metadata || typeof metadata !== "object" ||
+      ("remote_model" in metadata && metadata.remote_model !== "") || ("remote_host" in metadata && metadata.remote_host !== "") ||
+      !("model_info" in metadata) || !metadata.model_info || typeof metadata.model_info !== "object" ||
+      Array.isArray(metadata.model_info) || !Object.keys(metadata.model_info).length) {
+      throw new Error("Local model metadata is missing or remote. No prompt sent.");
     }
   }
   async generate(prompt: string, options: GenerateOptions = {}): Promise<string> {
     if (!prompt.trim()) throw new Error("Empty prompt");
     if (options.schema && Buffer.byteLength(prompt, "utf8") > 28000) throw new Error("Structured review prompt exceeds the local context budget");
+    if (options.signal?.aborted) throw new Error("Local request cancelled");
+    await this.assertLocalModel(options.signal);
     if (options.signal?.aborted) throw new Error("Local request cancelled");
     const data = await this.request("/api/generate", {
       method: "POST", headers: {"Content-Type": "application/json"},

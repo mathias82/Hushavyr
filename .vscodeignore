@@ -19,3 +19,5 @@
 **/package-lock.local.*.bak
 **/package-lock.local.backup.json
 **/scripts/update-local.cjs
+
+**/fixtures/**

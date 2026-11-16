@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import {registerVerifiedFix} from "./fixAgent";
 import { classifyInput } from "./classifier";
 import { createAutoPrompt, formatRouted } from "./autoPrompt";
 import { LocalOllama } from "./ollama";
@@ -10,6 +11,7 @@ import { ReviewSource, sourcePrompt, validateContext } from "./context";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
 
 export function activate(context: vscode.ExtensionContext): void {
+  registerVerifiedFix(context);
   // Remember the last non-empty editor selection when focus moves into Chat.
   let lastSelection: {uri: string; text: string; startLine: number} | undefined;
   let lastCodeEditor: vscode.TextEditor | undefined;

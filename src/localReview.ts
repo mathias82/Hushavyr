@@ -3,7 +3,7 @@ import { ReviewResult, reviewPrompt, reviewSchema, validateReview } from "./revi
 import { ReviewInput, reviewSources, validateContext } from "./context";
 import { verifyReview } from "./verifyReview";
 
-/** At most two local requests. Every attempt goes through the same evidence gate. */
+/** At most two local inference calls, plus model-metadata checks. Every attempt goes through the same evidence gate. */
 async function collectFindings(
   client: Pick<LocalOllama, "generate">,
   instruction: string,

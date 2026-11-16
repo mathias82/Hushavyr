@@ -8,3 +8,6 @@ dist/
 # Local lockfile copies from older manual upgrade instructions
 package-lock.local.*.bak
 package-lock.local.backup.json
+
+# Maven build output for the public local-fix fixture
+**/target/

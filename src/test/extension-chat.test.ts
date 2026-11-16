@@ -49,6 +49,7 @@ async function chat(files: Record<string, string>, responses: string[], prompt =
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     requests.push({url, payload: init?.body ? JSON.parse(String(init.body)) : undefined});
+    if (url.endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
     if (url.endsWith("/api/tags")) return new Response(JSON.stringify({models: [{name: "qwen2.5-coder:7b"}]}));
     const response = responses.shift();
     assert.equal(typeof response, "string", "unexpected model invocation");
@@ -68,10 +69,10 @@ test("Chat passes both attached files through review, line extraction and separa
     JSON.stringify({findings: [{title: "JSON escaping", severity: "medium", path: "file:///Mapper.java", startLine: 1, endLine: 1,
       fix: "Use serializer", regressionTest: "Input with quote"}]}), '{"verdicts":[{"index":0,"supported":true}]}'
   ]);
-  assert.equal(result.requests.length, 3); // inventory + reviewer + verifier
+  assert.equal(result.requests.length, 5); // inventory + local-model attestations + reviewer + verifier
   assert.ok(result.requests.every(r => r.url.startsWith("http://127.0.0.1:11434/")));
-  assert.match(result.requests[1].payload.prompt, /file:\/\/\/Input.java/);
-  assert.match(result.requests[2].payload.prompt, /skeptical second reviewer/);
+  assert.match(result.requests[2].payload.prompt, /file:\/\/\/Input.java/);
+  assert.match(result.requests[4].payload.prompt, /skeptical second reviewer/);
   assert.match(result.output, /String value = raw \+ input;/);
   assert.match(result.output, /Source support agreed/);
 });
@@ -85,8 +86,8 @@ test("unreadable or oversized Chat context stops before any network request", as
 });
 test("normal Chat keeps the ordinary generation path", async () => {
   const result = await chat({}, ["Local explanation"], "Explain");
-  assert.equal(result.requests.length, 2);
-  assert.equal(result.requests[1].payload.format, undefined);
+  assert.equal(result.requests.length, 3);
+  assert.equal(result.requests[2].payload.format, undefined);
   assert.match(result.output, /Local explanation/);
 });
 
@@ -94,8 +95,8 @@ test("auto defaults to local without Copilot discovery or implicit file context"
   const before = copilotLookups;
   const result = await chat({}, ["local routed answer"], "Design a Java queue", false, "auto");
   assert.equal(copilotLookups, before);
-  assert.equal(result.requests.length, 2);
-  assert.equal(result.requests[1].payload.prompt, "Design a Java queue");
+  assert.equal(result.requests.length, 3);
+  assert.equal(result.requests[2].payload.prompt, "Design a Java queue");
   assert.match(result.output, /Route:\*\* ollama/);
 });
 test("auto attachments stay on the local review path", async () => {
@@ -103,7 +104,7 @@ test("auto attachments stay on the local review path", async () => {
   const result = await chat({"file:///Private.java": "public class Private {}"}, ['{"findings":[]}'], "review", false, "auto");
   assert.equal(copilotLookups, before);
   assert.match(result.output, /Attached context stays local/);
-  assert.equal(result.requests.length, 2);
+  assert.equal(result.requests.length, 3);
 });
 test("local commands register even when built-in AI and Copilot are disabled", () => {
   const before = participantRegistrations;
@@ -112,6 +113,7 @@ test("local commands register even when built-in AI and Copilot are disabled", (
     activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
     assert.equal(participantRegistrations, before);
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocal"));
+    assert.ok(registeredCommands.has("aiPrivacyRouter.verifyLocalFix"));
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocalSelection"));
   } finally {delete configuration.disableAIFeatures;}
 });

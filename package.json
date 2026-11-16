@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "AI Privacy Router",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -16,7 +16,8 @@
     "onCommand:aiPrivacyRouter.privacyPreview",
     "onChatParticipant:ai-privacy-router.privacy",
     "onCommand:aiPrivacyRouter.runTests",
-    "onCommand:aiPrivacyRouter.askAuto"
+    "onCommand:aiPrivacyRouter.askAuto",
+    "onCommand:aiPrivacyRouter.verifyLocalFix"
   ],
   "contributes": {
     "commands": [
@@ -47,6 +48,10 @@
       {
         "command": "aiPrivacyRouter.askAuto",
         "title": "AI Privacy Router: Route Typed Prompt (Local by Default)"
+      },
+      {
+        "command": "aiPrivacyRouter.verifyLocalFix",
+        "title": "AI Privacy Router: Propose and Verify Local Java Fix"
       }
     ],
     "configuration": {
@@ -99,6 +104,18 @@
           "default": "local-only",
           "scope": "application",
           "description": "Local-only by default. Hybrid mode offers Copilot only for complex, explicitly approved typed public prompts in an empty window with no project or files open. Never filters independent Copilot usage."
+        },
+        "aiPrivacyRouter.fixMavenImage": {
+          "type": "string",
+          "default": "maven:3.9-eclipse-temurin-21",
+          "scope": "application",
+          "description": "Preloaded local Maven image for the offline Java fix verifier. Resolved to its local immutable image ID; never pulled automatically. Choose a JDK matching your project."
+        },
+        "aiPrivacyRouter.fixMavenCache": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Optional prepopulated local Maven repository. Empty uses ~/.m2/repository. Each run privately copies and hashes at most 4 GB/100,000 files, then mounts that snapshot read-only."
         }
       }
     },
