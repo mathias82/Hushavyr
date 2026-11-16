@@ -40,3 +40,21 @@ For a negative test, stop Ollama and repeat the local command. It must show a lo
 The Ollama endpoint is hard-coded to `127.0.0.1:11434`; in Remote SSH, containers, or WSL, this refers to the extension host, not necessarily your laptop. The default model can be changed in VS Code Settings under `aiPrivacyRouter.ollamaModel`.
 
 **Important limitations:** Privacy detection is heuristic; no content is certified safe for cloud use. The override UI is a **review-only prototype**; it records local audit metadata but does not send anything to Sonnet. The VSIX is for private local testing, not Marketplace publication. Do not test with actual company secrets or production personal data until the extension has been independently reviewed.
+
+## One-command local AI startup (macOS)
+
+After installing Ollama with `brew install ollama`, run from this repository:
+
+```bash
+npm run ai:start
+```
+
+This starts the local Ollama server if needed, downloads `qwen2.5-coder:7b` only if missing, and opens an interactive Qwen session. Type `/bye` to exit the chat; the server remains available to the VS Code extension.
+
+To start the server and ensure the model is installed **without** opening an interactive session:
+
+```bash
+npm run ai:serve
+```
+
+You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Keep the VS Code `aiPrivacyRouter.ollamaModel` setting consistent. The script contacts only the local Ollama endpoint, except that `ollama pull` downloads a missing model. Do not start a second server if one is already running.
