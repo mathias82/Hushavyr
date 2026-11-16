@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { classifyInput } from "./classifier";
 import { LocalOllama } from "./ollama";
+import { reviewPrompt, validateReview, formatReview } from "./review";
 import { requestCloudOverride } from "./override";
 import { writeAuditEvent } from "./audit";
 import { randomUUID } from "node:crypto";
@@ -92,11 +93,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\n\n");
     const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
-    const reviewPrompt = "You are a cautious senior Java reviewer. For each verified bug give severity, evidence tied to the provided code, a concrete fix and a regression test. Distinguish definite bugs from hypotheses. Do not invent other files or test results.\n\n" + prompt;
+    const sourceCode = attachments.length ? attachments.join("\n\n") : (selected ?? "");
+    const isReview = request.command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
+    const localPrompt = isReview ? reviewPrompt(instruction, sourceCode) : prompt;
     try {
       if (token.isCancellationRequested) return;
-      const result = await new LocalOllama({model}).generate(reviewPrompt);
-      if (!token.isCancellationRequested) stream.markdown(result);
+      const result = await new LocalOllama({model}).generate(localPrompt);
+      if (!token.isCancellationRequested) stream.markdown(isReview ? formatReview(validateReview(result, sourceCode)) : result);
     } catch {
       stream.markdown("Local Ollama unavailable or request failed. **No cloud fallback.** Start it with `npm run ai:serve`.");
     }
