@@ -98,8 +98,22 @@ export function activate(context: vscode.ExtensionContext): void {
     const localPrompt = isReview ? reviewPrompt(instruction, sourceCode) : prompt;
     try {
       if (token.isCancellationRequested) return;
-      const result = await new LocalOllama({model}).generate(localPrompt);
-      if (!token.isCancellationRequested) stream.markdown(isReview ? formatReview(validateReview(result, sourceCode)) : result);
+      const client = new LocalOllama({model, timeoutMs: 180000});
+      const result = await client.generate(localPrompt, {json: isReview});
+      if (token.isCancellationRequested) return;
+      if (!isReview) {
+        stream.markdown(result);
+      } else {
+        let validated = validateReview(result, sourceCode);
+        if (validated.error) {
+          // One bounded local retry with format=json; never expose unverified raw findings.
+          const retryPrompt = reviewPrompt(instruction, sourceCode) +
+            "\n\nYour previous response was not valid JSON. Return ONLY one JSON object with a findings array, no prose or Markdown.";
+          const retry = await client.generate(retryPrompt, {json: true});
+          validated = validateReview(retry, sourceCode);
+        }
+        if (!token.isCancellationRequested) stream.markdown(formatReview(validated));
+      }
     } catch {
       stream.markdown("Local Ollama unavailable or request failed. **No cloud fallback.** Start it with `npm run ai:serve`.");
     }
