@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { classifyInput } from "./classifier";
 import { LocalOllama } from "./ollama";
-import { reviewPrompt, validateReview, formatReview } from "./review";
+import { formatReview } from "./review";
+import { runLocalReview } from "./localReview";
 import { requestCloudOverride } from "./override";
 import { writeAuditEvent } from "./audit";
 import { randomUUID } from "node:crypto";
@@ -95,24 +96,15 @@ export function activate(context: vscode.ExtensionContext): void {
     const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
     const sourceCode = attachments.length ? attachments.join("\n\n") : (selected ?? "");
     const isReview = request.command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
-    const localPrompt = isReview ? reviewPrompt(instruction, sourceCode) : prompt;
     try {
       if (token.isCancellationRequested) return;
       const client = new LocalOllama({model, timeoutMs: 180000});
-      const result = await client.generate(localPrompt, {json: isReview});
-      if (token.isCancellationRequested) return;
       if (!isReview) {
-        stream.markdown(result);
+        const result = await client.generate(prompt);
+        if (!token.isCancellationRequested) stream.markdown(result);
       } else {
-        let validated = validateReview(result, sourceCode);
-        if (validated.error) {
-          // One bounded local retry with format=json; never expose unverified raw findings.
-          const retryPrompt = reviewPrompt(instruction, sourceCode) +
-            "\n\nYour previous response was not valid JSON. Return ONLY one JSON object with a findings array, no prose or Markdown.";
-          const retry = await client.generate(retryPrompt, {json: true});
-          validated = validateReview(retry, sourceCode);
-        }
-        if (!token.isCancellationRequested) stream.markdown(formatReview(validated));
+        const validated = await runLocalReview(client, instruction, sourceCode, () => token.isCancellationRequested);
+        if (validated && !token.isCancellationRequested) stream.markdown(formatReview(validated));
       }
     } catch {
       stream.markdown("Local Ollama unavailable or request failed. **No cloud fallback.** Start it with `npm run ai:serve`.");
@@ -242,3 +234,4 @@ async function runLocal(prompt: string): Promise<void> {
   }
 }
 export function deactivate(): void {}
+
