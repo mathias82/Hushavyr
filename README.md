@@ -30,7 +30,7 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.1.vsix
+code --install-extension ai-privacy-router-0.0.2.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **AI Privacy Router: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **AI Privacy Router: Classify Selection** and **AI Privacy Router: Review Cloud Override (No Transfer)**.
@@ -61,7 +61,7 @@ You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Ke
 
 ## Local Qwen in VS Code Chat
 
-Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@privacy Find bugs in the selected Java code`. The `@privacy` participant uses local Ollama and reports structured review findings in the Chat panel. It is separate from Copilot/Auto and does not use cloud fallback. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
+Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@ai-privacy Find bugs in the selected Java code`. The `@ai-privacy` participant uses local Ollama and reports structured review findings in the Chat panel. It is separate from Copilot/Auto and does not use cloud fallback. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.
 
 ### Sticky Chat mode
 
@@ -69,4 +69,9 @@ Use `@ai-privacy` once to select the local assistant. It is marked sticky, so su
 
 ## Evidence-gated local code review
 
-`@ai-privacy /review` requests JSON findings from local Qwen, checks exact evidence snippets against the supplied source, and filters unsupported SQL-injection and getter-exception claims. Remaining findings are labeled **potential**, never confirmed, because no runtime tests are executed. Invalid JSON fails closed with a clear message. This is a conservative heuristic, not a formal verification or Sonnet-equivalent model. Normal chat prompts still use the existing local inference path. Run `npm test` and a VS Code smoke test before merging.
+`@ai-privacy /review` requests schema-constrained JSON findings from local Qwen, checks exact evidence snippets against the supplied source, and filters unsupported SQL-injection and getter-exception claims. If JSON is invalid or every finding is rejected, it makes one further local request with specific validation feedback. Both responses pass the same evidence checks. A valid empty review or a response with accepted findings is not retried. Rejection reasons are shown without exposing raw rejected model output.
+
+Remaining findings are labeled **potential**, never confirmed, because no runtime tests are executed. This is a conservative heuristic, not a formal verification or Sonnet-equivalent model. Normal chat prompts still use the existing local inference path.
+
+After installing the updated VSIX and reloading VS Code, smoke-test `@ai-privacy /review check code for bugs` on the mapper example. Check that an accepted JSON-escaping finding quotes the actual concatenation, and that rejected findings show validation feedback. Regression tests simulate model responses; detection quality with your installed Qwen model still requires this live smoke test. Also stop Ollama and verify there is no cloud fallback.
+
