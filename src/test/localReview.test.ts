@@ -21,6 +21,7 @@ const valid = {
 function scripted(responses: (string | Error)[]) {
   const prompts: string[] = [];
   const client = new LocalOllama({model: "qwen2.5-coder:7b"}, async (url, init) => {
+    if (url.endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
     assert.equal(url, "http://127.0.0.1:11434/api/generate");
     const payload = JSON.parse(String(init.body));
     assert.deepEqual(payload.format, reviewSchema);
