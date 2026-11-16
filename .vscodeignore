@@ -5,6 +5,7 @@
 **/test/**
 **/*.test.js
 **/*.test.js.map
+**/dist/test/**
 **/*.ts
 **/tsconfig.json
 **/package-lock.json
@@ -12,4 +13,3 @@
 **/.env*
 **/*.log
 **/.vscode-test/**
-!dist/**
