@@ -52,10 +52,16 @@
     "chatParticipants": [
       {
         "id": "ai-privacy-router.privacy",
-        "name": "privacy",
+        "name": "ai-privacy",
         "fullName": "AI Privacy Router",
         "description": "Private local Qwen assistant via Ollama",
-        "isSticky": false
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "review",
+            "description": "Review selected or attached code with local Qwen"
+          }
+        ]
       }
     ]
   },
