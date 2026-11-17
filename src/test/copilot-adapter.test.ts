@@ -92,6 +92,7 @@ test("open private document forces Ollama without reading or forwarding its cont
   const prior = globalThis.fetch;
   const prompts: string[] = [];
   globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
     if (String(url).endsWith("/api/tags")) return new Response(JSON.stringify({models: [{name: "qwen2.5-coder:7b"}]}));
     prompts.push(JSON.parse(String(options?.body)).prompt);
     return new Response(JSON.stringify({response: "local answer"}));
