@@ -43,11 +43,11 @@ function offlineSecurityFindings(source: ReviewInput): Finding[] {
     const lines = file.text.split(/\r?\n/);
     // Detect Java HTTP responses assembled from an unescaped dynamic JSON string.
     // This is a narrow correctness check, not a generic concatenation alarm.
-    if (/\\.java$/i.test(file.path)) {
+    if (file.path.toLowerCase().endsWith(".java")) {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (!/\\.entity\\s*\\(/.test(line) || !/\\+\\s*[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*\\(\\))?/.test(line)) continue;
-        if (!/\\\\\"/.test(line) || !/\\{/.test(line)) continue;
+        if (!line.includes(".entity(") || !line.includes("+")) continue;
+        if (!line.includes("\\\"") || !line.includes("{")) continue;
         findings.push({
           title: "Local rule: Dynamic value embedded in manually constructed JSON",
           severity: "medium", evidence: line,
