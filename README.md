@@ -8,8 +8,8 @@
 
 ## Quick start
 
-1. Download the [v0.0.8 VSIX](https://github.com/mathias82/Hushavyr/releases/download/v0.0.8/ai-privacy-router-0.0.8.vsix). In VS Code, open the Command Palette and run **Extensions: Install from VSIX…**.
-2. Install and start [Ollama](https://ollama.com/download) on the machine running the VS Code extension host. Then run `ollama pull qwen2.5-coder:7b`.
+1. Download the [v0.0.9 VSIX](https://github.com/mathias82/Hushavyr/releases/download/v0.0.9/hushavyr-0.0.9.vsix). In VS Code, open the Command Palette and run **Extensions: Install from VSIX…**.
+2. Open **Get started with Hushavyr** in VS Code and follow the steps to install Ollama, start it, and download Qwen.
 3. Select a code snippet and run **Hushavyr: Ask Local Qwen About Selection**.
 
 Hushavyr defaults to local-only and stops if Ollama is unavailable. Its routing rules apply to requests it initiates. For sensitive work, use a VS Code profile with standalone Copilot features disabled.
