@@ -1,5 +1,6 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
+import {configuredModel} from "./model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
 import {auditDependencies, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
@@ -49,7 +50,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
   let completed = true;
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
   const client = new LocalOllama({
-    model: config.get<string>("ollamaModel", "qwen2.5-coder:7b"),
+    model: configuredModel(config),
     endpoint: config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434"),
     timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000
   });

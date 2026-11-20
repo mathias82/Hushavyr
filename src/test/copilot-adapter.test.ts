@@ -24,6 +24,7 @@ const fake: any = {
       if (section === "chat" && key === "disableAIFeatures") return state.aiDisabled;
       if (section === "aiPrivacyRouter" && key === "routingMode") return "hybrid-public-prompts";
       if (section === "aiPrivacyRouter" && key === "ollamaEndpoint") return state.endpoint ?? fallback;
+      if (section === "aiPrivacyRouter" && key === "ollamaModel") return "qwen2.5-coder:7b";
       return fallback;
     }})
   },

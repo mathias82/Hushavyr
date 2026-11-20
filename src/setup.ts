@@ -2,12 +2,9 @@ import * as vscode from "vscode";
 import {execFile} from "node:child_process";
 import {totalmem} from "node:os";
 import {LocalOllama} from "./ollama";
+import {configuredModel, recommendedModel} from "./model";
+export {recommendedModel};
 
-/** Larger local models review noticeably better, but must fit in memory. */
-export function recommendedModel(memoryBytes: number): string {
-  const gb = memoryBytes / 1024 ** 3;
-  return gb >= 48 ? "qwen2.5-coder:32b" : gb >= 20 ? "qwen2.5-coder:14b" : "qwen2.5-coder:7b";
-}
 
 /** Approximate resident size of common quantized models; warn before loading one that will swap. */
 export function lowMemoryWarning(model: string, memoryBytes = totalmem()): string {
@@ -75,7 +72,7 @@ export async function runSetup(): Promise<void> {
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
   const endpoint = config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434");
   const timeoutMs = config.get<number>("timeoutSeconds", 180) * 1000;
-  let model = config.get<string>("ollamaModel", "qwen2.5-coder:7b");
+  let model = configuredModel(config);
   const summary: string[] = [];
   const probe = new LocalOllama({model, endpoint, timeoutMs});
   if (!await probe.isRunning()) {
