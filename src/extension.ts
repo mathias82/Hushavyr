@@ -148,12 +148,13 @@ export function activate(context: vscode.ExtensionContext): void {
       const excludes = "**/{.git,node_modules,target,build,dist,out,coverage,.venv,venv,.next,.idea,.vscode,vendor}/**";
       const include = "**/*.{java,kt,py,js,jsx,ts,tsx,go,rs,cs,rb,php}";
       const secretInclude = "**/*.{env,properties,yml,yaml,json,xml,toml,ini,conf}";
+      const dotenvInclude = "**/.env{,.*}";
       const files = (await vscode.workspace.findFiles(include, excludes, 5001)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
       if (files.length > 5000) {
         stream.markdown("Workspace contains over 5000 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
         return;
       }
-      if (!files.length) { stream.markdown("No supported source files found in this workspace."); return; }
+      // Configuration-only projects still require deterministic secrets review.
       const indexKey = "hushavyr.scanIndex.v1:" + vscode.workspace.workspaceFolders.map(folder => folder.uri.toString()).join("|");
       const incremental = request.command === "scan-changed";
       const previous = parseIndex(context.workspaceState.get<unknown>(indexKey));
@@ -175,7 +176,11 @@ export function activate(context: vscode.ExtensionContext): void {
       let modelResponses = 0;
       try {
         // Deterministic checks run locally before Ollama availability is required.
-        const secretFiles = await vscode.workspace.findFiles(secretInclude, excludes, 5001);
+        const [configFiles, dotenvFiles] = await Promise.all([
+          vscode.workspace.findFiles(secretInclude, excludes, 5001),
+          vscode.workspace.findFiles(dotenvInclude, excludes, 5001)
+        ]);
+        const secretFiles = [...new Map([...configFiles, ...dotenvFiles].map(uri => [uri.toString(), uri])).values()];
         if (secretFiles.length > 5000) {
           stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\n\n");
         } else {
@@ -192,6 +197,10 @@ export function activate(context: vscode.ExtensionContext): void {
             }
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
+        }
+        if (!files.length) {
+          stream.markdown("No supported source files found. Configuration secrets check completed locally; no Ollama request needed.");
+          return;
         }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
