@@ -25,6 +25,7 @@ import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
 import { publishFindings } from "./diagnostics";
+import { addDismissal, fingerprint, loadDismissals, withoutDismissed } from "./teamMemory";
 import { runSetup, lowMemoryWarning } from "./setup";
 import { runWorkspaceScan, isScanCommand, clearDependencyMarkers } from "./workspaceScan";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
@@ -72,7 +73,20 @@ export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
   const reviewDiagnostics = vscode.languages.createDiagnosticCollection("hushavyr");
   context.subscriptions.push(reviewDiagnostics,
-    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); }));
+    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); }),
+    // Team memory: the dismissal is written to the repository so it applies to everyone after commit.
+    vscode.commands.registerCommand("aiPrivacyRouter.dismissFinding", async (uriText: string, line: number) => {
+      const uri = vscode.Uri.parse(uriText);
+      const folder = vscode.workspace.getWorkspaceFolder(uri);
+      if (!folder || !vscode.workspace.isTrusted) { void vscode.window.showWarningMessage("Open the file inside a trusted workspace folder to share a dismissal."); return; }
+      const document = await vscode.workspace.openTextDocument(uri);
+      const reason = await vscode.window.showInputBox({prompt: "Why is this not a real issue? (saved in .hushavyr/dismissed.json, shared with the team)", ignoreFocusOut: true});
+      if (reason === undefined) return;
+      const path = vscode.workspace.asRelativePath(uri, false);
+      await addDismissal(folder.uri.fsPath, {fingerprint: fingerprint(path, document.lineAt(line).text), path, reason: reason || "false positive"});
+      reviewDiagnostics.set(uri, (reviewDiagnostics.get(uri) ?? []).filter(d => d.range.start.line !== line));
+      void vscode.window.showInformationMessage("Hidden from future reviews. Commit .hushavyr/dismissed.json to share it with the team.");
+    }));
   // One-time, non-blocking invitation; the user can dismiss it permanently.
   if (!context.globalState.get<boolean>("hushavyr.setupOffered")) {
     void context.globalState.update("hushavyr.setupOffered", true);
@@ -450,8 +464,16 @@ export function activate(context: vscode.ExtensionContext): void {
           () => token.isCancellationRequested, withSignal(verifier), {depth, staticFindings});
         if (validated && !validated.error && !cached && !token.isCancellationRequested) reviewCache.set(key, validated);
         if (validated && !token.isCancellationRequested) {
-          stream.markdown(formatReview(validated) + modelHint(model, validated));
-          if (!validated.error) publishFindings(reviewDiagnostics, validated.findings);
+          const dismissals = (await Promise.all((vscode.workspace.workspaceFolders ?? []).map(f => loadDismissals(f.uri.fsPath)))).flat();
+          const {kept, hidden} = !dismissals.length ? {kept: validated.findings, hidden: 0} : withoutDismissed(validated.findings, dismissals, path => {
+            if (!/^file:/.test(path)) return undefined;
+            const uri = vscode.Uri.parse(path);
+            return vscode.workspace.getWorkspaceFolder(uri) ? vscode.workspace.asRelativePath(uri, false) : undefined;
+          });
+          const shown = {...validated, findings: kept};
+          stream.markdown(formatReview(shown) + modelHint(model, shown) +
+            (hidden ? "\n\n_" + hidden + " finding(s) hidden: dismissed by your team in `.hushavyr/dismissed.json`._" : ""));
+          if (!validated.error) publishFindings(reviewDiagnostics, kept);
         }
       }
     } catch {

@@ -152,3 +152,21 @@ test("a bug counts as reproduced only when the approved test failed by assertion
   assert.equal(bugReproduced({...receipt, stages: [{...red, failures: 0, errors: 1}]}), false);
   assert.equal(bugReproduced({...receipt, reason: "regression-not-reproduced"}), false);
 });
+
+test("team dismissals are stored in the repo and hide the same finding after it moves", async () => {
+  const { addDismissal, loadDismissals, withoutDismissed, fingerprint } = await import("../teamMemory");
+  const root = await mkdtemp(join(tmpdir(), "hushavyr-team-"));
+  try {
+    await addDismissal(root, {fingerprint: fingerprint("src/A.java", "  run(id);  "), path: "src/A.java", reason: "id is validated\nupstream"});
+    await addDismissal(root, {fingerprint: fingerprint("src/A.java", "run(id);"), path: "src/A.java", reason: "duplicate"});
+    const list = await loadDismissals(root);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].reason, "id is validated upstream");
+    const moved = {...finding(40), evidence: "run(id);", path: "file:///w/src/A.java"};
+    const other = {...finding(41), evidence: "exec(cmd);", path: "file:///w/src/A.java"};
+    const result = withoutDismissed([moved, other], list, p => p.replace("file:///w/", ""));
+    assert.deepEqual(result.kept, [other]);
+    assert.equal(result.hidden, 1);
+    assert.deepEqual(await loadDismissals(join(root, "missing")), []);
+  } finally { await rm(root, {recursive: true, force: true}); }
+});

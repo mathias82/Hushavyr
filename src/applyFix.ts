@@ -59,7 +59,11 @@ export function registerApplyFix(context: vscode.ExtensionContext): void {
         prove.diagnostics = [d];
         prove.command = {command: "aiPrivacyRouter.verifyLocalFix", title: "Prove with a test",
           arguments: [{file: document.uri.toString(), message: d.message}]};
-        return document.uri.scheme === "file" && runnerFor(document.uri.fsPath) ? [action, prove] : [action];
+        const dismiss = new vscode.CodeAction("Hushavyr: not a real issue (hide for the team)", vscode.CodeActionKind.QuickFix);
+        dismiss.diagnostics = [d];
+        dismiss.command = {command: "aiPrivacyRouter.dismissFinding", title: "Dismiss", arguments: [document.uri.toString(), d.range.start.line]};
+        const shared = document.uri.scheme === "file" ? [dismiss] : [];
+        return document.uri.scheme === "file" && runnerFor(document.uri.fsPath) ? [action, prove, ...shared] : [action, ...shared];
       }).flat();
     }
   }, {providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]}));
