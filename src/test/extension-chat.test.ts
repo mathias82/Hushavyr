@@ -104,7 +104,7 @@ test("auto attachments stay on the local review path", async () => {
   const result = await chat({"file:///Private.java": "public class Private {}"}, ['{"findings":[]}'], "review", false, "auto");
   assert.equal(copilotLookups, before);
   assert.match(result.output, /Attached context stays local/);
-  assert.equal(result.requests.length, 3);
+  assert.equal(result.requests.length, 5); // model metadata + two local review attempts
 });
 test("local commands register even when built-in AI and Copilot are disabled", () => {
   const before = participantRegistrations;
