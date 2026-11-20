@@ -209,6 +209,10 @@
           {
             "name": "scan",
             "description": "Scan the trusted local project with Ollama only (up to 200 source files; no cloud transfer)"
+          },
+          {
+            "name": "scan-changed",
+            "description": "Scan only changed source files since the last completed local scan"
           }
         ]
       }
