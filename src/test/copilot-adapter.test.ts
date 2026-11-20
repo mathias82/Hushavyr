@@ -1,8 +1,10 @@
+import {createServer} from "node:http";
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
 import type * as vscode from "vscode";
 const state = {
   documents: [] as any[], lookup: 0, messages: [] as any[], options: [] as any[], events: [] as any[],
+  endpoint: undefined as string | undefined, aiDisabled: false,
   html: "", webviewOptions: {} as any, approval: true, failAudit: false
 };
 const disposable = {dispose() {}};
@@ -18,8 +20,12 @@ const fake: any = {
   workspace: {
     isTrusted: true, workspaceFolders: undefined,
     get textDocuments() {return state.documents;},
-    getConfiguration: (section: string) => ({get: (key: string, fallback: unknown) =>
-      section === "aiPrivacyRouter" && key === "routingMode" ? "hybrid-public-prompts" : fallback})
+    getConfiguration: (section: string) => ({get: (key: string, fallback: unknown) => {
+      if (section === "chat" && key === "disableAIFeatures") return state.aiDisabled;
+      if (section === "aiPrivacyRouter" && key === "routingMode") return "hybrid-public-prompts";
+      if (section === "aiPrivacyRouter" && key === "ollamaEndpoint") return state.endpoint ?? fallback;
+      return fallback;
+    }})
   },
   lm: {selectChatModels: async (selector: any) => {
     state.lookup++; assert.deepEqual(selector, {vendor: "copilot"});
@@ -55,6 +61,7 @@ try {
   createAutoPrompt = require("../autoPrompt").createAutoPrompt;
 } finally {Module._load = original;}
 function reset() {
+  state.endpoint = undefined; state.aiDisabled = false;
   state.documents = []; state.lookup = 0; state.messages = []; state.options = [];
   state.events = []; state.html = ""; state.approval = true; state.failAudit = false;
 }
@@ -67,7 +74,14 @@ test("Copilot adapter sends one approved message, no tools/history, with an iner
   const result = await run("Design a Java queue and explain </pre><script>unsafe()</script>");
   assert.equal(result.provider, "copilot"); assert.equal(result.text, "public answer");
   assert.equal(state.messages.length, 1); assert.equal(state.messages[0].length, 1);
-  assert.equal(state.messages[0][0].role, "user");
+  const preview = state.html.match(/<pre>([\s\S]+?)<\/pre>/);
+  assert(preview);
+  const payload = JSON.parse(preview[1].replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&"));
+  assert.deepEqual(state.messages[0], payload.messages);
+  assert.deepEqual(state.messages[0], [{
+    role: "user",
+    content: "Answer only the explicitly supplied public prompt below. No workspace, files, history, tools or execution results are supplied. Do not claim to have read files or run tests.\n\nPUBLIC PROMPT:\nDesign a Java queue and explain </pre><script>unsafe()</script>"
+  }]);
   assert.deepEqual(state.options, [{}]);
   assert.equal(state.webviewOptions.enableScripts, false);
   assert.equal(state.webviewOptions.enableCommandUris, false);
@@ -102,4 +116,45 @@ test("open private document forces Ollama without reading or forwarding its cont
     assert.equal(state.lookup, 0); assert.equal(state.messages.length, 0);
     assert.deepEqual(prompts, ["Design a Java queue"]);
   } finally {globalThis.fetch = prior;}
+});
+
+test("sensitive content and disabled AI stay on loopback even when Ollama stops", async () => {
+  reset();
+  const model = "qwen2.5-coder:7b";
+  const received: Array<{path: string | undefined; body: unknown}> = [];
+  const server = createServer(async (request, response) => {
+    let raw = "";
+    for await (const chunk of request) raw += chunk;
+    received.push({path: request.url, body: raw ? JSON.parse(raw) : undefined});
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/api/tags") response.end(JSON.stringify({models: [{name: model}]}));
+    else if (request.url === "/api/show") response.end(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
+    else if (request.url === "/api/generate") response.end(JSON.stringify({response: "local answer"}));
+    else {response.statusCode = 404; response.end();}
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  state.endpoint = `http://127.0.0.1:${address.port}`;
+  const sensitive = "Design a Java queue. api_key=synthetic-canary";
+  const publicTask = "Design a Java queue for public examples";
+  try {
+    assert.equal((await run(sensitive)).provider, "ollama");
+    state.aiDisabled = true;
+    assert.equal((await run(publicTask)).provider, "ollama");
+    assert.deepEqual(received, [sensitive, publicTask].flatMap(prompt => [
+      {path: "/api/tags", body: undefined},
+      {path: "/api/show", body: {model}},
+      {path: "/api/generate", body: {model, prompt, stream: false}}
+    ]));
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+  await assert.rejects(run(publicTask), /No cloud fallback/);
+  assert.equal(state.lookup, 0);
+  assert.deepEqual(state.messages, []);
+  assert.doesNotMatch(JSON.stringify(state.events), /synthetic-canary|Design a Java queue/);
 });
