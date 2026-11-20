@@ -208,7 +208,7 @@
           },
           {
             "name": "scan",
-            "description": "Scan the trusted local project with Ollama only (up to 200 source files; no cloud transfer)"
+            "description": "Scan trusted local project with Ollama only (up to 5,000 source files in batches of 50)"
           },
           {
             "name": "scan-changed",
