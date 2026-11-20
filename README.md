@@ -1,125 +1,35 @@
-# Hushavyr
+# Hushavyr — Private AI Code Review
 
-**Local-first AI code review for VS Code.** Ask questions about your code and review selected or attached files with Ollama. The local review workflow covers Java, Python, TypeScript and JavaScript.
+**Privacy-first code review for VS Code, powered by local Ollama.** Review code, run tests, and inspect supported projects without sending source code to a cloud model.
 
-- **Review code locally.** Findings cite the relevant source lines so you can inspect the evidence.
-- **Verify fixes locally.** Run Java/Maven, Python/pytest or native Node tests for JavaScript and TypeScript. Export a patch once the new regression test and the existing suite pass locally.
-- **Use Copilot for public questions.** In optional hybrid mode, approve the exact message before sending it from an empty VS Code window.
+## Chat commands
 
-## VS Code Chat commands
-
-Open **VS Code Chat**, type `@ai-privacy`, then choose a command. **These commands run through Hushavyr, not the ordinary Copilot/Claude chat participant.**
-
-| Command | What it does | Availability |
-| --- | --- | --- |
-| `@ai-privacy /review` | Review the active, selected, or attached local source file using Ollama | Current release |
-| `@ai-privacy /test` | Run the supported existing local project test suite | Current release |
-| `@ai-privacy /auto` | Route typed requests according to the configured privacy policy; attached context remains local | Current release |
-| `@ai-privacy /scan` | Scan up to 5,000 source files in local batches | Planned; not in the published 0.0.16 release |
-| `@ai-privacy /scan-changed` | Scan only files changed since the last completed local index | Planned; not in the published 0.0.16 release |
-
-**Example — local code review**
-
-```text
-@ai-privacy /review Find security vulnerabilities in the current Java file.
-Include severity, file paths, line numbers, and suggested mitigations.
-```
-
-**Privacy:** Hushavyr's local routing policy applies only to requests made through Hushavyr. Other VS Code assistants are not intercepted. No code is sent to the cloud by the local review or planned scan commands.
-
-## Screenshots
-
-These **illustrative UI previews** show the Hushavyr local-first chat workflow using synthetic example text. They are not screenshots of company source code or evidence of completed vulnerability detection.
-
-| Local review | Privacy-aware routing |
-| --- | --- |
-| ![Hushavyr local Qwen review UI illustration](docs/images/hushavyr-local-review.svg) | ![Hushavyr local routing UI illustration](docs/images/hushavyr-privacy-routing.svg) |
-
-## Quick start — install Ollama and Qwen from VS Code
-
-1. Open **Extensions** (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Windows/Linux). Search for **Hushavyr - Private AI Code Review** by **Matthaios Stavrou**, or use the [official Marketplace listing](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr). Click **Install**. Extension ID: `mathias82.hushavyr`.
-2. Open the **Command Palette** with `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux), type **Hushavyr**, and select **Hushavyr: Install Ollama**. On macOS this offers a Homebrew installation if `brew` is available; otherwise it opens the official Ollama download page. Windows uses WinGet when available; Linux offers its installation script. Installation requires your confirmation.
-3. In the Command Palette, run **Hushavyr: Start Ollama**. Confirm the terminal command if Ollama is not already running.
-4. Run **Hushavyr: Download Local Qwen Model**. Confirm the download of `qwen2.5-coder:7b` (a multi-GB download); it is not downloaded automatically when you install the extension.
-5. Run **Hushavyr: Ask Local Qwen** and enter a simple question to test the local connection. To review code, select a snippet and run **Hushavyr: Ask Local Qwen About Selection**.
-
-> **Important:** Installing Hushavyr does **not** silently install Ollama, start a server, or download a model. Each setup command requires user action/confirmation. Ollama runs locally; if it is unavailable, Hushavyr does not silently send your code to a cloud provider. If commands are missing, run **Developer: Reload Window**, then search for `Hushavyr` again.
-
-### Verify that the local Qwen model downloaded successfully
-
-After **Hushavyr: Download Local Qwen Model**, the VS Code Terminal runs:
-
-```bash
-ollama pull qwen2.5-coder:7b
-```
-
-A successful download of the approximately 4.7 GB model ends with output similar to:
-
-```text
-pulling manifest
-pulling ... 100%
-verifying sha256 digest
-writing manifest
-success
-```
-
-The final **`success`** means the model files and manifest were downloaded and verified. To confirm the model is installed, run:
-
-```bash
-ollama list
-```
-
-Look for `qwen2.5-coder:7b` in the list. Next, run **Hushavyr: Start Ollama** if the local server is not already running, followed by **Hushavyr: Ask Local Qwen** to test a prompt. You can also test the model independently in the terminal with `ollama run qwen2.5-coder:7b`.
-
-**If the download fails:** A `503` response containing an HTML **Access Denied** page may indicate a network proxy or organizational security filter rather than a corrupted model. Check the network connection and contact your IT administrator for an approved way to access the Ollama model registry. Do not bypass workplace security policies. Retry **Hushavyr: Download Local Qwen Model** once access is restored; Ollama can reuse already downloaded layers.
-
-### Available Hushavyr commands
-
-Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type `Hushavyr` to find:
+Type `@ai-privacy` in VS Code Chat:
 
 | Command | Purpose |
 | --- | --- |
-| **Hushavyr: Install Ollama** | Offer local Ollama installation or official download |
-| **Hushavyr: Start Ollama** | Start the local Ollama server in a terminal |
-| **Hushavyr: Download Local Qwen Model** | Download `qwen2.5-coder:7b` with confirmation |
-| **Hushavyr: Ask Local Qwen** | Ask a typed question using the local model |
-| **Hushavyr: Ask Local Qwen About Selection** | Ask about selected code locally |
-| **Hushavyr: Classify Selection** | Preview privacy classification for selected text |
-| **Hushavyr: Privacy Preview of Selection** | Inspect the selected content's privacy routing |
-| **Hushavyr: Propose and Verify Local Fix** | Propose a code fix and run supported local verification |
-| **Hushavyr: Review Cloud Override (No Transfer)** | Review-only cloud override; does not transfer content |
-| **Hushavyr: Route Typed Prompt (Local by Default)** | Route a typed prompt according to configured policy |
-| **Hushavyr: Run Existing Regression Tests** | Run a supported existing local test suite |
+| `/review` | Review the open or attached code locally |
+| `/test` | Run supported local project tests |
+| `/auto` | Privacy-aware routing of typed prompts |
+| `/scan` | Local project review (up to 5,000 files, batches of 50) |
+| `/scan-changed` | Review changed files using local SHA-256 indexing |
 
-For supported languages, verification requirements, privacy limitations, and optional Copilot routing, read the [user guide](https://github.com/mathias82/Hushavyr/blob/main/docs/guide.md).
+The commands available in VS Code depend on the **installed extension version**. Project scanning requires **0.0.17 or later**.
 
-## Security review in VS Code Chat (local Qwen)
+## Preview
 
-For a **trusted local workspace**, run `@ai-privacy /scan` to review supported source files without selecting an editor or attaching a file. The scan uses Ollama only, processes up to 5,000 candidate files in sequential batches of 50 with progress updates and cancellation, excludes common build/dependency directories, and skips files over 60 KB. Treat findings as unverified; no cloud fallback. Use `@ai-privacy /scan-changed` after a completed scan to skip unchanged files using SHA-256 fingerprints stored in VS Code workspace state (file hashes and relative paths only, not source content). A full `/scan` is still needed for periodic re-review; incremental runs do not repeat or retain previous findings. This is a bounded source review, not a comprehensive security audit.
+![Illustrative Hushavyr local review interface](docs/images/hushavyr-local-review.svg)
 
+*Illustrative interface with synthetic text; no company source code.*
 
-The VS Code Chat model picker (for example, **Agent / Claude Sonnet**) is **not** the Hushavyr local model selector. Hushavyr exposes a Chat participant named `@ai-privacy`, which uses the configured local Ollama model. The local model does not appear as a Copilot model-picker option.
+## Quick start
 
-1. Install and start Ollama and download `qwen2.5-coder:7b` using the commands above. Open a source file and **select the code** you want reviewed.
-2. Open **VS Code Chat** and type `@ai-privacy`. Select the Hushavyr participant if prompted; do **not** send a private snippet to the ordinary Copilot/Claude agent.
-3. Send this example request with **synthetic or public test code only**:
+1. [Install Hushavyr from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr).
+2. In the Command Palette, run **Hushavyr: Install Ollama**, **Start Ollama**, and **Download Local Qwen Model** (`qwen2.5-coder:7b`).
+3. Open a trusted local project and try `@ai-privacy /review` or, on version 0.0.17+, `@ai-privacy /scan`.
 
-   ```text
-   @ai-privacy /review Find security vulnerabilities in the selected Java code.
-   Check for SQL injection, hardcoded secrets, insecure deserialization,
-   authorization flaws and sensitive data exposure.
-   Include file paths, line numbers and severity.
-   ```
+**Privacy boundary:** Local review and scanning use Ollama without cloud fallback. Hushavyr cannot intercept requests made directly to Copilot, Claude, or other VS Code assistants. Findings are potential issues requiring independent verification.
 
-4. Inspect each finding against the source and verify it independently. Findings are **potential issues**, not a completed security audit. The participant supports `/review` and remains selected within the same Chat conversation unless you switch agents.
-5. To preview routing without submitting content to an external model, select code and run **Hushavyr: Privacy Preview of Selection** or **Hushavyr: Classify Selection** from the Command Palette.
+For setup, supported languages, security limits, and troubleshooting, see the [full user guide](docs/guide.md).
 
-**Privacy boundary:** Only requests sent through Hushavyr are governed by its local routing policy. Ordinary Copilot/Claude Chat, inline suggestions, other extensions, and their attachments are **not** intercepted by Hushavyr. For sensitive work, use a separate VS Code profile with independent Copilot features disabled; in such a profile, built-in Chat may be unavailable, but Hushavyr's standalone local commands remain available. A successful local answer does not by itself prove the absence of network exfiltration. Do not use real credentials, customer data, or company secrets for smoke tests.
-
-### Moving from the previous extension
-
-If you previously installed `mathias82.ai-privacy-router` (also displayed as **Hushavyr**), install the new `mathias82.hushavyr` extension from the Marketplace. VS Code treats these as **different extensions**; updating the old extension does not install the new one. After checking the new installation and your settings, uninstall the old extension to avoid duplicate commands.
-
-Hushavyr defaults to local-only and stops if Ollama is unavailable. Its routing rules apply only to requests initiated through Hushavyr; they do not control standalone Copilot or other extensions. For sensitive work, use a VS Code profile with standalone Copilot features disabled. Never test privacy with real secrets.
-
-[User guide](https://github.com/mathias82/Hushavyr/blob/main/docs/guide.md) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr) · [Releases](https://github.com/mathias82/Hushavyr/releases) · [Security policy](https://github.com/mathias82/Hushavyr/blob/main/SECURITY.md)
+**Author:** Matthaios Stavrou · [GitHub](https://github.com/mathias82/Hushavyr)
