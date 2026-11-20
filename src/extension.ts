@@ -1,3 +1,4 @@
+import {scanSecrets} from "./secretsScan";
 import {execFile} from "node:child_process";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import {homedir} from "node:os";
@@ -146,6 +147,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const excludes = "**/{.git,node_modules,target,build,dist,out,coverage,.venv,venv,.next,.idea,.vscode,vendor}/**";
       const include = "**/*.{java,kt,py,js,jsx,ts,tsx,go,rs,cs,rb,php}";
+      const secretInclude = "**/*.{env,properties,yml,yaml,json,xml,toml,ini,conf}";
       const files = (await vscode.workspace.findFiles(include, excludes, 5001)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
       if (files.length > 5000) {
         stream.markdown("Workspace contains over 5000 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
@@ -172,6 +174,25 @@ export function activate(context: vscode.ExtensionContext): void {
       let findings = 0;
       let modelResponses = 0;
       try {
+        // Deterministic checks run locally before Ollama availability is required.
+        const secretFiles = await vscode.workspace.findFiles(secretInclude, excludes, 5001);
+        if (secretFiles.length > 5000) {
+          stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\n\n");
+        } else {
+          let secretFindings = 0;
+          for (const uri of secretFiles) {
+            if (token.isCancellationRequested) break;
+            let bytes: Uint8Array;
+            try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
+            if (bytes.length > 60_000 || bytes.includes(0)) continue;
+            const relative = vscode.workspace.asRelativePath(uri);
+            for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
+              secretFindings++;
+              stream.markdown("**" + finding.severity + "** · " + finding.rule + " · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\n\n");
+            }
+          }
+          stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
+        }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
         const batchSize = 50;
