@@ -141,6 +141,21 @@ export function scoreReviewResponses(responses: Record<string, unknown>) {
   return {cases, totals, precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null};
 }
 
+/** Offline comparison of responses supplied by the user; never calls provider APIs. */
+export function compareReviewResponses(providers: Record<string, Record<string, unknown>>) {
+  const names = Object.keys(providers);
+  if (!names.length || names.length > 10) throw new Error("Provide 1-10 named provider response sets.");
+  return {
+    fixtureCount: benchmarkCases.length,
+    providers: names.map(name => {
+      if (!name.trim() || !providers[name] || typeof providers[name] !== "object" || Array.isArray(providers[name]))
+        throw new Error("Each provider must have a named object of benchmark responses.");
+      return {name, ...scoreReviewResponses(providers[name])};
+    }),
+    limitation: "Offline scoring of supplied JSON only. Labels are user-provided and do not verify model identity, provider access, token costs or latency. No cloud requests."
+  };
+}
+
 async function main(args: string[]) {
   if (args.length === 1 && args[0] === "--prompts") {
     console.log(JSON.stringify(Object.fromEntries(benchmarkCases.map(fixture =>
@@ -155,7 +170,15 @@ async function main(args: string[]) {
     console.log(JSON.stringify(scoreReviewResponses(responses as Record<string, unknown>), null, 2));
     return;
   }
-  if (args.length) throw new Error("Usage: review:benchmark [--prompts | --score responses.json]");
+  if (args.length === 2 && args[0] === "--compare") {
+    const payload: unknown = JSON.parse(readFileSync(args[1], "utf8"));
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+        !("providers" in payload) || !payload.providers || typeof payload.providers !== "object" ||
+        Array.isArray(payload.providers)) throw new Error("Expected {providers:{name:{fixtureId:responseString}}}.");
+    console.log(JSON.stringify(compareReviewResponses(payload.providers as Record<string, Record<string, unknown>>), null, 2));
+    return;
+  }
+  if (args.length) throw new Error("Usage: review:benchmark [--prompts | --score responses.json | --compare providers.json]");
 
   const model = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b";
   const verifierModel = process.env.OLLAMA_VERIFIER_MODEL ?? model;
