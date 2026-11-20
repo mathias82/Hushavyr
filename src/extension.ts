@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks" || request.command === "dependencies") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks" || request.command === "dependencies") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the currently open code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
@@ -455,13 +455,13 @@ export function activate(context: vscode.ExtensionContext): void {
       stream.markdown("Select code or attach a file first, then ask `@ai-privacy` again. No content was sent.");
       return;
     }
-    // For /review without an explicit selection, prefer the currently open local
-    // code file over a stale selection captured before Chat took focus.
-    // VS Code can add an opaque context reference for that same file.
-    if (request.command === "review" && attachments.length === 0 && !activeSelection?.trim() &&
+    // /review without a prompt or attachment reviews the open editor as a whole.
+    // An explicit Chat attachment remains authoritative. Never require a selection.
+    if (request.command === "review" && attachments.length === 0 &&
         vscode.workspace.isTrusted && !vscode.env?.remoteName) {
       const visible = vscode.window.visibleTextEditors.filter(isCodeEditor);
-      const preferred = visible.find(e => e.document.uri.toString() === lastCodeEditor?.document.uri.toString())
+      const preferred = (editor && isCodeEditor(editor) ? editor : undefined)
+        ?? visible.find(e => e.document.uri.toString() === lastCodeEditor?.document.uri.toString())
         ?? (visible.length === 1 ? visible[0] : undefined)
         ?? lastCodeEditor;
       if (preferred && isCodeEditor(preferred)) {
