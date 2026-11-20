@@ -45,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!prompt?.trim()) return;
     try {
       const result = await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification, title: "AI Privacy Router", cancellable: true
+        location: vscode.ProgressLocation.Notification, title: "Hushavyr", cancellable: true
       }, (_, token) => autoPrompt(prompt, token));
       if (result.reason === "cancelled") return;
       const document = await vscode.workspace.openTextDocument({content: formatRouted(result), language: "markdown"});
@@ -195,7 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const selected = editor.document.getText(editor.selection);
     const decision = classifyInput({prompt: selected, workspaceTrusted: vscode.workspace.isTrusted});
-    void vscode.window.showInformationMessage(`AI Privacy Router: ${decision.route}; ${decision.reasons.join(", ")}. No content transmitted.`);
+    void vscode.window.showInformationMessage(`Hushavyr: ${decision.route}; ${decision.reasons.join(", ")}. No content transmitted.`);
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.reviewCloudOverride", async () => {
@@ -241,7 +241,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const decision = classifyInput({prompt:editor.document.getText(editor.selection),workspaceTrusted:vscode.workspace.isTrusted});
     const report = [
-      "# AI Privacy Router — Privacy Preview", "",
+      "# Hushavyr — Privacy Preview", "",
       "**Route:** " + decision.route,
       "**Sensitivity:** " + decision.sensitivity,
       "**Task:** " + decision.task,
@@ -296,7 +296,7 @@ async function runLocal(prompt: string): Promise<void> {
   try {
     const result = await vscode.window.withProgress({
       location:vscode.ProgressLocation.Notification,
-      title:"AI Privacy Router: local Qwen"
+      title:"Hushavyr: local Qwen"
     }, async () => {
       const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
       const client = new LocalOllama({model, endpoint: config.get<string>("ollamaEndpoint"),

@@ -1,6 +1,6 @@
-# AI Privacy Router
+# Hushavyr
 
-AI Privacy Router is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
+Hushavyr (formerly AI Privacy Router) is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
 
 The extension controls its own requests. For sensitive work, use a VS Code profile with independent Copilot features disabled. Live privacy checks across the router and that profile are still pending. Try the examples below with synthetic data.
 
@@ -34,10 +34,10 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.5.vsix
+code --install-extension ai-privacy-router-0.0.6.vsix
 ```
 
-Reload VS Code. Open a text file, select some text, open the Command Palette and run **AI Privacy Router: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **AI Privacy Router: Classify Selection** and **AI Privacy Router: Review Cloud Override (No Transfer)**.
+Reload VS Code. Open a text file, select some text, open the Command Palette and run **Hushavyr: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **Hushavyr: Classify Selection** and **Hushavyr: Review Cloud Override (No Transfer)**.
 
 For a negative test, stop Ollama and repeat the local command. It must show a local error, **not** fall back to a cloud model.
 
@@ -55,7 +55,7 @@ npm run update:local
 npm ci --ignore-scripts
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.5.vsix --force
+code --install-extension ai-privacy-router-0.0.6.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -109,7 +109,7 @@ Use `@ai-privacy` once to select the local assistant. It is marked sticky, so su
 
 ## Ollama / Copilot routing (0.0.4)
 
-Default mode remains **local-only**. Use `@ai-privacy /auto <typed prompt>`, or **AI Privacy Router: Route Typed Prompt (Local by Default)**. Ordinary Chat, `/review`, selected-file commands and attached-source review remain local.
+Default mode remains **local-only**. Use `@ai-privacy /auto <typed prompt>`, or **Hushavyr: Route Typed Prompt (Local by Default)**. Ordinary Chat, `/review`, selected-file commands and attached-source review remain local.
 
 The router first checks privacy policy, then task complexity. Known sensitive patterns, uncertain project/file context, untrusted workspaces, mandatory-local policy and required-but-unavailable reviewer approval stay local. A simple typed task stays on Ollama. A complex typed prompt is only a **Copilot candidate**, not automatically classified public.
 
@@ -154,7 +154,7 @@ Every finding remains **potential**. Neither model agreement nor a successful ex
 
 ## Local Java regression-proof agent (0.0.5)
 
-Run **AI Privacy Router: Propose and Verify Local Java Fix** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
+Run **Hushavyr: Propose and Verify Local Java Fix** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
 
 ### What it does
 
@@ -221,7 +221,7 @@ Alternatively start a dedicated daemon with `OLLAMA_NO_CLOUD=1`. Setting a clien
 
 ## Existing regression tests
 
-Use `@ai-privacy /test` or **AI Privacy Router: Run Existing Regression Tests**. Choose a trusted workspace folder and a fixed runner: `npm test`, `mvn test`, `./mvnw test`, `gradle test`, `./gradlew test`, or `python -m pytest`.
+Use `@ai-privacy /test` or **Hushavyr: Run Existing Regression Tests**. Choose a trusted workspace folder and a fixed runner: `npm test`, `mvn test`, `./mvnw test`, `gradle test`, `./gradlew test`, or `python -m pytest`.
 
 The runner executes that project's existing scripts, with no model-supplied command, arguments or generated code. It records actual exit status, duration, timeout and cancellation. Output is not stored or sent to a model. The default timeout is two minutes. On macOS/Linux cancellation kills the runner process group; Windows only stops the immediate process and may require manual cleanup of descendants. The intended local environment is macOS/Linux.
 
@@ -268,7 +268,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.5.vsix
+code --install-extension ai-privacy-router-0.0.6.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
