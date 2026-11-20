@@ -25,8 +25,8 @@ TypeScript classifier, local Ollama adapter, VS Code commands and tests. An opti
 Prerequisites: Node.js 22, VS Code 1.90+, and Ollama running **on the same machine as the VS Code extension host**.
 
 ```bash
-git clone https://github.com/mathias82/ai-privacy-router.git
-cd ai-privacy-router
+git clone https://github.com/mathias82/Hushavyr.git
+cd Hushavyr
 npm ci
 npm test
 ollama pull qwen2.5-coder:7b

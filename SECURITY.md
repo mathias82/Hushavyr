@@ -1,6 +1,6 @@
 # Security policy
 
-Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/mathias82/ai-privacy-router/security/advisories/new) when available. If private reporting is unavailable, open a public issue requesting a private contact channel. Keep sensitive details out of the public issue.
+Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/mathias82/Hushavyr/security/advisories/new) when available. If private reporting is unavailable, open a public issue requesting a private contact channel. Keep sensitive details out of the public issue.
 
 Include the extension and VS Code versions, the routing mode, and reproduction steps using synthetic sample data. Omit credentials, private prompts, source files, and raw logs.
 
