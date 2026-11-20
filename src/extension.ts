@@ -177,7 +177,7 @@ export function activate(context: vscode.ExtensionContext): void {
         // Deterministic checks run locally before Ollama availability is required.
         const secretFiles = await vscode.workspace.findFiles(secretInclude, excludes, 5001);
         if (secretFiles.length > 5000) {
-          stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\\n\\n");
+          stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\n\n");
         } else {
           let secretFindings = 0;
           for (const uri of secretFiles) {
@@ -188,10 +188,10 @@ export function activate(context: vscode.ExtensionContext): void {
             const relative = vscode.workspace.asRelativePath(uri);
             for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
               secretFindings++;
-              stream.markdown("**" + finding.severity + "** · " + finding.rule + " · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\\n\\n");
+              stream.markdown("**" + finding.severity + "** · " + finding.rule + " · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\n\n");
             }
           }
-          stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\\n\\n");
+          stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
         }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
