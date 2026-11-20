@@ -30,7 +30,7 @@ jobs:
       - name: CLI smoke test (SARIF export)
         run: |
           node dist/cli.js . --sarif hushavyr.sarif --fail-on none
-          node -e "const s=require('./hushavyr.sarif');if(s.version!=='2.1.0'||!Array.isArray(s.runs[0].results))process.exit(1)"
+          node -e "const s=JSON.parse(require('fs').readFileSync('hushavyr.sarif','utf8'));if(s.version!=='2.1.0'||!Array.isArray(s.runs[0].results))process.exit(1)"
 
       - name: Build Python proof fixture image
         run: |
