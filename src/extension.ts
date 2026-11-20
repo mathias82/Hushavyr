@@ -2,6 +2,8 @@
 // Only the user can approve installing an external executable. No silent downloads.
 import {configuredModel} from "./model";
 import {relatedSources} from "./relatedJava";
+import {changedFiles} from "./changedFiles";
+import {registerApplyFix} from "./applyFix";
 import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./trivyCommands";
 import {execFile} from "node:child_process";
 import {homedir} from "node:os";
@@ -52,6 +54,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.updateTrivyDb", () => updateTrivyDatabase()));
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.exportSbom", () => exportWorkspaceSbom()));
   registerDependencyQuickFix(context);
+  registerApplyFix(context);
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
     if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
@@ -150,14 +153,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = (isScanCommand(request.command) && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the currently open code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    // /review-changes is /review over the uncommitted files of this workspace.
+    const command = request.command === "review-changes" ? "review" : request.command;
+    const instruction = (isScanCommand(request.command) && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : command === "review" && !request.prompt.trim() ? "Review the currently open code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = isScanCommand(request.command) || (request.command === "review" &&
+    const workspaceReview = isScanCommand(request.command) || (command === "review" &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       await runWorkspaceScan(context, request, stream, token);
@@ -171,6 +176,31 @@ export function activate(context: vscode.ExtensionContext): void {
     const selectedUri = activeSelection?.trim() ? editor?.document.uri.toString() : lastSelection?.uri;
     // Explicit Chat file attachments are not automatically part of request.prompt.
     const attachments: ReviewSource[] = [];
+    if (request.command === "review-changes") {
+      if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
+        stream.markdown("Open a trusted local VS Code window to review changes. Nothing was sent.");
+        return;
+      }
+      let budget = 18_000;
+      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        for (const relative of await changedFiles(folder.uri.fsPath)) {
+          if (attachments.length >= 4) break;
+          const uri = vscode.Uri.joinPath(folder.uri, relative);
+          try {
+            const text = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
+            const bytes = Buffer.byteLength(text, "utf8");
+            if (!text.trim() || text.includes("\0") || bytes > budget) continue;
+            budget -= bytes + uri.toString().length;
+            attachments.push({path: uri.toString(), text, startLine: 1});
+          } catch { /* skip unreadable file */ }
+        }
+      }
+      if (!attachments.length) {
+        stream.markdown("No uncommitted code changes found (or they exceed the 20 KB local review budget). Nothing was sent.");
+        return;
+      }
+      stream.markdown("Reviewing " + attachments.length + " changed file(s) locally: " + attachments.map(a => "`" + vscode.workspace.asRelativePath(vscode.Uri.parse(a.path)) + "`").join(", ") + "\n\n");
+    }
     for (const ref of request.references) {
       const value = ref.value;
       // VS Code Chat can supply a Location, URI, or a revived { uri, range }
@@ -251,7 +281,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     // /review without a prompt or attachment reviews the open editor as a whole.
     // An explicit Chat attachment remains authoritative. Never require a selection.
-    if (request.command === "review" && attachments.length === 0 &&
+    if (command === "review" && attachments.length === 0 &&
         vscode.workspace.isTrusted && !vscode.env?.remoteName) {
       const visible = vscode.window.visibleTextEditors.filter(isCodeEditor);
       const preferred = (editor && isCodeEditor(editor) ? editor : undefined)
@@ -274,7 +304,7 @@ export function activate(context: vscode.ExtensionContext): void {
           startLine: activeSelection?.trim() ? editor!.selection.start.line + 1 : lastSelection?.startLine}] : [];
     // Add a small number of explicitly imported project files (Java, TypeScript/JavaScript, Python).
     // Only trusted local workspaces; no network or arbitrary filesystem traversal.
-    if (request.command === "review" && vscode.workspace.isTrusted && !vscode.env?.remoteName) {
+    if (command === "review" && vscode.workspace.isTrusted && !vscode.env?.remoteName) {
       for (const source of [...sources]) {
         const root = vscode.workspace.workspaceFolders?.find(folder => source.path.startsWith(folder.uri.toString()))?.uri.fsPath
           ?? (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined);
@@ -298,7 +328,7 @@ export function activate(context: vscode.ExtensionContext): void {
     stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\n\n");
     const model = configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
 
-    const isReview = request.command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
+    const isReview = command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
     if (isReview && !sources.length) {
       stream.markdown("Select code or attach local files first. Nothing was sent.");
       return;

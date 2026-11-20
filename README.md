@@ -9,6 +9,7 @@ Type `@ai-privacy` in VS Code Chat:
 | Command | Purpose |
 | --- | --- |
 | `/review` | Review the open or attached code locally |
+| `/review-changes` | Review your uncommitted git changes locally |
 | `/test` | Run supported local project tests |
 | `/auto` | Privacy-aware routing of typed prompts |
 | `/scan` | Local project review (up to 5,000 files, batches of 50) |
@@ -33,6 +34,7 @@ Available commands depend on the extension installed in VS Code. Semgrep, Gitlea
 ## Highlights
 
 - **Smart default model:** unless you set `aiPrivacyRouter.ollamaModel`, Hushavyr uses `qwen2.5-coder:14b` on 20 GB+ memory and `32b` on 48 GB+ (otherwise `7b`), downloaded automatically on first use.
+- **Local fixes:** on a `/review` marker choose the quick fix *Hushavyr: propose a local fix*; the local model proposes a diff and nothing changes until you approve.
 - **Findings in the editor:** `/review` results appear as Problems; `/dependencies` lists each CVE once with severity, fixed version and affected manifests, and marks the dependency line. A quick fix updates the version when it is on that line.
 - **Dependency ecosystems:** Maven, Gradle, npm, yarn, pnpm, pip, Poetry, Pipenv, Go, Cargo, Composer, Bundler, NuGet.
 - **Richer review context:** `/review` follows local imports in Java, TypeScript/JavaScript and Python (up to 3 related files).
