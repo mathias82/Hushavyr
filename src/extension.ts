@@ -1,3 +1,6 @@
+import {runScanner} from "./externalScanners";
+import {join} from "node:path";
+import {runSemgrep} from "./semgrep";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {execFile} from "node:child_process";
@@ -132,14 +135,14 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = (request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security") || (request.command === "review" &&
+    const workspaceReview = (request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks") || (request.command === "review" &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
@@ -199,7 +202,27 @@ export function activate(context: vscode.ExtensionContext): void {
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
         }
-        if (request.command === "secrets" || request.command === "security") {
+        if (request.command === "security") {
+          const folders = vscode.workspace.workspaceFolders ?? [];
+          for (const folder of folders) {
+            if (token.isCancellationRequested) break;
+            const semgrep = await runSemgrep(folder.uri.fsPath);
+            if (semgrep.status === "missing") {
+              stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\\n\\n");
+            } else if (semgrep.status === "failed") {
+              stream.markdown("**Semgrep incomplete:** Local scan failed; no Semgrep findings reported. Existing security checks continue.\\n\\n");
+            } else {
+              for (const issue of semgrep.findings) {
+                if (token.isCancellationRequested) break;
+                stream.markdown("**Semgrep · " + issue.severity.replace(/[^A-Za-z]/g,"") + "** · \`" +
+                  issue.path.replace(/[\\`\\r\\n]/g,"") + ":" + issue.line + "\` · " +
+                  issue.rule.replace(/[\\`\\r\\n]/g,"") + " · " + issue.message.replace(/[\\r\\n]/g," ") + "\\n\\n");
+              }
+              stream.markdown("**Offline Semgrep:** " + semgrep.findings.length + " potential findings; local bundled rules only.\\n\\n");
+            }
+          }
+        }
+        if (request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks") {
           // Explicit deterministic mode: never invoke Ollama or any cloud provider.
           let sourceFindings = 0;
           let securityFindings = 0;
@@ -220,6 +243,25 @@ export function activate(context: vscode.ExtensionContext): void {
               sourceFindings++;
               stream.markdown("**HIGH · Potential hardcoded credential** · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\n\n");
             }
+          }
+          if (request.command === "semgrep" || request.command === "gitleaks") {
+            const tool = request.command;
+            const rules = join(context.extensionPath, "rules", "hushavyr.yml");
+            for (const folder of vscode.workspace.workspaceFolders ?? []) {
+              const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal);
+              if (result.status !== "ok") {
+                stream.markdown("**" + tool + ": " + result.status + "**. Install the local scanner or inspect its setup. No cloud fallback.\\n\\n");
+                continue;
+              }
+              for (const finding of result.findings) {
+                // Never display scanner snippets, credential values or arbitrary messages.
+                stream.markdown("**" + finding.tool + " · " + finding.severity + "** · rule \`" +
+                  finding.rule.replace(/[\`\\r\\n]/g, "") + "\` · \`" +
+                  finding.path.replace(/[\`\\r\\n]/g, "") + ":" + finding.line + "\` (value redacted)\\n\\n");
+              }
+              stream.markdown("**" + tool + ":** " + result.findings.length + " local findings; no source snippets displayed.\\n\\n");
+            }
+            return;
           }
           stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators. No Ollama or cloud requests. These findings require manual verification.\n\n");
           return;
