@@ -2,7 +2,7 @@
 export interface SecurityIssue {line:number; rule:string; severity:"HIGH"|"MEDIUM"; advice:string}
 type Rule={id:string;severity:"HIGH"|"MEDIUM";pattern:RegExp;advice:string;extensions:RegExp}
 const rules:Rule[]=[
-{id:"SQL string concatenation",severity:"HIGH",pattern:/\b(?:executeQuery|executeUpdate|prepareStatement)\s*\(\s*(?:[^)]*\+|(?:sql|query)\s*\)/,advice:"Use parameterized queries and bind variables; inspect how SQL is constructed",extensions:/\.(?:java|kt|js|ts|py)$/},
+{id:"Weak cryptographic hash",severity:"MEDIUM",pattern:/MessageDigest\.getInstance\s*\(\s*["\x27](?:MD5|SHA-1)["\x27]|createHash\s*\(\s*["\x27](?:md5|sha1)["\x27]|hashlib\.(?:md5|sha1)\s*\(/i,advice:"Avoid weak hashes for security-sensitive purposes; verify usage context",extensions:/\.(?:java|kt|js|ts|py)$/},
 {id:"TLS certificate validation disabled",severity:"HIGH",pattern:/\b(?:rejectUnauthorized\s*:\s*false|verify\s*=\s*False|checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|InsecureTrustManagerFactory\.INSTANCE)\b/,advice:"Enable certificate and hostname validation",extensions:/\.(?:java|kt|js|ts|py)$/},
 {id:"Weak cryptographic hash",severity:"MEDIUM",pattern:/\b(?:MessageDigest\.getInstance\s*\(\s*["'](?:MD5|SHA-1)["']|createHash\s*\(\s*["'](?:md5|sha1)["']|hashlib\.(?:md5|sha1)\s*\()/i,advice:"Avoid weak hashes for security-sensitive purposes; verify usage context",extensions:/\.(?:java|kt|js|ts|py)$/},
 {id:"Java deserialization",severity:"MEDIUM",pattern:/\bnew\s+ObjectInputStream\s*\(|\bObjectInputStream\s*\(/,advice:"Avoid deserializing untrusted objects; enforce serialization filters",extensions:/\.(?:java|kt)$/},
