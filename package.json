@@ -152,6 +152,12 @@
           "scope": "application",
           "description": "Local-only by default. Hybrid mode offers Copilot only for complex, explicitly approved typed public prompts in an empty window with no project or files open. Never filters independent Copilot usage."
         },
+        "aiPrivacyRouter.fixNodeImage": {
+          "type": "string",
+          "default": "node:24-slim",
+          "scope": "application",
+          "description": "Preloaded Node.js 24 image for offline native JavaScript test verification."
+        },
         "aiPrivacyRouter.fixPythonImage": {
           "type": "string",
           "default": "hushavyr-pytest:local",
