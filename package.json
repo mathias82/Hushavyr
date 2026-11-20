@@ -213,6 +213,10 @@
           {
             "name": "scan-changed",
             "description": "Scan only changed source files since the last completed local scan"
+          },
+          {
+            "name": "secrets",
+            "description": "Scan local configuration and source files for hardcoded credentials without Ollama"
           }
         ]
       }
