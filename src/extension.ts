@@ -129,15 +129,15 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = (request.command === "scan" && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = request.command === "review" &&
-      /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction);
+    const workspaceReview = request.command === "scan" || (request.command === "review" &&
+      /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
         stream.markdown("Open a trusted local project folder before starting a workspace review. Nothing was sent.");
