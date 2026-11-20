@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "Hushavyr",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -151,6 +151,12 @@
           "default": "local-only",
           "scope": "application",
           "description": "Local-only by default. Hybrid mode offers Copilot only for complex, explicitly approved typed public prompts in an empty window with no project or files open. Never filters independent Copilot usage."
+        },
+        "aiPrivacyRouter.fixTypeScriptImage": {
+          "type": "string",
+          "default": "hushavyr-typescript:local",
+          "scope": "application",
+          "description": "Preloaded Node.js 24 image with the project TypeScript compiler and offline dependencies."
         },
         "aiPrivacyRouter.fixNodeImage": {
           "type": "string",

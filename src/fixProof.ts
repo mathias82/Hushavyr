@@ -5,7 +5,7 @@ export interface TestCase {className: string; name: string; outcome: CaseOutcome
 export interface TestRun {exitCode: number | null; interrupted: boolean; durationMs: number; cases: TestCase[]}
 export interface SourceChange {path: string; content: string}
 export type ProofStage = "baseline" | "red" | "green" | "suite";
-export interface FixProofContext {profile?: "python" | "node"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
+export interface FixProofContext {profile?: "python" | "node" | "typescript"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
 export interface FixProofDependencies {
   cancelled(): boolean;
   run(stage: ProofStage, target?: string): Promise<TestRun>;
@@ -21,7 +21,7 @@ export interface StageSummary {
   passed: number; failures: number; errors: number; skipped: number; caseSetHash: string;
 }
 export interface FixProofReceipt extends FixProofContext {
-  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1" | "node-red-green-v1";
+  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1" | "node-red-green-v1" | "typescript-red-green-v1";
   runId: string; startedAtUtc: string; finishedAtUtc?: string; totalDurationMs?: number;
   status: "verified" | "not-verified" | "cancelled";
   reason: string; stages: StageSummary[]; testHash?: string;
@@ -47,7 +47,7 @@ function summary(stage: ProofStage, run: TestRun): StageSummary {
 export async function runFixProof(context: FixProofContext, deps: FixProofDependencies): Promise<FixProofReceipt> {
   context = Object.freeze({...context});
   const started = Date.now();
-  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "node" ? "node-red-green-v1" : context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
+  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "typescript" ? "typescript-red-green-v1" : context.profile === "node" ? "node-red-green-v1" : context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
   const stop = (reason: string): FixProofReceipt => ({...receipt, reason, finishedAtUtc: new Date().toISOString(), totalDurationMs: Date.now() - started,
     status: deps.cancelled() ? "cancelled" : "not-verified"});
   const run = async (stage: ProofStage, target?: string): Promise<TestRun> => {

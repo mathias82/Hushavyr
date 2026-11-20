@@ -40,12 +40,13 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Use a trusted local-only profile with chat.disableAIFeatures enabled. This command never uses Copilot.");
       return;
     }
-    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js"],
+    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js", "TypeScript / Node.js"],
       {placeHolder: "Choose an offline test runner"});
     if (!runner) return;
     const python = runner === "Python / pytest";
-    const node = runner === "JavaScript / Node.js";
-    const language = node ? "JavaScript" : python ? "Python" : "Java";
+    const typescript = runner === "TypeScript / Node.js";
+    const node = runner === "JavaScript / Node.js" || typescript;
+    const language = typescript ? "TypeScript" : node ? "JavaScript" : python ? "Python" : "Java";
     const folder = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
       canSelectMany: false, openLabel: node ? "Choose a project with Node.js native tests" : python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
       defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri});
@@ -57,7 +58,7 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
     }
     const selected = await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
       defaultUri: python || node ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
-      filters: {[language]: node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
+      filters: {[language]: typescript ? ["ts", "cts", "mts"] : node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
       openLabel: "Choose 1–6 production " + language + " files for local analysis"});
     if (!selected?.length || selected.some(uri => uri.scheme !== "file")) return;
     const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true});
@@ -79,8 +80,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
           const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
           sandbox = await FixSandbox.create({project: project.fsPath, selected: selected.map(uri => uri.fsPath),
             storage: join(context.globalStorageUri.fsPath, "verified-fixes"),
-            profile: node ? "node" : python ? "python" : undefined,
-            image: node ? config.get<string>("fixNodeImage", "node:24-slim") : python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
+            profile: typescript ? "typescript" : node ? "node" : python ? "python" : undefined,
+            image: typescript ? config.get<string>("fixTypeScriptImage", "hushavyr-typescript:local") : node ? config.get<string>("fixNodeImage", "node:24-slim") : python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
               : config.get<string>("fixMavenImage", "maven:3.9-eclipse-temurin-21"),
             cache: config.get<string>("fixMavenCache", "").trim() || undefined, signal: controller.signal});
           const box = sandbox;

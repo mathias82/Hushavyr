@@ -27,7 +27,7 @@ async function command(file: string, args: string[], cwd: string): Promise<Buffe
 function git(args: string[], cwd: string): Promise<Buffer> {
   return command("git", ["-c", "core.fsmonitor=false", ...args], cwd);
 }
-interface DockerMounts {profile?: "python" | "node"; snapshot: string; target: string; cache?: string; project: string; image: string; uid: number; gid: number; name: string}
+interface DockerMounts {profile?: "python" | "node" | "typescript"; snapshot: string; target: string; cache?: string; project: string; image: string; uid: number; gid: number; name: string}
 export function dockerCreateArgs(input: DockerMounts, targetClass?: string): string[] {
   for (const path of [input.snapshot, input.target, ...(input.cache ? [input.cache] : [])]) {
     if (!isAbsolute(path) || /[,\x00-\x1f]/.test(path)) throw new Error("unsupported-mount-path");
@@ -35,17 +35,21 @@ export function dockerCreateArgs(input: DockerMounts, targetClass?: string): str
   if (!/^sha256:[a-f0-9]{64}$/.test(input.image) || !/^ai-privacy-fix-[a-f0-9-]{36}$/.test(input.name) ||
     !Number.isInteger(input.uid) || input.uid <= 0 || !Number.isInteger(input.gid) || input.gid < 0) throw new Error("invalid-sandbox-config");
   if (input.project) safeRelative(input.project);
-  if (input.profile !== "node" && targetClass && !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(targetClass)) throw new Error("invalid-test-selector");
+  if (input.profile !== "node" && input.profile !== "typescript" && targetClass && !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(targetClass)) throw new Error("invalid-test-selector");
   const project = "/work" + (input.project ? "/" + input.project : "");
   const isolated = ["create", "--name", input.name, "--pull=never", "--network=none", "--read-only",
     "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256",
     "--memory=4g", "--cpus=2", "--log-driver=none", "--user", input.uid + ":" + input.gid,
     "--tmpfs", "/tmp:rw,nosuid,nodev,size=536870912",
     "--mount", "type=bind,src=" + input.snapshot + ",dst=/work,readonly"];
-  if (input.profile === "node") {
+  if (input.profile === "node" || input.profile === "typescript") {
     if (targetClass && !/^hushavyr-[a-f0-9]{32}\.test\.cjs$/.test(targetClass)) throw new Error("invalid-node-test-selector");
+    const runner = input.profile === "typescript"
+      ? ["--entrypoint", "sh", input.image, "-c",
+        'tsc --project tsconfig.json --noEmit --incremental false && exec node "$@"', "hushavyr"]
+      : ["--entrypoint", "node", input.image];
     return [...isolated, "--mount", "type=bind,src=" + input.target + ",dst=/reports",
-      "--workdir", project, "--env", "HOME=/tmp", "--entrypoint", "node", input.image,
+      "--workdir", project, "--env", "HOME=/tmp", ...runner,
       "--test", "--test-reporter=junit", "--test-reporter-destination=/reports/node.xml",
       ...(targetClass ? ["test/" + targetClass] : [])];
   }
@@ -93,7 +97,7 @@ async function regularText(path: string, maxBytes: number): Promise<string> {
   return (await regularBytes(path, maxBytes)).toString("utf8");
 }
 export interface FixSandboxOptions {
-  project: string; selected: string[]; storage: string; image: string; cache?: string; profile?: "python" | "node"; signal: AbortSignal;
+  project: string; selected: string[]; storage: string; image: string; cache?: string; profile?: "python" | "node" | "typescript"; signal: AbortSignal;
 }
 export class FixSandbox {
   readonly context: FixProofContext;
@@ -147,7 +151,9 @@ export class FixSandbox {
       }
       const prefix = project ? project + "/" : "";
       const python = options.profile === "python";
-      const node = options.profile === "node";
+      const typescript = options.profile === "typescript";
+      const node = options.profile === "node" || typescript;
+      if (typescript && !texts.has(prefix + "tsconfig.json")) throw new Error("tracked-tsconfig-required");
       const pomPath = prefix + "pom.xml", pom = texts.get(pomPath)?.toString("utf8");
       if (!python && !node && (!pom || /<modules\b/i.test(pom.replace(/<!--[\s\S]*?-->/g, "")))) throw new Error("select-a-leaf-maven-project");
       if (!options.selected.length || options.selected.length > 6) throw new Error("select-one-to-six-java-files");
@@ -159,8 +165,8 @@ export class FixSandbox {
         const path = relative(rootPath, await realpath(absolute)).split(sep).join("/");
         safeRelative(path);
         const allowed = node
-          ? path.startsWith(prefix) && /\.(?:js|cjs|mjs)$/.test(path) &&
-            !/(?:^|\/)(?:tests?|__tests__|node_modules)(?:\/|$)|(?:[-_.](?:spec|test)|\.config)\.[cm]?js$/.test(path)
+          ? path.startsWith(prefix) && (typescript ? /\.(?:ts|cts|mts)$/.test(path) && !/\.d\.[cm]?ts$/.test(path) : /\.[cm]?js$/.test(path)) &&
+            !/(?:^|\/)(?:tests?|__tests__|node_modules)(?:\/|$)|(?:[-_.](?:spec|test)|\.config)\.[cm]?[jt]s$/.test(path)
           : python
           ? path.startsWith(prefix) && path.endsWith(".py") && !/(?:^|\/)(?:tests?|test_[^/]*|[^/]*_test\.py|conftest\.py|setup\.py)(?:\/|$)/.test(path)
           : path.startsWith(prefix + "src/main/java/") && path.endsWith(".java");
@@ -228,7 +234,7 @@ export class FixSandbox {
     const name = this.context.testClass.split(".").at(-1)!;
     const expectedPackage = this.context.testClass.split(".").slice(0, -1).join(".");
     const actualPackage = source.replace(/\/\*[\s\S]*?\*\//g, "").match(/^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/m)?.[1] ?? "";
-    const valid = this.context.profile === "node" ? Boolean(source.trim()) : this.context.profile === "python"
+    const valid = (this.context.profile === "node" || this.context.profile === "typescript") ? Boolean(source.trim()) : this.context.profile === "python"
       ? /^def test_[A-Za-z0-9_]+\s*\(/m.test(source)
       : actualPackage === expectedPackage && new RegExp("\\bpublic\\s+(?:final\\s+)?class\\s+" + name + "\\b").test(source);
     if (!valid || Buffer.byteLength(source, "utf8") > 8000) throw new Error("invalid-regression-source");
@@ -277,7 +283,7 @@ export class FixSandbox {
     if (!interrupted) {
       const reports = join(this.targetDirectory, "surefire-reports");
       try {
-        if (this.context.profile === "node") {
+        if (this.context.profile === "node" || this.context.profile === "typescript") {
           cases.push(...parseNodeReport(await regularText(join(this.targetDirectory, "node.xml"), 1048576)));
           return {exitCode, interrupted, durationMs: Date.now() - started, cases};
         }
@@ -303,7 +309,7 @@ export class FixSandbox {
       await writeFile(join(this.directory, "verified.patch"), patch, {flag: "wx", mode: 0o600});
       patchHash = sha256(patch);
     }
-    if (this.testSource) await writeFile(join(this.directory, "proposed-regression." + (this.context.profile === "node" ? "cjs" : this.context.profile === "python" ? "py" : "java")), this.testSource, {flag: "wx", mode: 0o600});
+    if (this.testSource) await writeFile(join(this.directory, "proposed-regression." + ((this.context.profile === "node" || this.context.profile === "typescript") ? "cjs" : this.context.profile === "python" ? "py" : "java")), this.testSource, {flag: "wx", mode: 0o600});
     // Write the completion marker last, after its content-addressed artifact exists.
     await writeFile(join(this.directory, "receipt.json"), JSON.stringify({...receipt, patchHash,
       cleanupRequiresAttention: this.unsafeCleanup}, null, 2) + "\n", {flag: "wx", mode: 0o600});

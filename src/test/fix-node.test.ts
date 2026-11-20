@@ -26,3 +26,53 @@ test("Node proof runs a fixed offline Docker command", () => {
   assert.deepEqual(args.slice(-4), ["--test", "--test-reporter=junit", "--test-reporter-destination=/reports/node.xml", "test/" + name]);
   assert.throws(() => dockerCreateArgs(mounts, "--eval"), /selector/);
 });
+
+test("JavaScript and TypeScript proofs run red and green in offline Docker",
+  {skip: process.env.HUSHAVYR_NODE_DOCKER_SMOKE !== "1", timeout: 180000}, async () => {
+    const {execFileSync} = await import("node:child_process");
+    const {mkdtemp, mkdir, readFile, writeFile, rm} = await import("node:fs/promises");
+    const {tmpdir} = await import("node:os");
+    const {join} = await import("node:path");
+    const {runFixProof} = await import("../fixProof");
+    const {FixSandbox} = await import("../fixSandbox");
+    for (const profile of ["node", "typescript"] as const) {
+      const directory = await mkdtemp(join(tmpdir(), "hushavyr-node-proof-"));
+      const project = join(directory, "project");
+      const ts = profile === "typescript";
+      const path = ts ? "pricing.mts" : "pricing.cjs";
+      const source = join(project, path);
+      const before = ts ? "export const total = (n: number) => n || 10;\n" : "exports.total = n => n || 10;\n";
+      const testSource = (label: string, input: number) =>
+        'const {test} = require("node:test");\nconst assert = require("node:assert/strict");\n' +
+        'const {total} = require("../' + path + '");\n' +
+        'test("' + label + '", () => assert.equal(total(' + input + '), ' + input + '));\n';
+      const git = (args: string[]) => execFileSync("git", args, {cwd: project, stdio: "ignore"});
+      let box: Awaited<ReturnType<typeof FixSandbox.create>> | undefined;
+      try {
+        await mkdir(join(project, "test"), {recursive: true});
+        await writeFile(source, before);
+        await writeFile(join(project, "test", "pricing.test.cjs"), testSource("existing", 3));
+        if (ts) await writeFile(join(project, "tsconfig.json"), JSON.stringify({compilerOptions: {module: "NodeNext", strict: true, types: []}, include: ["pricing.mts"]}));
+        git(["init", "--initial-branch=main"]);
+        git(["add", "."]);
+        git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Seed fixture"]);
+        box = await FixSandbox.create({profile, project, selected: [source], storage: join(directory, "runs"),
+          image: ts ? "hushavyr-typescript:local" : "node:24-slim", signal: new AbortController().signal});
+        const sandbox = box;
+        const receipt = await runFixProof(sandbox.context, {
+          cancelled: () => false, run: (stage, target) => sandbox.run(stage, target),
+          proposeTest: async () => testSource("zero", 0), approveTest: async () => true,
+          writeTest: text => sandbox.writeTest(text),
+          proposeFix: async () => [{path, content: before.replace("||", "??")}],
+          approveFix: async () => true, applyFix: changes => sandbox.applyFix(changes)
+        });
+        assert.equal(receipt.status, "verified", JSON.stringify(receipt));
+        const artifacts = await sandbox.save(receipt);
+        git(["apply", "--check", join(artifacts, "verified.patch")]);
+        assert.equal(await readFile(source, "utf8"), before);
+      } finally {
+        if (box) await box.dispose();
+        await rm(directory, {recursive: true, force: true});
+      }
+    }
+  });
