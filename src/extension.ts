@@ -1,3 +1,4 @@
+import {relatedJavaSources} from "./relatedJava";
 import {auditDependencies} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
 import {join} from "node:path";
@@ -470,6 +471,20 @@ export function activate(context: vscode.ExtensionContext): void {
     const sources: ReviewSource[] = attachments.length ? attachments : selected?.trim()
       ? [{path: selectedUri ?? "selection", text: selected,
           startLine: activeSelection?.trim() ? editor!.selection.start.line + 1 : lastSelection?.startLine}] : [];
+    // Add a small number of explicitly imported project classes for Java reviews.
+    // Only trusted local workspaces; no network or arbitrary filesystem traversal.
+    if (request.command === "review" && vscode.workspace.isTrusted && !vscode.env?.remoteName) {
+      for (const source of [...sources]) {
+        const root = vscode.workspace.workspaceFolders?.find(folder => source.path.startsWith(folder.uri.toString()))?.uri.fsPath
+          ?? (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined);
+        if (!root) continue;
+        const related = await relatedJavaSources(root, source);
+        for (const extra of related) {
+          if (sources.length >= 4) break;
+          if (!sources.some(existing => existing.path === extra.path)) sources.push(extra);
+        }
+      }
+    }
     try { validateContext(instruction, sources); }
     catch (error) { stream.markdown(error instanceof Error ? error.message : "Invalid context."); return; }
     const prompt = instruction + (sources.length ? "\n\n" + sourcePrompt(sources) : "");
