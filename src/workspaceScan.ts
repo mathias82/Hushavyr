@@ -3,7 +3,7 @@
 import {configuredModel} from "./model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
-import {auditDependencies, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
+import {auditDependencies, trivyDbAgeDays, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
@@ -144,6 +144,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           stream.markdown("**" + tr(lang, "auditHeader") + "** " + audit.status + " · " + tr(lang, "ecosystem") + ": " +
             (audit.manager ?? "unknown") + " · " + tr(lang, "reported") + ": " + audit.findings +
             ". " + audit.note + ". " + tr(lang, "noCloud") + "\n\n");
+          const age = audit.status === "ok" ? await trivyDbAgeDays() : undefined;
+          if (age !== undefined && age > 7) stream.markdown("**" + age + " " + tr(lang, "dbDays") + ".** " + tr(lang, "dbStale") + "\n\n");
           const groups = groupVulnerabilities(audit.vulnerabilities ?? []);
           const shown = groups.slice(0, 50);
           for (const v of shown) {

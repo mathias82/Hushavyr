@@ -72,3 +72,9 @@ test("follows relative imports in TypeScript and Python without leaving the proj
   assert.deepEqual(py.map(s => s.path), ["src/helper.py"]);
   assert.deepEqual(localImportSpecifiers("a.ts", "const a = require('./x');"), ["./x"]);
 });
+import {dbAgeDays} from "../dependencyAudit";
+test("computes vulnerability database age in whole days", () => {
+  const now = Date.parse("2026-11-21T00:00:00Z");
+  assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
+  assert.equal(dbAgeDays("not json", now), undefined);
+});

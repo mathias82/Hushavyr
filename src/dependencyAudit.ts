@@ -1,7 +1,8 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {join} from "node:path";
-import {access} from "node:fs/promises";
+import {access,readFile} from "node:fs/promises";
+import {homedir} from "node:os";
 const exec=promisify(execFile);
 export interface DependencyVulnerability {id:string;pkg:string;installed:string;fixed?:string;severity:string;title:string;target:string}
 export interface DependencyAudit {status:"ok"|"missing"|"failed"|"unsupported";manager?:string;findings:number;note:string;vulnerabilities?:DependencyVulnerability[]}
@@ -97,4 +98,21 @@ export async function exportSbom(root:string,output:string,signal?:AbortSignal):
   await exec("trivy",["fs","--offline-scan","--skip-db-update","--skip-java-db-update","--format","cyclonedx","--output",output,"--quiet","."],{cwd:root,timeout:120000,windowsHide:true,signal});
   return {ok:true,note:"SBOM written locally"};
  }catch(e){return {ok:false,note:(e as NodeJS.ErrnoException).code==="ENOENT"?"Install Trivy first":"SBOM export failed"}}
+}
+
+/** Whole days since the Trivy vulnerability database was last published, from its metadata.json. */
+export function dbAgeDays(metadata:string,now=Date.now()):number|undefined{
+ try{
+  const updated=Date.parse((JSON.parse(metadata) as {UpdatedAt?:string}).UpdatedAt??"");
+  return Number.isFinite(updated)?Math.max(0,Math.floor((now-updated)/86_400_000)):undefined;
+ }catch{return undefined}
+}
+/** Age of the locally cached database, or undefined when it cannot be found. */
+export async function trivyDbAgeDays():Promise<number|undefined>{
+ const dirs=[process.env.TRIVY_CACHE_DIR,join(homedir(),"Library","Caches","trivy"),join(homedir(),".cache","trivy"),process.env.LOCALAPPDATA&&join(process.env.LOCALAPPDATA,"trivy")];
+ for(const dir of dirs){
+  if(!dir)continue;
+  try{return dbAgeDays(await readFile(join(dir,"db","metadata.json"),"utf8"))}catch{/* try next location */}
+ }
+ return undefined;
 }

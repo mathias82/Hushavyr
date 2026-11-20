@@ -36,7 +36,7 @@ Available commands depend on the extension installed in VS Code. Semgrep, Gitlea
 - **Findings in the editor:** `/review` results appear as Problems; `/dependencies` lists each CVE once with severity, fixed version and affected manifests, and marks the dependency line. A quick fix updates the version when it is on that line.
 - **Dependency ecosystems:** Maven, Gradle, npm, yarn, pnpm, pip, Poetry, Pipenv, Go, Cargo, Composer, Bundler, NuGet.
 - **Richer review context:** `/review` follows local imports in Java, TypeScript/JavaScript and Python (up to 3 related files).
-- **Language:** set `aiPrivacyRouter.language` to `el` for Greek `/dependencies` output.
+- **Language:** set `aiPrivacyRouter.language` to `el` for Greek `/dependencies` and Setup messages.
 
 ## Preview
 
