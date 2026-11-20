@@ -1,45 +1,5 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
-type InstallableTool = "semgrep" | "gitleaks" | "trivy";
-const installPromptOpen = new Set<InstallableTool>();
-const installCommands: Record<InstallableTool, {label: string; purpose: string; darwin: string; other: string}> = {
-  semgrep: {label: "Semgrep", purpose: "additional offline security checks", darwin: "brew install semgrep", other: "pipx install semgrep"},
-  gitleaks: {label: "Gitleaks", purpose: "offline secret scanning", darwin: "brew install gitleaks", other: "go install github.com/gitleaks/gitleaks/v8@latest"},
-  trivy: {label: "Trivy", purpose: "offline dependency vulnerability audits", darwin: "brew install trivy && trivy image --download-db-only", other: "See https://trivy.dev/latest/getting-started/installation/ then run: trivy image --download-db-only"}
-};
-async function offerToolInstallation(tool: InstallableTool): Promise<void> {
-  if (installPromptOpen.has(tool)) return;
-  installPromptOpen.add(tool);
-  const info = installCommands[tool];
-  try {
-    const choice = await vscode.window.showInformationMessage(
-      "Hushavyr: " + info.label + " is not installed. Install it locally to enable " + info.purpose + "?",
-      "Show install command", "Not now"
-    );
-    if (choice !== "Show install command") return;
-    if (process.platform === "win32") {
-      await vscode.window.showInformationMessage(
-        info.label + " should be installed through WSL or its official Windows installer, then Hushavyr run in that workspace. No command was executed.",
-        { modal: true }, "OK"
-      );
-      return;
-    }
-    const command = process.platform === "darwin" ? info.darwin : info.other;
-    const confirm = await vscode.window.showWarningMessage(
-      "Run this command in a new terminal? " + command + ". This downloads software from the package manager; Hushavyr will not send project code.",
-      { modal: true }, "Run install command", "Copy command"
-    );
-    if (confirm === "Copy command") {
-      await vscode.env.clipboard.writeText(command);
-    } else if (confirm === "Run install command") {
-      const terminal = vscode.window.createTerminal({ name: "Hushavyr · Install " + info.label });
-      terminal.show();
-      terminal.sendText(command);
-    }
-  } finally {
-    installPromptOpen.delete(tool);
-  }
-}
 import {relatedJavaSources} from "./relatedJava";
 import {auditDependencies} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
@@ -60,6 +20,7 @@ import { runLocalReview } from "./localReview";
 import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
+import { offerToolInstallation, runSetup } from "./setup";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
 
 /** Chat file links use the original workspace URI, never user-controlled markdown paths. */
@@ -72,15 +33,15 @@ function findingLink(uri: vscode.Uri, line: number, label: string): string {
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
   for (const task of [
-    {id: "startOllama", title: "Ollama server", args: ["serve"]},
-    {id: "downloadOllamaModel", title: "Qwen model download", args: ["pull", "qwen2.5-coder:7b"]}
+    {id: "startOllama", title: "Ollama server", args: () => ["serve"]},
+    {id: "downloadOllamaModel", title: "Local model download", args: () => ["pull", vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel", "qwen2.5-coder:7b")]}
   ]) {
     context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter." + task.id, async () => {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
         await vscode.window.showInformationMessage("Open a trusted local VS Code window to set up Ollama.");
         return;
       }
-      const command = ["ollama", ...task.args].join(" ");
+      const command = ["ollama", ...task.args()].join(" ");
       const action = await vscode.window.showInformationMessage("Run " + command + "?", {modal: true}, "Run in Terminal");
       if (action !== "Run in Terminal") return;
       const terminal = vscode.window.createTerminal({name: "Hushavyr: " + task.title, cwd: homedir()});
@@ -88,6 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminal.sendText(command);
     }));
   }
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.setup", () => runSetup()));
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
     if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
@@ -596,7 +558,13 @@ export function activate(context: vscode.ExtensionContext): void {
       const endpoint = config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434");
       const timeoutMs = config.get<number>("timeoutSeconds", 180) * 1000;
       const client = new LocalOllama({model, endpoint, timeoutMs});
-      const notifyPull = (name: string) => () => stream.markdown("Downloading local model `" + name + "` (one-time, may take several minutes)...\n\n");
+      const notifyPull = (name: string) => {
+        let announced = false;
+        return (percent?: number) => {
+          if (!announced) { announced = true; stream.markdown("Downloading local model `" + name + "` (one-time, may take several minutes)...\n\n"); }
+          stream.progress("Downloading " + name + (percent === undefined ? "" : " " + percent + "%"));
+        };
+      };
       await client.ensureInstalled(controller.signal, notifyPull(model));
       const withSignal = (local: LocalOllama) => ({generate: (text: string, options = {}) =>
         local.generate(text, {...options, signal: controller.signal})});
