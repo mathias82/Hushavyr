@@ -41,6 +41,23 @@ function offlineSecurityFindings(source: ReviewInput): Finding[] {
   const findings: Finding[] = [];
   for (const file of reviewSources(source)) {
     const lines = file.text.split(/\r?\n/);
+    // Detect Java HTTP responses assembled from an unescaped dynamic JSON string.
+    // This is a narrow correctness check, not a generic concatenation alarm.
+    if (/\\.java$/i.test(file.path)) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!/\\.entity\\s*\\(/.test(line) || !/\\+\\s*[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*\\(\\))?/.test(line)) continue;
+        if (!/\\\\\"/.test(line) || !/\\{/.test(line)) continue;
+        findings.push({
+          title: "Local rule: Dynamic value embedded in manually constructed JSON",
+          severity: "medium", evidence: line,
+          fix: "Serialize a response DTO or JSON object with the framework's JSON serializer rather than concatenating unescaped values.",
+          regressionTest: "Use an input containing quotes and backslashes, then assert the HTTP response parses as valid JSON.",
+          status: "potential", path: file.path, line: (file.startLine ?? 1) + i
+        });
+        if (findings.length >= 10) return findings;
+      }
+    }
     for (const issue of scanSecurity(file.path, file.text)) {
       // Only surface high-confidence, directly visible TLS misconfiguration here.
       // Broader heuristic checks remain in /security to avoid noisy /review output.
