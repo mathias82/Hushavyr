@@ -30,3 +30,13 @@ jobs:
         env:
           HUSHAVYR_PYTHON_DOCKER_SMOKE: '1'
         run: node --test dist/test/fix-python.test.js
+      - name: Build TypeScript proof fixture image
+        run: |
+          docker build -t hushavyr-typescript:local - <<'DOCKERFILE'
+          FROM node:24-slim
+          RUN npm install --global --ignore-scripts typescript@5.9.3
+          DOCKERFILE
+      - name: Run JavaScript and TypeScript proofs offline
+        env:
+          HUSHAVYR_NODE_DOCKER_SMOKE: '1'
+        run: node --test dist/test/fix-node.test.js

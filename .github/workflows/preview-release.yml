@@ -57,4 +57,4 @@ jobs:
           gh release create "$tag" "$package" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Hushavyr $version preview" --prerelease \
-            --notes "Adds the in-editor Ollama setup guide and a Hushavyr-branded VSIX filename. Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."
+            --notes "Adds offline patch verification for JavaScript and TypeScript with native Node tests. TypeScript runs a compiler check before each test stage. Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."
