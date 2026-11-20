@@ -19,7 +19,24 @@ Type `@ai-privacy` in VS Code Chat:
 | `/gitleaks` | Run locally installed Gitleaks to detect exposed secrets (values redacted) |
 | `/dependencies` | Audit dependencies offline with locally installed Trivy and preloaded vulnerability database |
 
-Available commands depend on the extension installed in VS Code. Semgrep and Gitleaks require their respective local executables; Hushavyr does not automatically install them.
+Available commands depend on the extension installed in VS Code. Semgrep, Gitleaks and Trivy require their local executables; Hushavyr offers to install them (with your consent) but never downloads anything silently.
+
+## Command Palette
+
+| Command | Purpose |
+| --- | --- |
+| **Hushavyr: Setup** | Check Ollama, choose and download a local model, install optional scanners |
+| **Hushavyr: Update Trivy Vulnerability Database** | Download the public CVE database (asks first; no code leaves your machine) |
+| **Hushavyr: Export SBOM (CycloneDX)** | Write `hushavyr-sbom.cdx.json` locally |
+| **Hushavyr: Clear Review Markers** | Remove `/review` and dependency markers from the editor |
+
+## Highlights
+
+- **Smart default model:** unless you set `aiPrivacyRouter.ollamaModel`, Hushavyr uses `qwen2.5-coder:14b` on 20 GB+ memory and `32b` on 48 GB+ (otherwise `7b`), downloaded automatically on first use.
+- **Findings in the editor:** `/review` results appear as Problems; `/dependencies` lists each CVE once with severity, fixed version and affected manifests, and marks the dependency line. A quick fix updates the version when it is on that line.
+- **Dependency ecosystems:** Maven, Gradle, npm, yarn, pnpm, pip, Poetry, Pipenv, Go, Cargo, Composer, Bundler, NuGet.
+- **Richer review context:** `/review` follows local imports in Java, TypeScript/JavaScript and Python (up to 3 related files).
+- **Language:** set `aiPrivacyRouter.language` to `el` for Greek `/dependencies` output.
 
 ## Preview
 
@@ -33,7 +50,7 @@ See the [Hushavyr interface preview](docs/images/hushavyr-local-review.svg) on G
 2. Run **Hushavyr: Setup** from the Command Palette (also offered on first launch). It checks Ollama, lets you pick a local model (it recommends one for your memory: `qwen2.5-coder:7b`, `14b` or `32b`; without a setting, that recommendation is used automatically), downloads it with progress, and offers one-click installs for Semgrep, Gitleaks and Trivy. Every install needs your explicit approval. If Ollama itself is missing, use **Hushavyr: Install Ollama**.
 3. Open a trusted local project and try `@ai-privacy /review` or `@ai-privacy /scan`. A missing model is downloaded automatically on first use.
 4. Run `@ai-privacy /semgrep`, `/gitleaks` or `/dependencies`. If a scanner is missing, Hushavyr offers to install it; nothing is downloaded silently.
-5. Small models (7B) often miss bugs. Use `qwen2.5-coder:14b` or larger if your machine has 20 GB+ of memory.
+5. Small models (7B) often miss bugs. The default already uses `qwen2.5-coder:14b` or larger when your machine has 20 GB+ of memory.
 
 **Privacy boundary:** Local review and scanning use Ollama without cloud fallback. Hushavyr cannot intercept requests made directly to Copilot, Claude, or other VS Code assistants. Findings are potential issues requiring independent verification.
 
