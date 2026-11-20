@@ -216,14 +216,14 @@ export function activate(context: vscode.ExtensionContext): void {
       // file reference. Do not assume all context values are class instances.
       const candidate = value && typeof value === "object" && "uri" in value
         ? (value as {uri: unknown}).uri : value;
-      const uri = candidate instanceof vscode.Uri ? candidate
+      const uri = typeof vscode.Uri === "function" && candidate instanceof vscode.Uri ? candidate
         : candidate && typeof candidate === "object" && "scheme" in candidate
           && "path" in candidate && typeof (candidate as {scheme: unknown}).scheme === "string"
           && typeof (candidate as {path: unknown}).path === "string"
           ? vscode.Uri.from(candidate as { scheme: string; path: string; authority?: string; query?: string; fragment?: string }) : undefined;
       const rangeValue = value && typeof value === "object" && "range" in value
         ? (value as {range: unknown}).range : undefined;
-      const range = rangeValue instanceof vscode.Range ? rangeValue
+      const range = typeof vscode.Range === "function" && rangeValue instanceof vscode.Range ? rangeValue
         : rangeValue && typeof rangeValue === "object" && "start" in rangeValue && "end" in rangeValue
           ? new vscode.Range(
               new vscode.Position((rangeValue as vscode.Range).start.line, (rangeValue as vscode.Range).start.character),
