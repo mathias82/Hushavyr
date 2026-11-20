@@ -15,13 +15,14 @@ async function collectFindings(
   const raw = await client.generate(prompt, {schema: reviewSchema});
   if (cancelled()) return;
   const first = validateReview(raw, source);
-  // Preserve useful, validated findings. An empty valid review needs no repair.
-  if (first.findings.length || (!first.error && !first.rejected)) return first;
-  const feedback = first.error ?? first.rejectionReasons?.join("; ") ?? "Invalid finding";
+  // An empty model response is inconclusive: make one focused local retry.
+  // Never manufacture findings or bypass source evidence validation.
+  if (first.findings.length) return first;
+  const feedback = first.error ?? (first.proposed === 0 ? "No candidate findings were proposed." : first.rejectionReasons?.join("; ") ?? "Invalid finding");
   try {
     const repaired = await client.generate(prompt +
       "\n\nLOCAL VALIDATOR FEEDBACK: " + feedback +
-      "\nReview the source again. Correct the response shape and choose a valid source path and line range. " +
+      "\nReview the source again, inspecting boundary conditions, error handling, and any visible concrete failure mechanisms. Correct the response shape and choose a valid source path and line range. " +
       "Discard any unsupported claim; return an empty findings array if no concrete issue is supported.",
       {schema: reviewSchema});
     if (cancelled()) return;
