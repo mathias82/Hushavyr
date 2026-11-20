@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -109,7 +109,12 @@
         "aiPrivacyRouter.ollamaModel": {
           "type": "string",
           "default": "qwen2.5-coder:7b",
-          "examples": ["qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"],
+          "examples": [
+            "qwen2.5-coder:7b",
+            "qwen2.5-coder:14b",
+            "qwen2.5-coder:32b",
+            "deepseek-coder-v2:16b"
+          ],
           "description": "Local Ollama model name. If it is not installed, it is downloaded automatically on first use.",
           "scope": "application"
         },
