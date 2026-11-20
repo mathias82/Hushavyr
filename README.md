@@ -16,6 +16,34 @@
 
 > **Important:** Installing Hushavyr does **not** silently install Ollama, start a server, or download a model. Each setup command requires user action/confirmation. Ollama runs locally; if it is unavailable, Hushavyr does not silently send your code to a cloud provider. If commands are missing, run **Developer: Reload Window**, then search for `Hushavyr` again.
 
+### Verify that the local Qwen model downloaded successfully
+
+After **Hushavyr: Download Local Qwen Model**, the VS Code Terminal runs:
+
+```bash
+ollama pull qwen2.5-coder:7b
+```
+
+A successful download of the approximately 4.7 GB model ends with output similar to:
+
+```text
+pulling manifest
+pulling ... 100%
+verifying sha256 digest
+writing manifest
+success
+```
+
+The final **`success`** means the model files and manifest were downloaded and verified. To confirm the model is installed, run:
+
+```bash
+ollama list
+```
+
+Look for `qwen2.5-coder:7b` in the list. Next, run **Hushavyr: Start Ollama** if the local server is not already running, followed by **Hushavyr: Ask Local Qwen** to test a prompt. You can also test the model independently in the terminal with `ollama run qwen2.5-coder:7b`.
+
+**If the download fails:** A `503` response containing an HTML **Access Denied** page may indicate a network proxy or organizational security filter rather than a corrupted model. Check the network connection and contact your IT administrator for an approved way to access the Ollama model registry. Do not bypass workplace security policies. Retry **Hushavyr: Download Local Qwen Model** once access is restored; Ollama can reuse already downloaded layers.
+
 ### Available Hushavyr commands
 
 Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type `Hushavyr` to find:
