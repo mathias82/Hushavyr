@@ -1,3 +1,4 @@
+import {homedir} from "node:os";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
 import { classifyInput } from "./classifier";
@@ -12,6 +13,32 @@ import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
+    if (!vscode.workspace.isTrusted || vscode.env.remoteName) {
+      await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
+      return;
+    }
+    const commands = {
+      darwin: "brew install ollama",
+      win32: "winget install --id Ollama.Ollama --exact",
+      linux: "curl -fsSL https://ollama.com/install.sh | sh"
+    };
+    const platform = process.platform;
+    if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
+      await vscode.env.openExternal(vscode.Uri.parse("https://ollama.com/download"));
+      return;
+    }
+    const command = commands[platform];
+    const action = await vscode.window.showInformationMessage("Run the Ollama installer in the VS Code terminal?",
+      {modal: true, detail: command}, "Run installer", "Open download page");
+    if (action === "Open download page") {
+      await vscode.env.openExternal(vscode.Uri.parse("https://ollama.com/download"));
+    } else if (action === "Run installer") {
+      const terminal = vscode.window.createTerminal({name: "Hushavyr: Ollama setup", cwd: homedir()});
+      terminal.show();
+      terminal.sendText(command);
+    }
+  }));
   // Remember the last non-empty editor selection when focus moves into Chat.
   let lastSelection: {uri: string; text: string; startLine: number} | undefined;
   let lastCodeEditor: vscode.TextEditor | undefined;
