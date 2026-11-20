@@ -12,6 +12,7 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onCommand:aiPrivacyRouter.setup",
+    "onCommand:aiPrivacyRouter.clearFindings",
     "onCommand:aiPrivacyRouter.installOllama",
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
@@ -59,6 +60,10 @@
       }
     ],
     "commands": [
+      {
+        "command": "aiPrivacyRouter.clearFindings",
+        "title": "Hushavyr: Clear Review Markers"
+      },
       {
         "command": "aiPrivacyRouter.setup",
         "title": "Hushavyr: Setup"
