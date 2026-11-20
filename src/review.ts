@@ -1,7 +1,7 @@
 import { ReviewInput, reviewSources, sourcePrompt } from "./context";
 /** Evidence-gated local review: never promote unverified model claims to confirmed bugs. */
 export interface Finding { title: string; severity: string; evidence: string; fix: string; regressionTest: string; status: "potential" | "confirmed"; path?: string; line?: number; verification?: "supported" | "unverified" }
-export interface ReviewResult { findings: Finding[]; rejected: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; verifierFailed?: boolean }
+export interface ReviewResult { findings: Finding[]; rejected: number; proposed?: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; verifierFailed?: boolean }
 // Ollama constrains the shape; source validation below still decides what can be shown.
 export const reviewSchema = {
   type: "object",
@@ -52,6 +52,7 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
   const obj = record(parsed);
   if (!obj || !Array.isArray(obj.findings)) return {findings:[],rejected:0,error:"Missing findings array"};
   const findings: Finding[] = [];
+  const proposed = Math.min(obj.findings.length, 20);
   let rejected = 0;
   const rejectionReasons = new Set<string>();
   const reject = (reason: string): void => { rejected++; rejectionReasons.add(reason); };
@@ -91,13 +92,14 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
     const line = validRange ? start as number : normalizedSource.slice(0, normalizedSource.indexOf(evidence.replace(/\r\n/g,"\n"))).split("\n").length + (matched?.startLine ?? 1) - 1;
     findings.push({title,severity,evidence,fix,regressionTest,status:"potential",path:matched!.path,line});
   }
-  return {findings,rejected,rejectionReasons:[...rejectionReasons]};
+  return {findings,rejected,proposed,rejectionReasons:[...rejectionReasons]};
 }
 export function formatReview(result: ReviewResult): string {
   if (result.error) return "**Review not verified:** " + result.error + ". No findings promoted." +
     (result.retryFailed ? " The local repair attempt also failed." : "") + " Try again with a smaller selection.";
   const lines = ["### Evidence-gated local review", "", "All findings are **potential**, not confirmed. Tests were suggested, not executed.", ""];
-  if (!result.findings.length) lines.push("No findings passed evidence checks. This does not prove the code is bug-free.", "");
+  lines.push("**Review diagnostics:** " + (result.proposed ?? result.findings.length + result.rejected) + " proposed · " + result.findings.length + " passed source validation · " + result.rejected + " rejected by source validation · " + (result.verifierRejected ?? 0) + " rejected by second local pass.", "");
+  if (!result.findings.length) lines.push(result.proposed === 0 ? "The local model proposed no findings. This does not establish that the code is bug-free." : "No findings passed the evidence checks. The review was inconclusive; this does not establish that the code is bug-free.", "");
   for (const [i,f] of result.findings.entries()) lines.push(
     "#### " + (i+1) + ". " + f.title,
     "**Status:** Potential · **Severity:** " + f.severity,
