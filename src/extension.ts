@@ -1,3 +1,4 @@
+import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {execFile} from "node:child_process";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
@@ -131,14 +132,14 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = ((request.command === "scan" || request.command === "scan-changed") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = (request.command === "scan" || request.command === "scan-changed" || request.command === "secrets") || (request.command === "review" &&
+    const workspaceReview = (request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security") || (request.command === "review" &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
@@ -198,21 +199,29 @@ export function activate(context: vscode.ExtensionContext): void {
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
         }
-        if (request.command === "secrets") {
+        if (request.command === "secrets" || request.command === "security") {
           // Explicit deterministic mode: never invoke Ollama or any cloud provider.
           let sourceFindings = 0;
+          let securityFindings = 0;
           for (const uri of files) {
             if (token.isCancellationRequested) break;
             let bytes: Uint8Array;
             try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
             if (bytes.length > 60_000 || bytes.includes(0)) continue;
             const relative = vscode.workspace.asRelativePath(uri);
-            for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
+            const localContent = Buffer.from(bytes).toString("utf8");
+            if (request.command === "security") {
+              for (const finding of scanSecurity(relative, localContent)) {
+                securityFindings++;
+                stream.markdown("**" + finding.severity + " · " + finding.rule + "** · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` · " + finding.advice + "\n\n");
+              }
+            }
+            for (const finding of scanSecrets(localContent)) {
               sourceFindings++;
               stream.markdown("**HIGH · Potential hardcoded credential** · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\n\n");
             }
           }
-          stream.markdown("**Source secrets:** " + files.length + " files checked; " + sourceFindings + " potential findings. No Ollama or cloud requests.\n\n");
+          stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators. No Ollama or cloud requests. These findings require manual verification.\n\n");
           return;
         }
         if (!files.length) {
