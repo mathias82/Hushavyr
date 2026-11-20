@@ -1,7 +1,7 @@
 import {relatedJavaSources} from "./relatedJava";
 import {auditDependencies} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
-import {join} from "node:path";
+import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
@@ -187,6 +187,8 @@ export function activate(context: vscode.ExtensionContext): void {
       let skipped = 0;
       let findings = 0;
       let modelResponses = 0;
+      const scannerTotals: string[] = [];
+      let scannerFindingCount = 0;
       let deterministicFindings = 0;
       let failedReads = 0;
       try {
@@ -294,13 +296,43 @@ export function activate(context: vscode.ExtensionContext): void {
           stream.markdown("No supported source files found. Configuration secrets check completed locally; no Ollama request needed.");
           return;
         }
+        if (request.command === "scan") {
+          stream.markdown("**Offline scanner status**\\n\\n");
+          for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            for (const tool of ["semgrep", "gitleaks"] as const) {
+              if (token.isCancellationRequested) { completed = false; break; }
+              const scan = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr.yml"), controller.signal);
+              scannerTotals.push(tool + ": " + scan.status + " (" + scan.findings.length + " findings)");
+              scannerFindingCount += scan.findings.length;
+              stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\\n");
+              for (const finding of scan.findings) {
+                // Scanner metadata is untrusted: never render secret values or arbitrary messages.
+                const absolute = resolve(folder.uri.fsPath, finding.path);
+                const inside = relative(folder.uri.fsPath, absolute);
+                if (!inside || inside.startsWith("..") || isAbsolute(inside)) continue;
+                const safeRule = finding.rule.replace(/[\\r\\n\\`\\[\\]]/g, "").slice(0, 120);
+                const safeSeverity = finding.severity.replace(/[^A-Za-z]/g, "");
+                const target = vscode.Uri.file(absolute);
+                const location = findingLink(target, finding.line, inside + ":" + finding.line);
+                const advice = tool === "gitleaks"
+                  ? "Check whether this is a real credential; if active, revoke/rotate it and move it to a secret manager."
+                  : "Inspect the flagged code and rule; verify the risk and apply the rule-specific remediation.";
+                stream.markdown("  - **" + safeSeverity + " · " + tool + " · " + safeRule +
+                  "** · " + location + " · " + advice + " (sensitive values hidden)\\n");
+              }
+            }
+          }
+          stream.markdown("\\n");
+        }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
         const batchSize = 50;
         for (let batchStart = 0; batchStart < files.length; batchStart += batchSize) {
           if (token.isCancellationRequested) { completed = false; break; }
           const batch = files.slice(batchStart, batchStart + batchSize);
-          stream.markdown("**Batch " + (Math.floor(batchStart / batchSize) + 1) + "/" + Math.ceil(files.length / batchSize) + "** · " + batch.length + " files · " + inspected + " completed\n\n");
+          stream.markdown("**Batch " + (Math.floor(batchStart / batchSize) + 1) + "/" + Math.ceil(files.length / batchSize) + " · RUNNING** · " + batch.length + " files · " + inspected + " previously completed\n\n");
+          const batchInspectedBefore = inspected;
+          const batchSkippedBefore = skipped;
           for (const uri of batch) {
           if (token.isCancellationRequested) { completed = false; break; }
           let bytes: Uint8Array;
@@ -347,7 +379,7 @@ export function activate(context: vscode.ExtensionContext): void {
           }
           inspected++;
           }
-          stream.markdown("Progress: " + inspected + "/" + files.length + " inspected, " + skipped + " skipped.\n\n");
+          stream.markdown("**Batch " + (Math.floor(batchStart / batchSize) + 1) + "/" + Math.ceil(files.length / batchSize) + " · " + (token.isCancellationRequested ? "CANCELLED" : skipped > batchSkippedBefore ? "INCOMPLETE" : "COMPLETED") + "** · " + (inspected - batchInspectedBefore) + "/" + batch.length + " inspected in this batch · " + (skipped - batchSkippedBefore) + " skipped. Total: " + inspected + "/" + files.length + ".\n\n");
         }
         if (completed && !token.isCancellationRequested && currentFingerprints.length === files.length) {
           await context.workspaceState.update(indexKey, currentFingerprints);
@@ -356,7 +388,7 @@ export function activate(context: vscode.ExtensionContext): void {
           await context.workspaceState.update(indexKey, undefined);
           stream.markdown("**Index not saved:** scan incomplete or files skipped. The next incremental scan will recheck all readable files.\n\n");
         }
-        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped, " + unchanged + " unchanged files reused from local index, " + modelResponses + " Ollama responses, " + findings + " responses with potential findings, " + deterministicFindings + " potential configuration credentials, " + failedReads + " configuration files unreadable or skipped.\n\n" +
+        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped, " + unchanged + " unchanged files reused from local index, " + modelResponses + " Ollama responses, " + findings + " responses with potential findings, " + scannerFindingCount + " dedicated scanner findings (" + (scannerTotals.join("; ") || "not run") + "), " + deterministicFindings + " potential configuration credentials, " + failedReads + " configuration files unreadable or skipped.\n\n" +
           (token.isCancellationRequested ? "**Cancelled:** results are partial." : !completed ? "**Incomplete:** skipped files or chunks prevent a complete review." : findings === 0 ? "**AI coverage inconclusive:** Ollama reported no findings; this does not establish that the code is secure. Check the deterministic credential findings above and run dedicated local scanners." : "**Potential findings require human verification.**"));
       } catch (error) {
         await context.workspaceState.update(indexKey, undefined);
