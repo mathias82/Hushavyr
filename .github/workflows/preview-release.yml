@@ -18,7 +18,7 @@ jobs:
           node-version: '22'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
-      - run: npm run package:vsix
+      - run: npm run package:vsix -- --out "hushavyr-$(node -p 'require("./package.json").version').vsix"
       - uses: actions/upload-artifact@v4
         with:
           name: preview-vsix
@@ -42,10 +42,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(ai-privacy-router-*.vsix)
+          packages=(hushavyr-*.vsix)
           [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]]
           package="${packages[0]}"
-          version="${package#ai-privacy-router-}"
+          version="${package#hushavyr-}"
           version="${version%.vsix}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           tag="v$version"
@@ -57,4 +57,4 @@ jobs:
           gh release create "$tag" "$package" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Hushavyr $version preview" --prerelease \
-            --notes "Includes offline Python/pytest patch verification alongside Java/Maven. The Python runner requires a preloaded local image with pytest and project dependencies. Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."
+            --notes "Adds the in-editor Ollama setup guide and a Hushavyr-branded VSIX filename. Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."

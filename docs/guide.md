@@ -3,7 +3,7 @@
 See the [live privacy and routing smoke test](privacy-smoke-test.md) for repeatable checks in VS Code.
 For model evaluation, see the [Qwen and Sonnet review comparison](review-benchmark.md).
 
-Hushavyr (formerly AI Privacy Router) is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
+Hushavyr is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
 
 The extension controls its own requests. For sensitive work, use a VS Code profile with independent Copilot features disabled. Live privacy checks across the router and that profile are still pending. Try the examples below with synthetic data.
 
@@ -36,8 +36,8 @@ ollama serve  # only if Ollama is not already running
 In another terminal:
 
 ```bash
-npm run package:vsix
-code --install-extension ai-privacy-router-0.0.8.vsix
+npm run package:vsix -- --out hushavyr-0.0.9.vsix
+code --install-extension hushavyr-0.0.9.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **Hushavyr: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **Hushavyr: Classify Selection** and **Hushavyr: Review Cloud Override (No Transfer)**.
@@ -57,8 +57,8 @@ After this updater is present, run from the repository:
 npm run update:local
 npm ci --ignore-scripts
 npm test
-npm run package:vsix
-code --install-extension ai-privacy-router-0.0.8.vsix --force
+npm run package:vsix -- --out hushavyr-0.0.9.vsix
+code --install-extension hushavyr-0.0.9.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -73,7 +73,7 @@ An old locally generated `package-lock.json` can prevent Git from adopting the n
 (
 set -e
 if [ -e package-lock.json ] && ! git ls-files --error-unmatch -- package-lock.json >/dev/null 2>&1; then
-  backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/ai-privacy-router-lock.XXXXXX")"
+  backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/hushavyr-lock.XXXXXX")"
   mv package-lock.json "$backup_dir/package-lock.json"
   printf 'Saved local lockfile: %s\n' "$backup_dir/package-lock.json"
 fi
@@ -274,8 +274,8 @@ The JSON summary reports fixture-level precision, recall, unexpected findings, f
 npm ci --ignore-scripts
 npm run build
 npm test
-npm run package:vsix
-code --install-extension ai-privacy-router-0.0.8.vsix
+npm run package:vsix -- --out hushavyr-0.0.9.vsix
+code --install-extension hushavyr-0.0.9.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
