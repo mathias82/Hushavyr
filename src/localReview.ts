@@ -5,18 +5,65 @@ import { verifyReview } from "./verifyReview";
 import { scanSecurity } from "./securityRules";
 import { Finding } from "./review";
 
+export type ReviewDepth = "fast" | "thorough";
+export interface ReviewOptions {
+  /** "thorough" adds focused security and robustness passes; "fast" is one pass plus a retry when empty. */
+  depth?: ReviewDepth;
+  /** Static analyzer candidates (semgrep / bundled rules), triaged together with the model's findings. */
+  staticFindings?: Promise<Finding[]>;
+}
+
+// Appended after the shared prompt so every pass reuses the same prompt prefix (Ollama keeps its KV cache).
+export const LENSES = [
+  "FOCUS FOR THIS PASS: security only. Look for injection (SQL, shell command, path, template, LDAP), cross-site scripting, unsafe deserialization, disabled TLS validation, weak cryptography, hardcoded credentials, SSRF and missing authorization checks. Report a finding only when an externally influenced value visibly reaches the sink.",
+  "FOCUS FOR THIS PASS: robustness only. Look for null/undefined dereferences, off-by-one and boundary errors, integer overflow, falsy-zero defaults, wrong comparators or sorting, shared mutable defaults, unclosed resources, swallowed errors and race conditions."
+];
+
+/** Same location (path and overlapping line range) means the same finding; the first one wins. */
+export function mergeFindings(...lists: readonly Finding[][]): Finding[] {
+  const merged: Finding[] = [];
+  for (const finding of lists.flat()) {
+    const span = (f: Finding): [number, number] => [f.line ?? 0, (f.line ?? 0) + f.evidence.split("\n").length - 1];
+    const [start, end] = span(finding);
+    if (merged.some(m => { const [a, b] = span(m); return m.path === finding.path && a <= end && start <= b; })) continue;
+    merged.push(finding);
+    if (merged.length >= 20) break;
+  }
+  return merged;
+}
+
+async function lensFindings(client: Pick<LocalOllama, "generate">, prompt: string, source: ReviewInput,
+  cancelled: () => boolean): Promise<ReviewResult[]> {
+  const results: ReviewResult[] = [];
+  for (const lens of LENSES) {
+    if (cancelled()) break;
+    try { results.push(validateReview(await client.generate(prompt + "\n\n" + lens, {schema: reviewSchema}), source)); }
+    catch { /* one failed lens must not discard the other passes */ }
+  }
+  return results;
+}
+
 /** At most two local inference calls, plus model-metadata checks. Every attempt goes through the same evidence gate. */
 async function collectFindings(
   client: Pick<LocalOllama, "generate">,
   instruction: string,
   source: ReviewInput,
-  cancelled: () => boolean = () => false
+  cancelled: () => boolean = () => false,
+  depth: ReviewDepth = "fast"
 ): Promise<ReviewResult | undefined> {
   if (cancelled()) return;
   const prompt = reviewPrompt(instruction, source);
   const raw = await client.generate(prompt, {schema: reviewSchema});
   if (cancelled()) return;
   const first = validateReview(raw, source);
+  if (depth === "thorough") {
+    const passes = [first, ...await lensFindings(client, prompt, source, cancelled)];
+    if (cancelled()) return;
+    return {...first, findings: mergeFindings(...passes.map(p => p.findings)),
+      proposed: passes.reduce((n, p) => n + (p.proposed ?? 0), 0),
+      rejected: passes.reduce((n, p) => n + p.rejected, 0),
+      rejectionReasons: [...new Set(passes.flatMap(p => p.rejectionReasons ?? []))]};
+  }
   // An empty model response is inconclusive: make one focused local retry.
   // Never manufacture findings or bypass source evidence validation.
   if (first.findings.length) return first;
@@ -78,18 +125,21 @@ function offlineSecurityFindings(source: ReviewInput): Finding[] {
   return findings;
 }
 
-/** Review + one possible repair + one separate verification pass; all local. */
+/** Hybrid review: model passes + static analyzer candidates, then one separate verification pass; all local. */
 export async function runLocalReview(
   client: Pick<LocalOllama, "generate">, instruction: string, source: ReviewInput,
-  cancelled: () => boolean = () => false, verifier?: Pick<LocalOllama, "generate">
+  cancelled: () => boolean = () => false, verifier?: Pick<LocalOllama, "generate">,
+  options: ReviewOptions = {}
 ): Promise<ReviewResult | undefined> {
   validateContext(instruction, reviewSources(source));
-  const result = await collectFindings(client, instruction, source, cancelled);
-  if (!result || cancelled()) return;
+  const model = await collectFindings(client, instruction, source, cancelled, options.depth);
+  if (!model || cancelled()) return;
+  const staticCandidates = options.staticFindings ? await options.staticFindings.catch(() => []) : [];
+  const result = staticCandidates.length && !model.error
+    ? {...model, findings: mergeFindings(model.findings, staticCandidates), staticCandidates: staticCandidates.length}
+    : model;
   const verified = verifier ? await verifyReview(verifier, result, source, cancelled) : result;
   if (!verified || cancelled()) return;
-  const offline = offlineSecurityFindings(source).filter(indicator =>
-    !verified.findings.some(f => f.path === indicator.path && f.line === indicator.line));
-  return {...verified, findings: [...verified.findings, ...offline]};
+  return {...verified, findings: mergeFindings(verified.findings, offlineSecurityFindings(source))};
 
 }

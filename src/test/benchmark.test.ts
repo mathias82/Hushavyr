@@ -21,7 +21,7 @@ test("shared review scoring reports invalid responses and evidence rejections in
   const score = scoreReviewResponses(responses);
   assert.equal(score.totals.invalidResponses, 1);
   assert.equal(score.totals.rejectedFindings, 1);
-  assert.equal(score.totals.falseNegative, 10);
+  assert.equal(score.totals.falseNegative, benchmarkCases.filter(c => c.expected).length);
   assert.equal(score.precision, null);
   assert.equal(score.recall, 0);
   assert.throws(() => scoreReviewResponses({...responses, unknown: "{}"}), /every benchmark case/);
@@ -59,9 +59,9 @@ test("security benchmark contains paired vulnerable and safe controls", () => {
 test("offline comparison scores identical fixtures across named provider responses", () => {
   const empty = Object.fromEntries(benchmarkCases.map(fixture => [fixture.id, '{"findings":[]}']));
   const compared = compareReviewResponses({localQwen: empty, "Claude Sonnet (imported)": {...empty}});
-  assert.equal(compared.fixtureCount, 20);
+  assert.equal(compared.fixtureCount, benchmarkCases.length);
   assert.equal(compared.providers.length, 2);
-  assert.equal(compared.providers[0].totals.falseNegative, 10);
+  assert.equal(compared.providers[0].totals.falseNegative, benchmarkCases.filter(c => c.expected).length);
   assert.equal(compared.providers[1].recall, 0);
   assert.match(compared.limitation, /No cloud requests/);
 });

@@ -1,0 +1,270 @@
+# Local, offline rule pack used by /review (hybrid static + LLM triage) and the CLI.
+# Messages name the mechanism so the AI verifier and reports can explain each hit.
+rules:
+  # ---------- SQL injection ----------
+  - id: hushavyr.java-sql-concatenation
+    languages: [java, kotlin]
+    severity: ERROR
+    message: SQL injection - query built by string concatenation reaches an SQL execution sink
+    metadata: {fix: "Use PreparedStatement with ? placeholders and bind values with setString/setInt.", test: "Pass a value containing a single quote (O'Brien) and assert the query still returns the matching row without an SQL error."}
+    patterns:
+      - pattern-either:
+          - pattern: $S.$M("..." + $X, ...)
+          - pattern: $S.$M($A + $X, ...)
+          - pattern: $S.$M(String.format(...), ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(executeQuery|executeUpdate|execute|addBatch|prepareStatement|prepareCall|createQuery|createNativeQuery|query|queryForList|queryForObject|queryForMap|update)$
+  - id: hushavyr.js-sql-concatenation
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: SQL injection - query built from string concatenation or a template literal reaches a database call
+    metadata: {fix: "Use parameter placeholders (? or $1) and pass values as the parameters array.", test: "Call with a value containing a single quote and assert the query is parameterized and no SQL error occurs."}
+    patterns:
+      - pattern-either:
+          - pattern: $DB.$M("$SQL" + $X, ...)
+          - pattern: $DB.$M(`...${$X}...`, ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(query|execute|raw|unsafe|\$queryRawUnsafe|\$executeRawUnsafe)$
+  - id: hushavyr.python-sql-formatting
+    languages: [python]
+    severity: ERROR
+    message: SQL injection - query built with string formatting reaches cursor.execute
+    metadata: {fix: "Pass parameters separately: cursor.execute(\"... WHERE name = %s\", (value,)).", test: "Call with a value containing a single quote and assert no SQL error and correct results."}
+    pattern-either:
+      - pattern: $C.execute("..." % $X, ...)
+      - pattern: $C.execute("..." + $X, ...)
+      - pattern: $C.execute(f"...", ...)
+      - pattern: $C.execute("...".format(...), ...)
+      - pattern: $C.executemany(f"...", ...)
+  - id: hushavyr.go-sql-concatenation
+    languages: [go]
+    severity: ERROR
+    message: SQL injection - query built with fmt.Sprintf or concatenation reaches database/sql
+    metadata: {fix: "Use placeholders (? or $1) and pass values as query arguments.", test: "Call with a value containing a single quote and assert the query succeeds safely."}
+    patterns:
+      - pattern-either:
+          - pattern: $DB.$M(fmt.Sprintf(...), ...)
+          - pattern: $DB.$M("..." + $X, ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(Query|QueryRow|Exec|QueryContext|QueryRowContext|ExecContext)$
+  # ---------- Command injection ----------
+  - id: hushavyr.python-shell-execution
+    languages: [python]
+    severity: ERROR
+    message: Command injection - subprocess with shell=True executes a shell command string
+    metadata: {fix: "Pass an argument list and keep shell=False (the default).", test: "Pass an argument containing ; or $(...) and assert no extra command runs."}
+    pattern-either:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: os.system($X)
+      - pattern: os.popen($X, ...)
+  - id: hushavyr.java-runtime-exec
+    languages: [java, kotlin]
+    severity: WARNING
+    message: Command injection - Runtime.exec with a dynamically built command string
+    metadata: {fix: "Use ProcessBuilder with a fixed executable and separate, validated arguments.", test: "Pass an argument containing spaces and shell metacharacters and assert it is treated as one literal argument."}
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec("..." + $X, ...)
+      - pattern: Runtime.getRuntime().exec(String.format(...), ...)
+  - id: hushavyr.js-child-process-exec
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Command injection - child_process exec runs a shell command built from dynamic input
+    metadata: {fix: "Use execFile/spawn with an argument array and no shell.", test: "Pass an argument containing ; rm and assert no extra command runs."}
+    patterns:
+      - pattern-either:
+          - pattern: $CP.$F("..." + $X, ...)
+          - pattern: $CP.$F(`...${$X}...`, ...)
+          - pattern: $F("..." + $X, ...)
+          - pattern: $F(`...${$X}...`, ...)
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(exec|execSync)$
+  # ---------- Code execution / deserialization ----------
+  - id: hushavyr.js-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Code injection - eval or new Function executes a dynamic string
+    metadata: {fix: "Parse data with JSON.parse or dispatch to a fixed set of functions.", test: "Pass input containing a function call and assert it is not executed."}
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: new Function(..., $X)
+      - pattern-not: eval("...")
+      - pattern-not: new Function(..., "...")
+  - id: hushavyr.python-eval
+    languages: [python]
+    severity: WARNING
+    message: Code injection - eval or exec runs a dynamic string
+    metadata: {fix: "Use ast.literal_eval for literals or a fixed dispatch table.", test: "Pass __import__('os').system('id') and assert it is rejected."}
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+  - id: hushavyr.python-unsafe-deserialization
+    languages: [python]
+    severity: ERROR
+    message: Insecure deserialization - pickle/marshal or yaml.load without SafeLoader can execute code
+    metadata: {fix: "Use json or yaml.safe_load; never unpickle untrusted data.", test: "Feed a crafted payload and assert it is rejected instead of executed."}
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: marshal.loads(...)
+      - patterns:
+          - pattern: yaml.load(...)
+          - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+          - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+          - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
+  - id: hushavyr.java-deserialization
+    languages: [java]
+    severity: WARNING
+    message: Insecure deserialization - ObjectInputStream.readObject without an allowlist filter
+    metadata: {fix: "Set an ObjectInputFilter allowlist or use a data format such as JSON.", test: "Deserialize a gadget-like class outside the allowlist and assert it is rejected."}
+    patterns:
+      - pattern: new ObjectInputStream(...)
+      - pattern-not-inside: |
+          $T $V = new ObjectInputStream(...);
+          ...
+          $V.setObjectInputFilter(...);
+  # ---------- TLS / crypto ----------
+  - id: hushavyr.javascript-insecure-tls
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: TLS certificate validation disabled - rejectUnauthorized false accepts any certificate
+    metadata: {fix: "Remove rejectUnauthorized false; trust a specific CA with the ca option if needed.", test: "Connect to a server with a self-signed certificate and assert the request fails."}
+    pattern-either:
+      - pattern: "{..., rejectUnauthorized: false, ...}"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+  - id: hushavyr.python-tls-disabled
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate validation disabled - verify=False accepts any certificate
+    metadata: {fix: "Remove verify=False or point verify at a CA bundle.", test: "Request a host with an invalid certificate and assert an SSLError."}
+    pattern: $R.$M(..., verify=False, ...)
+  - id: hushavyr.go-insecure-tls
+    languages: [go]
+    severity: ERROR
+    message: TLS certificate validation disabled - InsecureSkipVerify true accepts any certificate
+    metadata: {fix: "Remove InsecureSkipVerify or configure RootCAs.", test: "Connect to a self-signed server and assert the handshake fails."}
+    pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+  - id: hushavyr.java-insecure-trust-manager
+    languages: [java]
+    severity: ERROR
+    message: TLS certificate validation disabled - trust-all manager or hostname verifier
+    metadata: {fix: "Use the default TrustManager and HostnameVerifier or pin a specific CA.", test: "Connect to a server with an invalid certificate and assert the connection fails."}
+    pattern-either:
+      - pattern: InsecureTrustManagerFactory.INSTANCE
+      - pattern: NoopHostnameVerifier.INSTANCE
+      - pattern: |
+          public void checkServerTrusted(...) {}
+  - id: hushavyr.weak-hash
+    languages: [java, kotlin]
+    severity: WARNING
+    message: Weak cryptographic hash - MD5/SHA-1 are broken for security use
+    metadata: {fix: "Use SHA-256 or stronger; for passwords use bcrypt, scrypt or Argon2.", test: "Assert the digest length matches SHA-256 (32 bytes)."}
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("SHA1")
+  - id: hushavyr.weak-hash-js
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Weak cryptographic hash - MD5/SHA-1 are broken for security use
+    metadata: {fix: "Use sha256 or stronger; for passwords use scrypt, bcrypt or Argon2.", test: "Assert the digest length matches SHA-256."}
+    pattern-either:
+      - pattern: $C.createHash("md5")
+      - pattern: $C.createHash("sha1")
+  - id: hushavyr.weak-hash-python
+    languages: [python]
+    severity: WARNING
+    message: Weak cryptographic hash - MD5/SHA-1 are broken for security use
+    metadata: {fix: "Use hashlib.sha256 or stronger; for passwords use hashlib.scrypt or bcrypt.", test: "Assert the digest length matches SHA-256."}
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+  - id: hushavyr.java-weak-cipher
+    languages: [java, kotlin]
+    severity: WARNING
+    message: Weak encryption - DES or ECB mode leaks plaintext patterns
+    metadata: {fix: "Use AES/GCM/NoPadding with a random 12-byte IV.", test: "Encrypt two identical blocks and assert the ciphertext blocks differ."}
+    patterns:
+      - pattern: Cipher.getInstance("$ALG")
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: ^(DES.*|AES|AES/ECB/.*|.*/ECB/.*|RC4|Blowfish)$
+  # ---------- Web ----------
+  - id: hushavyr.js-dom-xss
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Cross-site scripting (XSS) - dynamic value written to innerHTML/outerHTML or document.write
+    metadata: {fix: "Use textContent or sanitize with a vetted HTML sanitizer.", test: "Render a value containing <img src=x onerror=alert(1)> and assert no element is created."}
+    patterns:
+      - pattern-either:
+          - pattern: $E.innerHTML = $X
+          - pattern: $E.outerHTML = $X
+          - pattern: document.write($X)
+          - pattern: $E.insertAdjacentHTML($P, $X)
+      - pattern-not: $E.innerHTML = "..."
+      - pattern-not: $E.outerHTML = "..."
+      - pattern-not: document.write("...")
+      - pattern-not: $E.insertAdjacentHTML($P, "...")
+  - id: hushavyr.js-path-traversal
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Path traversal - request input used in a filesystem path
+    metadata: {fix: "Resolve the path and verify it stays inside the allowed base directory; reject ..", test: "Request ../../etc/passwd and assert a 400/403."}
+    patterns:
+      - pattern-either:
+          - pattern: $FS.$F(<... $REQ.$P ...>, ...)
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(readFile|readFileSync|createReadStream|sendFile|writeFile|writeFileSync|unlink|unlinkSync)$
+      - metavariable-regex:
+          metavariable: $P
+          regex: ^(params|query|body)$
+  - id: hushavyr.python-path-traversal
+    languages: [python]
+    severity: WARNING
+    message: Path traversal - request input used in a filesystem path
+    metadata: {fix: "Use werkzeug.utils.safe_join or resolve and check the path stays inside the base directory.", test: "Request ../../etc/passwd and assert it is rejected."}
+    pattern-either:
+      - pattern: open(<... request.$A ...>, ...)
+      - pattern: send_file(<... request.$A ...>, ...)
+  - id: hushavyr.java-path-traversal
+    languages: [java]
+    severity: WARNING
+    message: Path traversal - request parameter used in a filesystem path
+    metadata: {fix: "Normalize the path and verify it starts with the allowed base directory.", test: "Request ../../etc/passwd and assert it is rejected."}
+    pattern-either:
+      - pattern: new File(..., $REQ.getParameter(...))
+      - pattern: new FileInputStream($REQ.getParameter(...))
+      - pattern: Paths.get(..., $REQ.getParameter(...), ...)
+  - id: hushavyr.python-ssrf
+    languages: [python]
+    severity: WARNING
+    message: Server-side request forgery (SSRF) - request input used as an outbound URL
+    metadata: {fix: "Allowlist hosts and schemes before fetching.", test: "Request http://169.254.169.254/ and assert it is rejected."}
+    pattern: requests.$M(request.$A.get(...), ...)
+  - id: hushavyr.java-xxe
+    languages: [java]
+    severity: WARNING
+    message: XML external entity (XXE) - parser created without disabling DOCTYPE/external entities
+    metadata: {fix: "Call setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true) on the factory.", test: "Parse a document with an external entity and assert it is rejected."}
+    patterns:
+      - pattern: $F = DocumentBuilderFactory.newInstance();
+      - pattern-not-inside: |
+          $F = DocumentBuilderFactory.newInstance();
+          ...
+          $F.setFeature(...);
+  - id: hushavyr.java-cookie-insecure
+    languages: [java]
+    severity: INFO
+    message: Insecure cookie - cookie explicitly marked not Secure or not HttpOnly
+    metadata: {fix: "Call setSecure(true) and setHttpOnly(true).", test: "Assert the Set-Cookie header contains Secure and HttpOnly."}
+    pattern-either:
+      - pattern: $C.setSecure(false)
+      - pattern: $C.setHttpOnly(false)

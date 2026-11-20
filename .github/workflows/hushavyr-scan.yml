@@ -1,0 +1,32 @@
+name: Hushavyr scan
+# Offline scan of this repository (bundled rules, Semgrep, credentials); results appear in the Security tab.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - run: pip install --quiet semgrep
+      - name: Scan
+        run: node dist/cli.js . --sarif hushavyr.sarif --fail-on none
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('hushavyr.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: hushavyr.sarif
+          category: hushavyr
