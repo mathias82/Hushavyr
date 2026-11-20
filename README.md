@@ -41,4 +41,4 @@ For setup, supported languages, security limits, and troubleshooting, see the [f
 
 **Author:** Matthaios Stavrou · [GitHub](https://github.com/mathias82/Hushavyr)
 
-**Offline dependency audit:** Install Trivy and preload its vulnerability database while outside restricted networks. Hushavyr runs Trivy with offline scanning and DB updates disabled. An absent or outdated database must not be interpreted as a clean scan. This initial integration reports counts, not verified fixed-version recommendations.
+**Offline dependency audit:** Install Trivy and preload its vulnerability database while outside restricted networks. Hushavyr runs Trivy with offline scanning and DB updates disabled. An absent or outdated database must not be interpreted as a clean scan. `/dependencies` lists each CVE with package, installed version, fixed version (when Trivy knows one) and severity; the fixed version comes from the Trivy database and is not verified against your build.

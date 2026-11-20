@@ -3,7 +3,27 @@ import {promisify} from "node:util";
 import {join} from "node:path";
 import {access} from "node:fs/promises";
 const exec=promisify(execFile);
-export interface DependencyAudit {status:"ok"|"missing"|"failed"|"unsupported";manager?:string;findings:number;note:string}
+export interface DependencyVulnerability {id:string;pkg:string;installed:string;fixed?:string;severity:string;title:string;target:string}
+export interface DependencyAudit {status:"ok"|"missing"|"failed"|"unsupported";manager?:string;findings:number;note:string;vulnerabilities?:DependencyVulnerability[]}
+const SEVERITY_ORDER=["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"];
+/** Scanner output is untrusted: keep short printable text only. */
+const clean=(value:unknown,max:number):string=>typeof value==="string"?value.replace(/[^\x20-\x7E]/g," ").replace(/\s+/g," ").trim().slice(0,max):"";
+/** Extracts CVE rows from Trivy JSON, worst severity first. */
+export function parseTrivyVulnerabilities(parsed:unknown):DependencyVulnerability[]{
+ const rows=(parsed as {Results?:unknown[]})?.Results;if(!Array.isArray(rows))return [];
+ const found:DependencyVulnerability[]=[];
+ for(const row of rows){
+  const target=clean((row as {Target?:unknown})?.Target,120);
+  const vulns=(row as {Vulnerabilities?:unknown[]})?.Vulnerabilities;if(!Array.isArray(vulns))continue;
+  for(const v of vulns as Record<string,unknown>[]){
+   const id=clean(v?.VulnerabilityID,40);if(!id)continue;
+   const severity=clean(v.Severity,10).toUpperCase()||"UNKNOWN";
+   found.push({id,pkg:clean(v.PkgName,120),installed:clean(v.InstalledVersion,40),fixed:clean(v.FixedVersion,80)||undefined,severity,title:clean(v.Title,140),target});
+  }
+ }
+ const rank=(s:string)=>{const i=SEVERITY_ORDER.indexOf(s);return i<0?SEVERITY_ORDER.length:i};
+ return found.sort((a,b)=>rank(a.severity)-rank(b.severity)||a.id.localeCompare(b.id));
+}
 async function exists(path:string):Promise<boolean>{try{await access(path);return true}catch{return false}}
 /** Offline-only scanner: Trivy must have a locally cached vulnerability database. */
 export async function auditDependencies(root:string,signal?:AbortSignal):Promise<DependencyAudit>{
@@ -21,7 +41,8 @@ export async function auditDependencies(root:string,signal?:AbortSignal):Promise
   if(!Array.isArray(rows))return {status:"failed",manager,findings:0,note:"Scanner did not return complete results"};
   let findings=0;
   for(const row of rows){const vulns=(row as {Vulnerabilities?:unknown[]})?.Vulnerabilities;if(Array.isArray(vulns))findings+=vulns.length}
-  return {status:"ok",manager,findings,note:"Local Trivy database used; coverage depends on cached database freshness and supported ecosystems"};
+  const vulnerabilities=parseTrivyVulnerabilities(parsed);
+  return {status:"ok",manager,findings,vulnerabilities,note:"Local Trivy database used; coverage depends on cached database freshness and supported ecosystems"};
  }catch(e){
   const err=e as NodeJS.ErrnoException;
   return {status:err.code==="ENOENT"?"missing":"failed",manager,findings:0,note:err.code==="ENOENT"?"Install Trivy and provision its vulnerability database locally first":"Offline scan failed; check local database availability and scanner setup"};
