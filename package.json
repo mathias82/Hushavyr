@@ -2,6 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "Hushavyr",
   "author": "Matthaios Stavrou",
+  "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
   "version": "0.0.10",
   "private": true,
