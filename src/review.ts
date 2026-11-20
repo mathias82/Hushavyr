@@ -1,7 +1,7 @@
 import { ReviewInput, reviewSources, sourcePrompt } from "./context";
 /** Evidence-gated local review: never promote unverified model claims to confirmed bugs. */
 export interface Finding { title: string; severity: string; evidence: string; fix: string; regressionTest: string; status: "potential" | "confirmed"; path?: string; line?: number; verification?: "supported" | "unverified" }
-export interface ReviewResult { findings: Finding[]; rejected: number; proposed?: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; verifierFailed?: boolean }
+export interface ReviewResult { findings: Finding[]; rejected: number; proposed?: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; verifierFailed?: boolean; staticCandidates?: number; cached?: boolean }
 // Ollama constrains the shape; source validation below still decides what can be shown.
 export const reviewSchema = {
   type: "object",
@@ -103,12 +103,28 @@ export function modelHint(model: string, result: ReviewResult): string {
   if (result.findings.some(f => !f.title.startsWith("Local rule:")) || result.error || !size || Number(size[1]) >= 14) return "";
   return "\n\n_Tip: " + model + " is a small model and often misses bugs. Run **Hushavyr: Setup** to switch to a larger local model (e.g. qwen2.5-coder:14b)._";
 }
+const SEVERITY_RANK: Record<string, number> = {high: 0, medium: 1, low: 2};
+const shortPath = (path?: string): string => decodeURIComponent((path ?? "selection").split("/").pop() ?? "selection");
+
+/** One glanceable block for the reader: how many issues, how serious, and which one to fix first. */
+export function reviewSummary(result: ReviewResult): string {
+  if (!result.findings.length) return "**Summary:** nothing to fix was found. Not a guarantee that the code is clean.";
+  const count = (s: string) => result.findings.filter(f => f.severity === s).length;
+  const parts = [["high", "\u{1F534}"], ["medium", "\u{1F7E0}"], ["low", "\u{1F7E2}"]]
+    .filter(([s]) => count(s)).map(([s, icon]) => icon + " " + count(s) + " " + s);
+  const first = [...result.findings].sort((a, b) => (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3))[0];
+  return "**Summary:** " + result.findings.length + " issue(s) to look at: " + parts.join(" · ") +
+    "  \n**Fix first:** " + first.title.replace(/^Local rule: /, "") + " (`" + shortPath(first.path) + ":" + (first.line ?? "?") + "`)";
+}
+
 export function formatReview(result: ReviewResult): string {
   if (result.error) return "**Review not verified:** " + result.error + ". No findings promoted." +
     (result.retryFailed ? " The local repair attempt also failed." : "") + " Try again with a smaller selection.";
-  const lines = ["### Evidence-gated local review", "", "All findings are **potential**, not confirmed. Tests were suggested, not executed.", ""];
+  const lines = ["### Evidence-gated local review", "", reviewSummary(result), "", "All findings are **potential**, not confirmed. Tests were suggested, not executed.", ""];
   lines.push("**Review diagnostics:** " + (result.proposed ?? result.findings.length + result.rejected) + " proposed · " + result.findings.length + " passed source validation · " + result.rejected + " rejected by source validation · " + (result.verifierRejected ?? 0) + " rejected by second local pass.", "");
-  if (result.findings.some(f => f.title.startsWith("Local rule:"))) lines.push("**Offline indicators:** Separately detected by bundled local rules, not proposed or verified by the AI model.", "");
+  if (result.staticCandidates) lines.push("**Hybrid analysis:** " + result.staticCandidates + " candidate(s) from the bundled static rules (Semgrep) were triaged together with the model's findings.", "");
+  if (result.cached) lines.push("_Same code and settings as an earlier review in this session: cached result reused._", "");
+  if (result.findings.some(f => f.title.startsWith("Local rule:"))) lines.push("**Offline indicators:** \"Local rule\" findings come from bundled static rules, not from the AI model; the second local pass checks them against the source when it runs.", "");
   if (!result.findings.length) lines.push(result.proposed === 0 ? "The local model proposed no findings. This does not establish that the code is bug-free." : "No findings passed the evidence checks. The review was inconclusive; this does not establish that the code is bug-free.", "");
   for (const [i,f] of result.findings.entries()) lines.push(
     "#### " + (i+1) + ". " + f.title,

@@ -20,6 +20,18 @@ jobs:
       - name: Run regression tests
         run: npm test
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+      - name: Static review gate (rule pack on benchmark fixtures)
+        run: node dist/benchmark.js --static --gate
+      - name: CLI smoke test (SARIF export)
+        run: |
+          node dist/cli.js . --sarif hushavyr.sarif --fail-on none
+          node -e "const s=require('./hushavyr.sarif');if(s.version!=='2.1.0'||!Array.isArray(s.runs[0].results))process.exit(1)"
+
       - name: Build Python proof fixture image
         run: |
           docker build -t hushavyr-pytest:local - <<'DOCKERFILE'

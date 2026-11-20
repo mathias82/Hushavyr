@@ -123,7 +123,7 @@ export class LocalOllama {
     if (options.signal?.aborted) throw new Error("Local request cancelled");
     const data = await this.request("/api/generate", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({model: this.config.model, prompt, stream: false,
+      body: JSON.stringify({model: this.config.model, prompt, stream: false, keep_alive: "30m",
         ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: 4096, num_ctx: 16384}} : {})})
     }, options.signal);
     if (!data || typeof data !== "object" || !("response" in data) || typeof data.response !== "string") throw new Error("Invalid local Ollama response. No cloud fallback.");

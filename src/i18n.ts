@@ -21,6 +21,13 @@ const messages = {
   dbConfirm: {en: "Download the Trivy vulnerability database? Only the public database is downloaded; no code or findings leave this machine.", el: "Λήψη της βάσης ευπαθειών του Trivy; Κατεβαίνει μόνο η δημόσια βάση, ο κώδικάς σας δεν φεύγει από τον υπολογιστή."},
   dbDownload: {en: "Download", el: "Λήψη"},
   dbDone: {en: "Trivy vulnerability database updated.", el: "Η βάση ευπαθειών του Trivy ενημερώθηκε."},
+  reachHeader: {en: "Reachability (import level):", el: "Χρήση στον κώδικα (επίπεδο import):"},
+  reachImported: {en: "imported by your code (fix first)", el: "χρησιμοποιούνται από τον κώδικά σας (διορθώστε πρώτα)"},
+  reachNotImported: {en: "not imported directly (transitive or unused, lower priority)", el: "δεν γίνονται import απευθείας (μεταβατικές ή αχρησιμοποίητες, χαμηλότερη προτεραιότητα)"},
+  tagImported: {en: "used in code", el: "χρησιμοποιείται"},
+  tagNotImported: {en: "not imported directly", el: "δεν γίνεται import"},
+  sarifDone: {en: "SARIF report written to", el: "Η αναφορά SARIF γράφτηκε στο"},
+  sarifEmpty: {en: "No Hushavyr findings to export. Run /review, /security or /dependencies first.", el: "Δεν υπάρχουν ευρήματα Hushavyr για εξαγωγή. Τρέξτε πρώτα /review, /security ή /dependencies."},
   dbFailed: {en: "Trivy database update failed. Check your network and that Trivy is installed.", el: "Η ενημέρωση της βάσης του Trivy απέτυχε. Ελέγξτε το δίκτυο και ότι το Trivy είναι εγκατεστημένο."}
 } as const;
 export type MessageKey = keyof typeof messages;

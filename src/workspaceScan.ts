@@ -7,6 +7,7 @@ import {auditDependencies, trivyDbAgeDays, findDependencyLine, groupVulnerabilit
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
+import {collectImports, reachability} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
@@ -119,6 +120,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       // Explicit deterministic mode: never invoke Ollama or any cloud provider.
       let sourceFindings = 0;
       let securityFindings = 0;
+      const imports = new Set<string>();
       for (const uri of files) {
         if (token.isCancellationRequested) break;
         let bytes: Uint8Array;
@@ -126,6 +128,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         if (bytes.length > 60_000 || bytes.includes(0)) continue;
         const relative = vscode.workspace.asRelativePath(uri);
         const localContent = Buffer.from(bytes).toString("utf8");
+        if (request.command === "dependencies") for (const name of collectImports(uri.path, localContent)) imports.add(name);
         if (request.command === "security") {
           for (const finding of scanSecurity(relative, localContent)) {
             securityFindings++;
@@ -146,13 +149,22 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             ". " + audit.note + ". " + tr(lang, "noCloud") + "\n\n");
           const age = audit.status === "ok" ? await trivyDbAgeDays() : undefined;
           if (age !== undefined && age > 7) stream.markdown("**" + age + " " + tr(lang, "dbDays") + ".** " + tr(lang, "dbStale") + "\n\n");
-          const groups = groupVulnerabilities(audit.vulnerabilities ?? []);
+          // Packages the project source actually imports come first; the rest are usually transitive or unused.
+          const reach = (v: GroupedVulnerability) => reachability(v.pkg, v.targets.join(" ") + " " + (audit.manager ?? ""), imports);
+          const order = {"imported": 0, "unknown": 1, "not-imported": 2};
+          const groups = groupVulnerabilities(audit.vulnerabilities ?? []).map((v, index) => ({v, index, r: reach(v)}))
+            .sort((a, b) => order[a.r] - order[b.r] || a.index - b.index).map(x => x.v);
+          const reached = groups.filter(v => reach(v) === "imported").length;
+          const unreached = groups.filter(v => reach(v) === "not-imported").length;
+          if (reached || unreached) stream.markdown("**" + tr(lang, "reachHeader") + "** " + reached + " " + tr(lang, "reachImported") + " · " + unreached + " " + tr(lang, "reachNotImported") + "\n\n");
           const shown = groups.slice(0, 50);
           for (const v of shown) {
+            const r = reach(v);
             const id = /^CVE-\d{4}-\d{4,}$/.test(v.id) ? "[" + v.id + "](https://nvd.nist.gov/vuln/detail/" + v.id + ")" : "`" + v.id.replace(/`/g, "") + "`";
             const files = v.targets.slice(0, 5).map(t => "`" + t.replace(/`/g, "") + "`").join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
             stream.markdown("- **" + v.severity + "** · " + id + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
-              (v.fixed ? tr(lang, "fixedIn") + " `" + v.fixed.replace(/`/g, "") + "`" : tr(lang, "noFix")) + (files ? " · " + tr(lang, "inFiles") + " " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
+              (v.fixed ? tr(lang, "fixedIn") + " `" + v.fixed.replace(/`/g, "") + "`" : tr(lang, "noFix")) + (files ? " · " + tr(lang, "inFiles") + " " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") +
+              (r === "imported" ? " · **" + tr(lang, "tagImported") + "**" : r === "not-imported" ? " · _" + tr(lang, "tagNotImported") + "_" : "") + "\n");
           }
           if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " " + tr(lang, "moreHidden") + ". Links open the public NVD page only if you click them._\n");
           if (shown.length) stream.markdown("\n");

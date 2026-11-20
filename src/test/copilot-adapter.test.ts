@@ -149,7 +149,7 @@ test("sensitive content and disabled AI stay on loopback even when Ollama stops"
     assert.deepEqual(received, [sensitive, publicTask].flatMap(prompt => [
       {path: "/api/tags", body: undefined},
       {path: "/api/show", body: {model}},
-      {path: "/api/generate", body: {model, prompt, stream: false}}
+      {path: "/api/generate", body: {model, prompt, stream: false, keep_alive: "30m"}}
     ]));
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

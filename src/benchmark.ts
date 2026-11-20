@@ -3,6 +3,8 @@ import { ReviewSource } from "./context";
 import { Finding, reviewPrompt, validateReview } from "./review";
 import { readFileSync } from "node:fs";
 import { runLocalReview } from "./localReview";
+import { staticReview } from "./staticReview";
+import { join } from "node:path";
 
 export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; mechanism: RegExp} }
 // Synthetic, public examples. Scores measure this small fixture set only.
@@ -105,7 +107,75 @@ def run(filename):
   {id: "javascript-numeric-sort-clean", sources: [{path: "scores.js", text: `// Return a sorted copy in ascending numeric order.
 export function sortedScores(scores) {
   return [...scores].sort((a, b) => a - b);
-}`}]}
+}`}]},
+  {id: "javascript-sql-template-bug", sources: [{path: "users.js", text: "export async function findUser(db, name) {\n  const rows = await db.query(`SELECT * FROM users WHERE name = '${name}'`);\n  return rows[0];\n}"}], expected: {path: "users.js", line: 2, mechanism: /sql|inject|parameter|query/i}},
+  {id: "javascript-sql-placeholder-clean", sources: [{path: "users.js", text: "export async function findUser(db, name) {\n  const rows = await db.query(\"SELECT * FROM users WHERE name = ?\", [name]);\n  return rows[0];\n}"}]},
+  {id: "python-sql-fstring-bug", sources: [{path: "repo.py", text: `def find_user(cursor, name):
+    cursor.execute(f"SELECT * FROM users WHERE name = '{name}'")
+    return cursor.fetchone()`}], expected: {path: "repo.py", line: 2, mechanism: /sql|inject|parameter|query/i}},
+  {id: "python-sql-parameter-clean", sources: [{path: "repo.py", text: `def find_user(cursor, name):
+    cursor.execute("SELECT * FROM users WHERE name = %s", (name,))
+    return cursor.fetchone()`}]},
+  {id: "javascript-command-injection-bug", sources: [{path: "ping.js", text: `const {exec} = require("child_process");
+module.exports = function ping(host, done) {
+  exec("ping -c 1 " + host, done);
+};`}], expected: {path: "ping.js", line: 3, mechanism: /command|inject|shell|exec/i}},
+  {id: "javascript-execfile-clean", sources: [{path: "ping.js", text: `const {execFile} = require("child_process");
+module.exports = function ping(host, done) {
+  execFile("ping", ["-c", "1", host], done);
+};`}]},
+  {id: "javascript-dom-xss-bug", sources: [{path: "greet.js", text: `export function greet(element, name) {
+  element.innerHTML = "<h1>Hello " + name + "</h1>";
+}`}], expected: {path: "greet.js", line: 2, mechanism: /xss|script|html|inject|escap/i}},
+  {id: "javascript-textcontent-clean", sources: [{path: "greet.js", text: `export function greet(element, name) {
+  element.textContent = "Hello " + name;
+}`}]},
+  {id: "python-yaml-load-bug", sources: [{path: "config.py", text: `import yaml
+def load_config(text):
+    return yaml.load(text)`}], expected: {path: "config.py", line: 3, mechanism: /yaml|deserial|safe_load|loader|code/i}},
+  {id: "python-yaml-safe-clean", sources: [{path: "config.py", text: `import yaml
+def load_config(text):
+    return yaml.safe_load(text)`}]},
+  {id: "java-weak-hash-bug", sources: [{path: "Passwords.java", text: `import java.security.MessageDigest;
+class Passwords {
+  byte[] hash(String password) throws Exception {
+    return MessageDigest.getInstance("MD5").digest(password.getBytes("UTF-8"));
+  }
+}`}], expected: {path: "Passwords.java", line: 4, mechanism: /md5|weak|hash|crypt/i}},
+  {id: "java-strong-hash-clean", sources: [{path: "Checksums.java", text: `import java.security.MessageDigest;
+class Checksums {
+  byte[] sha256(byte[] data) throws Exception {
+    return MessageDigest.getInstance("SHA-256").digest(data);
+  }
+}`}]},
+  {id: "java-off-by-one-bug", sources: [{path: "Totals.java", text: `class Totals {
+  int sum(int[] values) {
+    int total = 0;
+    for (int i = 0; i <= values.length; i++) total += values[i];
+    return total;
+  }
+}`}], expected: {path: "Totals.java", line: 4, mechanism: /bound|index|off.by.one|<=|ArrayIndexOutOfBounds|length/i}},
+  {id: "java-loop-bounds-clean", sources: [{path: "Totals.java", text: `class Totals {
+  int sum(int[] values) {
+    int total = 0;
+    for (int i = 0; i < values.length; i++) total += values[i];
+    return total;
+  }
+}`}]},
+  {id: "cross-file-sql-taint-bug", sources: [{path: "UserController.java", text: `class UserController {
+  private final UserRepository repository = new UserRepository();
+  String show(javax.servlet.http.HttpServletRequest request) throws Exception {
+    return repository.findName(request.getParameter("name"));
+  }
+}`}, {path: "UserRepository.java", text: `import java.sql.*;
+class UserRepository {
+  private Connection connection;
+  String findName(String name) throws SQLException {
+    Statement stmt = connection.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT name FROM users WHERE name = '" + name + "'");
+    return rs.next() ? rs.getString(1) : null;
+  }
+}`}], expected: {path: "UserRepository.java", line: 6, mechanism: /sql|inject|parameter|query/i}}
 
 ];
 
@@ -156,6 +226,36 @@ export function compareReviewResponses(providers: Record<string, Record<string, 
   };
 }
 
+const rules = join(__dirname, "..", "rules", "hushavyr-review.yml");
+// Bugs that a pattern rule can reasonably catch; correctness bugs are the model's job.
+const STATIC_SCOPE = /sql|command|shell|tls|xss|yaml|hash/;
+
+/** Deterministic half of the hybrid review, scored on the same fixtures. No model involved. */
+export async function staticBenchmark() {
+  let status = "ok";
+  const cases = [];
+  for (const fixture of benchmarkCases) {
+    const result = await staticReview(fixture.sources, rules);
+    if (result.status !== "ok") status = result.status;
+    cases.push({id: fixture.id, inScope: STATIC_SCOPE.test(fixture.id), ...scoreCase(fixture, result.findings)});
+  }
+  const scoped = cases.filter(c => c.inScope && benchmarkCases.find(f => f.id === c.id)?.expected);
+  const tp = cases.reduce((n, c) => n + c.truePositive, 0), fp = cases.reduce((n, c) => n + c.falsePositive, 0);
+  const found = scoped.filter(c => c.truePositive).length;
+  return {semgrep: status, fixtureCount: cases.length, truePositives: tp, falsePositives: fp,
+    securityRecall: scoped.length ? found / scoped.length : null, missed: scoped.filter(c => !c.truePositive).map(c => c.id),
+    falsePositiveCases: cases.filter(c => c.falsePositive).map(c => c.id), cases};
+}
+
+/** CI gate: semgrep must run, no clean fixture may be flagged, and every in-scope security bug must be found. */
+export function staticGateProblems(report: Awaited<ReturnType<typeof staticBenchmark>>): string[] {
+  const problems: string[] = [];
+  if (report.semgrep !== "ok") problems.push("semgrep " + report.semgrep);
+  if (report.falsePositives) problems.push("false positives in " + report.falsePositiveCases.join(", "));
+  if (report.securityRecall !== 1) problems.push("missed " + report.missed.join(", "));
+  return problems;
+}
+
 async function main(args: string[]) {
   if (args.length === 1 && args[0] === "--prompts") {
     console.log(JSON.stringify(Object.fromEntries(benchmarkCases.map(fixture =>
@@ -178,7 +278,17 @@ async function main(args: string[]) {
     console.log(JSON.stringify(compareReviewResponses(payload.providers as Record<string, Record<string, unknown>>), null, 2));
     return;
   }
-  if (args.length) throw new Error("Usage: review:benchmark [--prompts | --score responses.json | --compare providers.json]");
+  if (args[0] === "--static") {
+    const report = await staticBenchmark();
+    console.log(JSON.stringify(report, null, 2));
+    if (args.includes("--gate")) {
+      const problems = staticGateProblems(report);
+      if (problems.length) { console.error("Static gate failed: " + problems.join("; ")); process.exitCode = 1; }
+      else console.error("Static gate passed.");
+    }
+    return;
+  }
+  if (args.length) throw new Error("Usage: review:benchmark [--prompts | --score responses.json | --compare providers.json | --static [--gate]]");
 
   const model = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b";
   const verifierModel = process.env.OLLAMA_VERIFIER_MODEL ?? model;
@@ -187,12 +297,15 @@ async function main(args: string[]) {
   const verifier = new LocalOllama({model: verifierModel, endpoint, timeoutMs: 180000});
   await client.ensureAvailable();
   if (verifierModel !== model) await verifier.ensureAvailable();
+  const depth = process.env.REVIEW_DEPTH === "fast" ? "fast" : "thorough";
+  const useStatic = process.env.REVIEW_STATIC !== "0";
   let tp = 0, fp = 0, fn = 0, errors = 0, verifierFailures = 0;
   const cases: object[] = [];
   for (const fixture of benchmarkCases) {
     const started = Date.now();
     try {
-      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier);
+      const staticFindings = useStatic ? staticReview(fixture.sources, rules).then(r => r.findings) : undefined;
+      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, staticFindings});
       if (!result || result.error) throw new Error("Review failed");
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;
@@ -203,7 +316,7 @@ async function main(args: string[]) {
       cases.push({id: fixture.id, error: true, durationMs: Date.now() - started});
     }
   }
-  console.log(JSON.stringify({model, verifierModel, fixtureCount: benchmarkCases.length, cases,
+  console.log(JSON.stringify({model, verifierModel, depth, staticAnalysis: useStatic, fixtureCount: benchmarkCases.length, cases,
     truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures,
     precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null,
     limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. No raw source or model response is included."}, null, 2));

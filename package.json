@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -27,7 +27,8 @@
     "onCommand:aiPrivacyRouter.downloadOllamaModel",
     "onCommand:aiPrivacyRouter.updateTrivyDb",
     "onCommand:aiPrivacyRouter.exportSbom",
-    "onCommand:aiPrivacyRouter.applyReviewFix"
+    "onCommand:aiPrivacyRouter.applyReviewFix",
+    "onCommand:aiPrivacyRouter.exportSarif"
   ],
   "contributes": {
     "walkthroughs": [
@@ -122,6 +123,10 @@
       {
         "command": "aiPrivacyRouter.exportSbom",
         "title": "Hushavyr: Export SBOM (CycloneDX)"
+      },
+      {
+        "command": "aiPrivacyRouter.exportSarif",
+        "title": "Hushavyr: Export Findings as SARIF"
       }
     ],
     "configuration": {
@@ -223,6 +228,29 @@
           ],
           "default": "en",
           "description": "Language of dependency audit output and Hushavyr notifications."
+        },
+        "aiPrivacyRouter.reviewDepth": {
+          "type": "string",
+          "enum": [
+            "thorough",
+            "fast"
+          ],
+          "enumDescriptions": [
+            "General pass plus focused security and robustness passes (finds more, slower)",
+            "One pass, retried once when empty (faster)"
+          ],
+          "default": "thorough",
+          "description": "How many local model passes /review runs before the verification pass."
+        },
+        "aiPrivacyRouter.staticAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the bundled Semgrep rules (or built-in regex rules when Semgrep is not installed) with /review and let the local model triage the hits."
+        },
+        "aiPrivacyRouter.callContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add definitions of called functions and callers from other workspace files to /review so the model can follow data across files."
         }
       }
     },
@@ -289,7 +317,9 @@
     "ai:start": "bash scripts/start-local-ai.sh",
     "ai:serve": "bash scripts/start-local-ai.sh --serve-only",
     "review:benchmark": "npm run build && node dist/benchmark.js",
-    "update:local": "node scripts/update-local.cjs"
+    "update:local": "node scripts/update-local.cjs",
+    "scan": "npm run build && node dist/cli.js",
+    "benchmark:static": "npm run build && node dist/benchmark.js --static --gate"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -301,5 +331,8 @@
     "type": "git",
     "url": "https://github.com/mathias82/Hushavyr.git"
   },
-  "icon": "images/hushavyr-icon.png"
+  "icon": "images/hushavyr-icon.png",
+  "bin": {
+    "hushavyr-scan": "dist/cli.js"
+  }
 }

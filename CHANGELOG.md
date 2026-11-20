@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.29
+- Hybrid `/review`: local model + bundled Semgrep rule pack (`rules/hushavyr-review.yml`: SQL/command/code injection, XSS, path traversal, SSRF, XXE, unsafe deserialization, disabled TLS, weak crypto) triaged together, then verified locally. Falls back to the built-in rules when Semgrep is not installed.
+- Thorough review by default: general, security and robustness passes (`aiPrivacyRouter.reviewDepth`).
+- Review answers start with a summary: issue count by severity and the one to fix first.
+- Cross-file call context: definitions of called functions and callers (`aiPrivacyRouter.callContext`).
+- `/dependencies`: CVEs tagged imported / not imported directly, imported first.
+- Model kept loaded for 30 minutes; identical reviews are served from cache.
+- **Hushavyr: Export Findings as SARIF** command and `hushavyr-scan` CLI with `--sarif` and `--fail-on` for CI.
+- Benchmark grew to 35 fixtures; CI now gates the rule pack (no false positives, every in-scope security bug found).
+
 ## 0.0.28
 - `/review explain the code` (or "what does this do", Greek "τι κάνει") now answers in prose instead of running the bug-finding review.
 - Chat banner shows the real local model and explains the sensitivity label.

@@ -29,10 +29,16 @@ Available commands depend on the extension installed in VS Code. Semgrep, Gitlea
 | **Hushavyr: Setup** | Check Ollama, choose and download a local model, install optional scanners |
 | **Hushavyr: Update Trivy Vulnerability Database** | Download the public CVE database (asks first; no code leaves your machine) |
 | **Hushavyr: Export SBOM (CycloneDX)** | Write `hushavyr-sbom.cdx.json` locally |
+| **Hushavyr: Export Findings as SARIF** | Write current Hushavyr markers to `hushavyr.sarif` (GitHub code scanning, Azure DevOps, SARIF viewers) |
 | **Hushavyr: Clear Review Markers** | Remove `/review` and dependency markers from the editor |
 
 ## Highlights
 
+- **Hybrid review:** `/review` runs the local model (a general pass plus focused security and robustness passes) and the bundled Semgrep rule pack in parallel, then a second local pass verifies every finding. The answer starts with a summary: how many issues, how serious, which one to fix first. Use `aiPrivacyRouter.reviewDepth: fast` for a single pass, `aiPrivacyRouter.staticAnalysis: false` to skip Semgrep.
+- **Cross-file context:** `/review` also sends the definitions of functions the file calls and the places that call it (same language, up to 3 snippets, within the 20 KB limit). Turn off with `aiPrivacyRouter.callContext: false`.
+- **CVE priority:** `/dependencies` marks each vulnerable package as *imported* by your code or *not imported directly* (transitive or unused) and lists imported ones first. This is import-level only, not proof that the vulnerable function is called.
+- **Faster repeats:** the model stays loaded for 30 minutes and an unchanged file is answered from cache.
+- **CI and SARIF:** from a clone of this repository, `npm run build && node dist/cli.js [folder] --sarif hushavyr.sarif --fail-on high` scans a folder offline (bundled rules, Semgrep, credentials, Trivy) for pipelines; see `.github/workflows/hushavyr-scan.yml` for upload to GitHub code scanning.
 - **Smart default model:** unless you set `aiPrivacyRouter.ollamaModel`, Hushavyr uses `qwen2.5-coder:14b` on 20 GB+ memory and `32b` on 48 GB+ (otherwise `7b`), downloaded automatically on first use.
 - **Local fixes:** on a `/review` marker choose the quick fix *Hushavyr: propose a local fix*; the local model proposes a diff and nothing changes until you approve.
 - **Findings in the editor:** `/review` results appear as Problems; `/dependencies` lists each CVE once with severity, fixed version and affected manifests, and marks the dependency line. A quick fix updates the version when it is on that line.
