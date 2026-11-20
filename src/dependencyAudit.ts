@@ -27,9 +27,10 @@ export function parseTrivyVulnerabilities(parsed:unknown):DependencyVulnerabilit
 async function exists(path:string):Promise<boolean>{try{await access(path);return true}catch{return false}}
 /** Offline-only scanner: Trivy must have a locally cached vulnerability database. */
 export async function auditDependencies(root:string,signal?:AbortSignal):Promise<DependencyAudit>{
- const supported:[string,string][]=[["pom.xml","maven"],["package-lock.json","npm"],["requirements.txt","pip"],["poetry.lock","poetry"],["Pipfile.lock","pipenv"],["build.gradle","gradle"],["build.gradle.kts","gradle"]];
- let manager:string|undefined;
- for(const [file,name] of supported){if(await exists(join(root,file))){manager=name;break}}
+ const supported:[string,string][]=[["pom.xml","maven"],["package-lock.json","npm"],["requirements.txt","pip"],["poetry.lock","poetry"],["Pipfile.lock","pipenv"],["build.gradle","gradle"],["build.gradle.kts","gradle"],["yarn.lock","yarn"],["pnpm-lock.yaml","pnpm"],["go.mod","go"],["Cargo.lock","cargo"],["composer.lock","composer"],["Gemfile.lock","bundler"],["packages.lock.json","nuget"]];
+ const names:string[]=[];
+ for(const [file,name] of supported){if(!names.includes(name)&&await exists(join(root,file)))names.push(name)}
+ const manager=names.join(", ")||undefined;
  if(!manager)return {status:"unsupported",findings:0,note:"No supported dependency manifest found"};
  try{
   const {stdout}=await exec("trivy",["fs","--offline-scan","--skip-db-update","--skip-java-db-update","--scanners","vuln","--format","json","--quiet","."],{
@@ -71,4 +72,29 @@ export function findDependencyLine(text:string,pkg:string,installed?:string):num
  if(installed){const stem=artifact.split(/[-_.]/)[0];if(stem.length>2)patterns.push(new RegExp("<[\\w.-]*"+esc(stem)+"[\\w.-]*>\\s*"+esc(installed)+"\\s*</"))}
  for(const pattern of patterns){const i=lines.findIndex(l=>pattern.test(l));if(i>=0)return i+1}
  return 1;
+}
+
+/** Trivy can list several fixed versions; prefer one in the installed major line (smallest upgrade risk). */
+export function firstFixedVersion(fixed:string,installed:string):string|undefined{
+ const options=fixed.split(/[,\s]+/).filter(v=>/^v?\d[\w.+-]*$/.test(v));
+ const major=installed.split(".")[0];
+ return options.find(v=>v.replace(/^v/,"").split(".")[0]===major)??options[0];
+}
+/** Replaces the installed version with the fixed one on a single manifest line; undefined when the version is not on it. */
+export function bumpVersion(line:string,installed:string,fixed:string):string|undefined{
+ if(!installed||!fixed||installed===fixed)return undefined;
+ const pattern=new RegExp("(?<![\\w.])"+installed.replace(/[.*+?^${}()|[\]]/g,"\\$&")+"(?![\\w.])");
+ return pattern.test(line)?line.replace(pattern,()=>fixed):undefined;
+}
+/** Reads back the marker text written by the dependency scan (VS Code recreates Diagnostic objects). */
+export function parseMarkerMessage(message:string):{id:string;pkg:string;installed:string;fixed:string}|undefined{
+ const m=/^(\S+) in (\S+) (\S+) \(\w+\)\. Fixed in (.+)\.$/.exec(message);
+ return m?{id:m[1],pkg:m[2],installed:m[3],fixed:m[4]}:undefined;
+}
+/** Writes a CycloneDX SBOM locally; no network access. */
+export async function exportSbom(root:string,output:string,signal?:AbortSignal):Promise<{ok:boolean;note:string}>{
+ try{
+  await exec("trivy",["fs","--offline-scan","--skip-db-update","--skip-java-db-update","--format","cyclonedx","--output",output,"--quiet","."],{cwd:root,timeout:120000,windowsHide:true,signal});
+  return {ok:true,note:"SBOM written locally"};
+ }catch(e){return {ok:false,note:(e as NodeJS.ErrnoException).code==="ENOENT"?"Install Trivy first":"SBOM export failed"}}
 }

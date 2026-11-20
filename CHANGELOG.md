@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.24
+- Quick fix on dependency markers: "Update to <fixed version>" when the version is on the marked line (pom property, package.json, requirements).
+- **Hushavyr: Update Trivy Vulnerability Database** (asks consent; the only network step).
+- **Hushavyr: Export SBOM (CycloneDX)** writes `hushavyr-sbom.cdx.json` locally.
+- `/dependencies` also recognises yarn, pnpm, Go, Cargo, Composer, Bundler and NuGet lockfiles.
+- `aiPrivacyRouter.language` (`en`/`el`): Greek output for `/dependencies` and the new commands.
+- `/review` now follows local imports for TypeScript/JavaScript and Python files (max 3 related files), like Java.
+
 ## 0.0.23
 - **Hushavyr: Setup** command: checks Ollama, lets you pick a local model (recommends one for your memory), downloads it with progress, and offers Semgrep, Gitleaks and Trivy installs.
 - Missing local models are downloaded automatically on first use (loopback Ollama only, no cloud fallback), with progress.

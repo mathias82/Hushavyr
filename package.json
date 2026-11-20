@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -24,7 +24,9 @@
     "onCommand:aiPrivacyRouter.askAuto",
     "onCommand:aiPrivacyRouter.verifyLocalFix",
     "onCommand:aiPrivacyRouter.startOllama",
-    "onCommand:aiPrivacyRouter.downloadOllamaModel"
+    "onCommand:aiPrivacyRouter.downloadOllamaModel",
+    "onCommand:aiPrivacyRouter.updateTrivyDb",
+    "onCommand:aiPrivacyRouter.exportSbom"
   ],
   "contributes": {
     "walkthroughs": [
@@ -111,6 +113,14 @@
       {
         "command": "aiPrivacyRouter.downloadOllamaModel",
         "title": "Hushavyr: Download Local Qwen Model"
+      },
+      {
+        "command": "aiPrivacyRouter.updateTrivyDb",
+        "title": "Hushavyr: Update Trivy Vulnerability Database"
+      },
+      {
+        "command": "aiPrivacyRouter.exportSbom",
+        "title": "Hushavyr: Export SBOM (CycloneDX)"
       }
     ],
     "configuration": {
@@ -199,6 +209,19 @@
           "default": "",
           "scope": "application",
           "description": "Optional prepopulated local Maven repository. Empty uses ~/.m2/repository. Each run privately copies and hashes at most 4 GB/100,000 files, then mounts that snapshot read-only."
+        },
+        "aiPrivacyRouter.language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "el"
+          ],
+          "enumDescriptions": [
+            "English",
+            "Ελληνικά"
+          ],
+          "default": "en",
+          "description": "Language of dependency audit output and Hushavyr notifications."
         }
       }
     },

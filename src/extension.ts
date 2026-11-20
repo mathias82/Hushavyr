@@ -1,6 +1,7 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
-import {relatedJavaSources} from "./relatedJava";
+import {relatedSources} from "./relatedJava";
+import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./trivyCommands";
 import {execFile} from "node:child_process";
 import {homedir} from "node:os";
 import * as vscode from "vscode";
@@ -47,6 +48,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
   }
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.setup", () => runSetup()));
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.updateTrivyDb", () => updateTrivyDatabase()));
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.exportSbom", () => exportWorkspaceSbom()));
+  registerDependencyQuickFix(context);
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
     if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
@@ -267,14 +271,14 @@ export function activate(context: vscode.ExtensionContext): void {
     const sources: ReviewSource[] = attachments.length ? attachments : selected?.trim()
       ? [{path: selectedUri ?? "selection", text: selected,
           startLine: activeSelection?.trim() ? editor!.selection.start.line + 1 : lastSelection?.startLine}] : [];
-    // Add a small number of explicitly imported project classes for Java reviews.
+    // Add a small number of explicitly imported project files (Java, TypeScript/JavaScript, Python).
     // Only trusted local workspaces; no network or arbitrary filesystem traversal.
     if (request.command === "review" && vscode.workspace.isTrusted && !vscode.env?.remoteName) {
       for (const source of [...sources]) {
         const root = vscode.workspace.workspaceFolders?.find(folder => source.path.startsWith(folder.uri.toString()))?.uri.fsPath
           ?? (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined);
         if (!root) continue;
-        const related = await relatedJavaSources(root, source);
+        const related = await relatedSources(root, source);
         for (const extra of related) {
           if (sources.length >= 4) break;
           if (!sources.some(existing => existing.path === extra.path)) sources.push(extra);

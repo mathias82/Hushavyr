@@ -15,7 +15,8 @@ const registeredCommands = new Set<string>();
 let copilotLookups = 0, participantRegistrations = 0;
 const fake = {
   Uri, Location, TabInputText,
-  languages: {createDiagnosticCollection: () => ({clear() {}, set() {}, dispose() {}})},
+  languages: {createDiagnosticCollection: () => ({clear() {}, set() {}, dispose() {}}), registerCodeActionsProvider: () => disposable},
+  CodeActionKind: {QuickFix: "quickfix"},
   DiagnosticSeverity: {Error: 0, Warning: 1, Information: 2},
   window: {
     activeTextEditor: undefined, visibleTextEditors: [], tabGroups: {activeTabGroup: {}},
