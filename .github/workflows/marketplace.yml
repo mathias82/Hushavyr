@@ -47,7 +47,8 @@ jobs:
           unzip -p hushavyr.vsix extension/package.json > packaged-manifest.json
           node - <<'NODE'
           const p = require('./packaged-manifest.json');
-          if (p.publisher !== 'mathias82' || p.name !== 'hushavyr' || !/^\d+\.\d+\.\d+$/.test(p.version)) {
+          const source = require('./package.json');
+          if (p.publisher !== source.publisher || p.name !== source.name || p.version !== source.version) {
             throw new Error('Packaged extension identity differs from expected');
           }
           NODE
