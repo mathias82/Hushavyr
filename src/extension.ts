@@ -229,9 +229,19 @@ export function activate(context: vscode.ExtensionContext): void {
               new vscode.Position((rangeValue as vscode.Range).start.line, (rangeValue as vscode.Range).start.character),
               new vscode.Position((rangeValue as vscode.Range).end.line, (rangeValue as vscode.Range).end.character))
           : undefined;
-      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled") ||
-          (uri.scheme === "file" && !vscode.workspace.isTrusted)) {
-        stream.markdown("An attached context item cannot be inspected as a trusted local file. Nothing was sent.");
+      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled")) {
+        // VS Code may attach opaque implicit Chat context (for example, the
+        // active editor) that extensions cannot dereference. Never forward it.
+        // Resolve a trusted visible local editor below instead.
+        if (vscode.workspace.isTrusted && !vscode.env.remoteName &&
+            (vscode.window.visibleTextEditors.some(isCodeEditor) || lastCodeEditor)) {
+          continue;
+        }
+        stream.markdown("An attached context item cannot be inspected. Open a trusted local code file and retry. Nothing was sent.");
+        return;
+      }
+      if (uri.scheme === "file" && (!vscode.workspace.isTrusted || vscode.env.remoteName)) {
+        stream.markdown("Open a trusted local VS Code window to review files. Nothing was sent.");
         return;
       }
       try {
@@ -277,6 +287,26 @@ export function activate(context: vscode.ExtensionContext): void {
     if (asksForSelection && !selected?.trim() && attachments.length === 0) {
       stream.markdown("Select code or attach a file first, then ask `@ai-privacy` again. No content was sent.");
       return;
+    }
+    // For /review without an explicit selection, prefer the currently open local
+    // code file over a stale selection captured before Chat took focus.
+    // VS Code can add an opaque context reference for that same file.
+    if (request.command === "review" && attachments.length === 0 && !activeSelection?.trim() &&
+        vscode.workspace.isTrusted && !vscode.env.remoteName) {
+      const visible = vscode.window.visibleTextEditors.filter(isCodeEditor);
+      const preferred = visible.find(e => e.document.uri.toString() === lastCodeEditor?.document.uri.toString())
+        ?? (visible.length === 1 ? visible[0] : undefined)
+        ?? lastCodeEditor;
+      if (preferred && isCodeEditor(preferred)) {
+        const text = preferred.document.getText();
+        if (Buffer.byteLength(text, "utf8") > 100_000) {
+          stream.markdown("The open file is larger than 100 KB. Nothing was sent.");
+          return;
+        }
+        if (text.trim()) {
+          attachments.push({path: preferred.document.uri.toString(), text, startLine: 1});
+        }
+      }
     }
     const sources: ReviewSource[] = attachments.length ? attachments : selected?.trim()
       ? [{path: selectedUri ?? "selection", text: selected,
