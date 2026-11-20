@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
