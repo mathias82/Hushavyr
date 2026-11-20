@@ -1,23 +1,30 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
-let semgrepInstallPromptOpen = false;
-async function offerSemgrepInstallation(): Promise<void> {
-  if (semgrepInstallPromptOpen) return;
-  semgrepInstallPromptOpen = true;
+type InstallableTool = "semgrep" | "gitleaks" | "trivy";
+const installPromptOpen = new Set<InstallableTool>();
+const installCommands: Record<InstallableTool, {label: string; purpose: string; darwin: string; other: string}> = {
+  semgrep: {label: "Semgrep", purpose: "additional offline security checks", darwin: "brew install semgrep", other: "pipx install semgrep"},
+  gitleaks: {label: "Gitleaks", purpose: "offline secret scanning", darwin: "brew install gitleaks", other: "go install github.com/gitleaks/gitleaks/v8@latest"},
+  trivy: {label: "Trivy", purpose: "offline dependency vulnerability audits", darwin: "brew install trivy && trivy image --download-db-only", other: "See https://trivy.dev/latest/getting-started/installation/ then run: trivy image --download-db-only"}
+};
+async function offerToolInstallation(tool: InstallableTool): Promise<void> {
+  if (installPromptOpen.has(tool)) return;
+  installPromptOpen.add(tool);
+  const info = installCommands[tool];
   try {
     const choice = await vscode.window.showInformationMessage(
-      "Hushavyr: Semgrep is not installed. Install it locally to enable additional offline security checks?",
+      "Hushavyr: " + info.label + " is not installed. Install it locally to enable " + info.purpose + "?",
       "Show install command", "Not now"
     );
     if (choice !== "Show install command") return;
     if (process.platform === "win32") {
       await vscode.window.showInformationMessage(
-        "Semgrep CLI is supported on Windows through WSL. Install WSL and Semgrep inside your Linux distribution, then run Hushavyr in a WSL workspace. No command was executed.",
+        info.label + " should be installed through WSL or its official Windows installer, then Hushavyr run in that workspace. No command was executed.",
         { modal: true }, "OK"
       );
       return;
     }
-    const command = process.platform === "darwin" ? "brew install semgrep" : "pipx install semgrep";
+    const command = process.platform === "darwin" ? info.darwin : info.other;
     const confirm = await vscode.window.showWarningMessage(
       "Run this command in a new terminal? " + command + ". This downloads software from the package manager; Hushavyr will not send project code.",
       { modal: true }, "Run install command", "Copy command"
@@ -25,12 +32,12 @@ async function offerSemgrepInstallation(): Promise<void> {
     if (confirm === "Copy command") {
       await vscode.env.clipboard.writeText(command);
     } else if (confirm === "Run install command") {
-      const terminal = vscode.window.createTerminal({ name: "Hushavyr · Install Semgrep" });
+      const terminal = vscode.window.createTerminal({ name: "Hushavyr · Install " + info.label });
       terminal.show();
       terminal.sendText(command);
     }
   } finally {
-    semgrepInstallPromptOpen = false;
+    installPromptOpen.delete(tool);
   }
 }
 import {relatedJavaSources} from "./relatedJava";
@@ -57,7 +64,7 @@ import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from
 
 /** Chat file links use the original workspace URI, never user-controlled markdown paths. */
 function findingLink(uri: vscode.Uri, line: number, label: string): string {
-  const safeLabel = label.replace(/[\\[\\]\\r\\n]/g, "");
+  const safeLabel = label.replace(/[\[\]\r\n]/g, "");
   const target = uri.with({fragment: "L" + Math.max(1, Math.trunc(line))}).toString();
   return "[" + safeLabel + "](" + target + ")";
 }
@@ -254,7 +261,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         }
         if (request.command === "scan" || request.command === "scan-changed") {
-          stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security`, `/semgrep`, and `/gitleaks` separately for additional checks.\\n\\n");
+          stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security`, `/semgrep`, and `/gitleaks` separately for additional checks.\n\n");
         }
         if (request.command === "security") {
           const folders = vscode.workspace.workspaceFolders ?? [];
@@ -262,18 +269,18 @@ export function activate(context: vscode.ExtensionContext): void {
             if (token.isCancellationRequested) break;
             const semgrep = await runSemgrep(folder.uri.fsPath);
             if (semgrep.status === "missing") {
-              await offerSemgrepInstallation();
-              stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\\n\\n");
+              await offerToolInstallation("semgrep");
+              stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\n\n");
             } else if (semgrep.status === "failed") {
-              stream.markdown("**Semgrep incomplete:** Local scan failed; no Semgrep findings reported. Existing security checks continue.\\n\\n");
+              stream.markdown("**Semgrep incomplete:** Local scan failed; no Semgrep findings reported. Existing security checks continue.\n\n");
             } else {
               for (const issue of semgrep.findings) {
                 if (token.isCancellationRequested) break;
                 stream.markdown("**Semgrep · " + issue.severity.replace(/[^A-Za-z]/g,"") + "** · \`" +
-                  issue.path.replace(/[\\`\\r\\n]/g,"") + ":" + issue.line + "\` · " +
-                  issue.rule.replace(/[\\`\\r\\n]/g,"") + " · " + issue.message.replace(/[\\r\\n]/g," ") + "\\n\\n");
+                  issue.path.replace(/[\`\r\n]/g,"") + ":" + issue.line + "\` · " +
+                  issue.rule.replace(/[\`\r\n]/g,"") + " · " + issue.message.replace(/[\r\n]/g," ") + "\n\n");
               }
-              stream.markdown("**Offline Semgrep:** " + semgrep.findings.length + " potential findings; local bundled rules only.\\n\\n");
+              stream.markdown("**Offline Semgrep:** " + semgrep.findings.length + " potential findings; local bundled rules only.\n\n");
             }
           }
         }
@@ -304,7 +311,8 @@ export function activate(context: vscode.ExtensionContext): void {
               const audit = await auditDependencies(folder.uri.fsPath, controller.signal);
               stream.markdown("**Offline dependency audit:** " + audit.status + " · ecosystem: " +
                 (audit.manager ?? "unknown") + " · vulnerabilities reported: " + audit.findings +
-                ". " + audit.note + ". No cloud requests.\\n\\n");
+                ". " + audit.note + ". No cloud requests.\n\n");
+              if (audit.status === "missing") await offerToolInstallation("trivy");
             }
             return;
           }
@@ -314,17 +322,17 @@ export function activate(context: vscode.ExtensionContext): void {
             for (const folder of vscode.workspace.workspaceFolders ?? []) {
               const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal);
               if (result.status !== "ok") {
-                if (tool === "semgrep" && result.status === "missing") await offerSemgrepInstallation();
-                stream.markdown("**" + tool + ": " + result.status + "**. Install the local scanner or inspect its setup. No cloud fallback.\\n\\n");
+                if (result.status === "missing") await offerToolInstallation(tool);
+                stream.markdown("**" + tool + ": " + result.status + "**. Install the local scanner or inspect its setup. No cloud fallback.\n\n");
                 continue;
               }
               for (const finding of result.findings) {
                 // Never display scanner snippets, credential values or arbitrary messages.
                 stream.markdown("**" + finding.tool + " · " + finding.severity + "** · rule \`" +
-                  finding.rule.replace(/[\`\\r\\n]/g, "") + "\` · \`" +
-                  finding.path.replace(/[\`\\r\\n]/g, "") + ":" + finding.line + "\` (value redacted)\\n\\n");
+                  finding.rule.replace(/[\`\r\n]/g, "") + "\` · \`" +
+                  finding.path.replace(/[\`\r\n]/g, "") + ":" + finding.line + "\` (value redacted)\n\n");
               }
-              stream.markdown("**" + tool + ":** " + result.findings.length + " local findings; no source snippets displayed.\\n\\n");
+              stream.markdown("**" + tool + ":** " + result.findings.length + " local findings; no source snippets displayed.\n\n");
             }
             return;
           }
@@ -336,20 +344,20 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         if (request.command === "scan") {
-          stream.markdown("**Offline scanner status**\\n\\n");
+          stream.markdown("**Offline scanner status**\n\n");
           for (const folder of vscode.workspace.workspaceFolders ?? []) {
             for (const tool of ["semgrep", "gitleaks"] as const) {
               if (token.isCancellationRequested) { completed = false; break; }
               const scan = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr.yml"), controller.signal);
               scannerTotals.push(tool + ": " + scan.status + " (" + scan.findings.length + " findings)");
               scannerFindingCount += scan.findings.length;
-              stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\\n");
+              stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\n");
               for (const finding of scan.findings) {
                 // Scanner metadata is untrusted: never render secret values or arbitrary messages.
                 const absolute = resolve(folder.uri.fsPath, finding.path);
                 const inside = relative(folder.uri.fsPath, absolute);
                 if (!inside || inside.startsWith("..") || isAbsolute(inside)) continue;
-                const safeRule = finding.rule.replace(/[\\r\\n\\`\\[\\]]/g, "").slice(0, 120);
+                const safeRule = finding.rule.replace(/[\r\n\`\[\]]/g, "").slice(0, 120);
                 const safeSeverity = finding.severity.replace(/[^A-Za-z]/g, "");
                 const target = vscode.Uri.file(absolute);
                 const location = findingLink(target, finding.line, inside + ":" + finding.line);
@@ -357,11 +365,11 @@ export function activate(context: vscode.ExtensionContext): void {
                   ? "Check whether this is a real credential; if active, revoke/rotate it and move it to a secret manager."
                   : "Inspect the flagged code and rule; verify the risk and apply the rule-specific remediation.";
                 stream.markdown("  - **" + safeSeverity + " · " + tool + " · " + safeRule +
-                  "** · " + location + " · " + advice + " (sensitive values hidden)\\n");
+                  "** · " + location + " · " + advice + " (sensitive values hidden)\n");
               }
             }
           }
-          stream.markdown("\\n");
+          stream.markdown("\n");
         }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
@@ -588,9 +596,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const endpoint = config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434");
       const timeoutMs = config.get<number>("timeoutSeconds", 180) * 1000;
       const client = new LocalOllama({model, endpoint, timeoutMs});
-      await client.ensureAvailable(controller.signal);
+      const notifyPull = (name: string) => () => stream.markdown("Downloading local model `" + name + "` (one-time, may take several minutes)...\n\n");
+      await client.ensureInstalled(controller.signal, notifyPull(model));
       const withSignal = (local: LocalOllama) => ({generate: (text: string, options = {}) =>
         local.generate(text, {...options, signal: controller.signal})});
+      if (isReview) {
+        const name = config.get<string>("verifierModel", "").trim();
+        if (name && name !== model) await new LocalOllama({model: name, endpoint, timeoutMs}).ensureInstalled(controller.signal, notifyPull(name));
+      }
       if (!isReview) {
         const result = await client.generate(prompt, {signal: controller.signal});
         if (!token.isCancellationRequested) stream.markdown(result);

@@ -109,7 +109,8 @@
         "aiPrivacyRouter.ollamaModel": {
           "type": "string",
           "default": "qwen2.5-coder:7b",
-          "description": "Locally installed Ollama model name",
+          "examples": ["qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"],
+          "description": "Local Ollama model name. If it is not installed, it is downloaded automatically on first use.",
           "scope": "application"
         },
         "aiPrivacyRouter.ollamaEndpoint": {
