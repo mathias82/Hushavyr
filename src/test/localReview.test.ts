@@ -91,3 +91,13 @@ test("cancellation prevents repair and suppresses returned results", async () =>
   assert.equal(await runLocalReview(preCancelled.client, "review", source, () => true), undefined);
   assert.equal(preCancelled.prompts.length, 0);
 });
+
+test("reports empty and rejected reviews distinctly without showing rejected model evidence", async () => {
+  const empty = await runLocalReview(scripted(['{"findings":[]}']).client, "review", source);
+  assert.match(formatReview(empty!), /0 proposed/);
+  assert.match(formatReview(empty!), /model proposed no findings/);
+  const rejected = await runLocalReview(scripted([json({...valid, title:"SQL injection", evidence:"PRIVATE_VALUE_NOT_IN_SOURCE"}), json({...valid, title:"SQL injection", evidence:"PRIVATE_VALUE_NOT_IN_SOURCE"})]).client, "review", source);
+  assert.match(formatReview(rejected!), /1 proposed/);
+  assert.match(formatReview(rejected!), /inconclusive/);
+  assert.doesNotMatch(formatReview(rejected!), /PRIVATE_VALUE_NOT_IN_SOURCE/);
+});
