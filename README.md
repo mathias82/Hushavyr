@@ -30,7 +30,7 @@ See the [Hushavyr interface preview](docs/images/hushavyr-local-review.svg) on G
 ## Quick start
 
 1. [Install Hushavyr from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr).
-2. Run **Hushavyr: Setup** from the Command Palette (also offered on first launch). It checks Ollama, lets you pick a local model (it recommends one for your memory: `qwen2.5-coder:7b`, `14b` or `32b`), downloads it with progress, and offers one-click installs for Semgrep, Gitleaks and Trivy. Every install needs your explicit approval. If Ollama itself is missing, use **Hushavyr: Install Ollama**.
+2. Run **Hushavyr: Setup** from the Command Palette (also offered on first launch). It checks Ollama, lets you pick a local model (it recommends one for your memory: `qwen2.5-coder:7b`, `14b` or `32b`; without a setting, that recommendation is used automatically), downloads it with progress, and offers one-click installs for Semgrep, Gitleaks and Trivy. Every install needs your explicit approval. If Ollama itself is missing, use **Hushavyr: Install Ollama**.
 3. Open a trusted local project and try `@ai-privacy /review` or `@ai-privacy /scan`. A missing model is downloaded automatically on first use.
 4. Run `@ai-privacy /semgrep`, `/gitleaks` or `/dependencies`. If a scanner is missing, Hushavyr offers to install it; nothing is downloaded silently.
 5. Small models (7B) often miss bugs. Use `qwen2.5-coder:14b` or larger if your machine has 20 GB+ of memory.

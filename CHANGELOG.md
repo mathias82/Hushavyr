@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.25
+- Default model now follows your machine: unless `aiPrivacyRouter.ollamaModel` is set, Hushavyr uses `qwen2.5-coder:14b` (20 GB+ memory) or `32b` (48 GB+) instead of `7b`; first use downloads it automatically.
+
 ## 0.0.24
 - Quick fix on dependency markers: "Update to <fixed version>" when the version is on the marked line (pom property, package.json, requirements).
 - **Hushavyr: Update Trivy Vulnerability Database** (asks consent; the only network step).

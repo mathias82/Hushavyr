@@ -1,5 +1,6 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
+import {configuredModel} from "./model";
 import {relatedSources} from "./relatedJava";
 import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./trivyCommands";
 import {execFile} from "node:child_process";
@@ -32,7 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   for (const task of [
     {id: "startOllama", title: "Ollama server", args: () => ["serve"]},
-    {id: "downloadOllamaModel", title: "Local model download", args: () => ["pull", vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel", "qwen2.5-coder:7b")]}
+    {id: "downloadOllamaModel", title: "Local model download", args: () => ["pull", configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"))]}
   ]) {
     context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter." + task.id, async () => {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
@@ -295,7 +296,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     stream.markdown("**Local Qwen** · Privacy route: `local` · Sensitivity: `" + decision.sensitivity + "`\n\n");
-    const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
+    const model = configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
 
     const isReview = request.command === "review" || /\b(review|bugs?|vulnerabilit|issues?)\b/i.test(instruction);
     if (isReview && !sources.length) {
@@ -452,7 +453,7 @@ async function runLocal(prompt: string): Promise<void> {
     void vscode.window.showErrorMessage("Content blocked by privacy policy.");
     return;
   }
-  const model = vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("ollamaModel","qwen2.5-coder:7b");
+  const model = configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
   try {
     const result = await vscode.window.withProgress({
       location:vscode.ProgressLocation.Notification,

@@ -10,7 +10,7 @@ class TabInputText {}
 const disposable = {dispose() {}};
 let handler: (request: any, context: any, stream: any, token: any) => Promise<unknown>;
 let docs = new Map<string, string>();
-const configuration: Record<string, unknown> = {};
+const configuration: Record<string, unknown> = {ollamaModel: "qwen2.5-coder:7b"};
 const registeredCommands = new Set<string>();
 let copilotLookups = 0, participantRegistrations = 0;
 const fake = {

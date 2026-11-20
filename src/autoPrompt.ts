@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import {configuredModel} from "./model";
 import {LocalOllama} from "./ollama";
 import {writeRetainedAuditEvent} from "./audit";
 import {runRoutedPrompt, RoutedResult, RoutingPolicy, PublicModel} from "./routing";
@@ -33,7 +34,7 @@ export function createAutoPrompt(context: vscode.ExtensionContext) {
         local: async exactPrompt => {
           const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
           const client = new LocalOllama({
-            model: config.get<string>("ollamaModel", "qwen2.5-coder:7b"),
+            model: configuredModel(config),
             endpoint: config.get<string>("ollamaEndpoint"),
             timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000
           });

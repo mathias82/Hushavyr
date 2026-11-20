@@ -68,3 +68,12 @@ test("lowMemoryWarning flags models that will not fit", () => {
   assert.equal(lowMemoryWarning("qwen2.5-coder:14b", 24 * gb), "");
   assert.equal(lowMemoryWarning("llama3", 8 * gb), "");
 });
+
+import {configuredModel} from "../model";
+test("uses an explicit model setting, otherwise the best fit for memory", () => {
+  const GB = 1024 ** 3;
+  const unset = {inspect: () => ({}), get: <T>(_k: string, f: T) => f};
+  assert.equal(configuredModel(unset, 24 * GB), "qwen2.5-coder:14b");
+  assert.equal(configuredModel(unset, 8 * GB), "qwen2.5-coder:7b");
+  assert.equal(configuredModel({...unset, inspect: () => ({globalValue: "deepseek-coder-v2:16b"})}, 64 * GB), "deepseek-coder-v2:16b");
+});
