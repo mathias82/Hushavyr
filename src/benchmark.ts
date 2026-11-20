@@ -78,6 +78,30 @@ export function getLimit(limit?: number): number {
 export function sortedScores(scores) {
   return [...scores].sort();
 }`}], expected: {path: "scores.js", line: 3, mechanism: /string|lexicograph|comparator|numeric/i}},
+  {id: "java-sql-injection-bug", sources: [{path: "UserLookup.java", text: `import java.sql.*;
+class UserLookup {
+  ResultSet find(Statement stmt, String user) throws SQLException {
+    return stmt.executeQuery("SELECT * FROM users WHERE name = '" + user + "'");
+  }
+}`}], expected: {path: "UserLookup.java", line: 4, mechanism: /sql|inject|parameter|query/i}},
+  {id: "java-sql-parameterized-clean", sources: [{path: "UserLookup.java", text: `import java.sql.*;
+class UserLookup {
+  ResultSet find(Connection connection, String user) throws SQLException {
+    PreparedStatement stmt = connection.prepareStatement("SELECT * FROM users WHERE name = ?");
+    stmt.setString(1, user);
+    return stmt.executeQuery();
+  }
+}`}]},
+  {id: "javascript-tls-validation-disabled", sources: [{path: "client.js", text: `import https from "node:https";
+export const agent = new https.Agent({rejectUnauthorized: false});`}], expected: {path: "client.js", line: 2, mechanism: /tls|certificat|validat|https/i}},
+  {id: "javascript-tls-default-clean", sources: [{path: "client.js", text: `import https from "node:https";
+export const agent = new https.Agent({rejectUnauthorized: true});`}]},
+  {id: "python-shell-injection-bug", sources: [{path: "runner.py", text: `import subprocess
+def run(command):
+    return subprocess.run(command, shell=True, check=True)`}], expected: {path: "runner.py", line: 3, mechanism: /shell|inject|command|subprocess/i}},
+  {id: "python-shell-argument-list-clean", sources: [{path: "runner.py", text: `import subprocess
+def run(filename):
+    return subprocess.run(["cat", "--", filename], shell=False, check=True)`}]},
   {id: "javascript-numeric-sort-clean", sources: [{path: "scores.js", text: `// Return a sorted copy in ascending numeric order.
 export function sortedScores(scores) {
   return [...scores].sort((a, b) => a - b);

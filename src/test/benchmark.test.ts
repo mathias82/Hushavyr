@@ -21,7 +21,7 @@ test("shared review scoring reports invalid responses and evidence rejections in
   const score = scoreReviewResponses(responses);
   assert.equal(score.totals.invalidResponses, 1);
   assert.equal(score.totals.rejectedFindings, 1);
-  assert.equal(score.totals.falseNegative, 7);
+  assert.equal(score.totals.falseNegative, 10);
   assert.equal(score.precision, null);
   assert.equal(score.recall, 0);
   assert.throws(() => scoreReviewResponses({...responses, unknown: "{}"}), /every benchmark case/);
@@ -43,4 +43,15 @@ test("benchmark scores evidence in Python, TypeScript and JavaScript fixtures", 
   assert.equal(score.totals.truePositive, 3);
   assert.equal(score.totals.rejectedFindings, 0);
   assert.equal(score.totals.falsePositive, 0);
+});
+
+test("security benchmark contains paired vulnerable and safe controls", () => {
+  for (const [bad, good] of [
+    ["java-sql-injection-bug", "java-sql-parameterized-clean"],
+    ["javascript-tls-validation-disabled", "javascript-tls-default-clean"],
+    ["python-shell-injection-bug", "python-shell-argument-list-clean"]
+  ]) {
+    assert.ok(benchmarkCases.find(x => x.id === bad)?.expected);
+    assert.equal(benchmarkCases.find(x => x.id === good)?.expected, undefined);
+  }
 });
