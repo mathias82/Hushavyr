@@ -134,3 +134,17 @@ test("offline review indicators retain source offsets and avoid duplicates", asy
   const result = await runLocalReview(scripted(['{"findings":[]}', '{"findings":[]}']).client, "review", sourceWithOffset);
   assert.equal(result?.findings[0]?.line, 30);
 });
+
+test("Java JSON string concatenation is detected even if local model proposes zero findings",async()=>{
+ const input=[{path:"Mapper.java",text:source}];
+ const result=await runLocalReview(scripted(['{"findings":[]}','{"findings":[]}']).client,"review",input);
+ assert.equal(result?.proposed,0);
+ assert.equal(result?.findings.length,1);
+ assert.match(result!.findings[0].title,/Local rule: Dynamic value/);
+ assert.equal(result?.findings[0].line,3);
+});
+test("Java serialized object response does not produce local JSON-concatenation warning",async()=>{
+ const input=[{path:"Mapper.java",text:'return Response.ok(new ErrorDto(message)).build();'}];
+ const result=await runLocalReview(scripted(['{"findings":[]}','{"findings":[]}']).client,"review",input);
+ assert.equal(result?.findings.length,0);
+});
