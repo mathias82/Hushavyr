@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext): void {
     {id: "downloadOllamaModel", title: "Qwen model download", args: ["pull", "qwen2.5-coder:7b"]}
   ]) {
     context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter." + task.id, async () => {
-      if (!vscode.workspace.isTrusted || vscode.env.remoteName) {
+      if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
         await vscode.window.showInformationMessage("Open a trusted local VS Code window to set up Ollama.");
         return;
       }
@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
   }
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
-    if (!vscode.workspace.isTrusted || vscode.env.remoteName) {
+    if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
       return;
     }
@@ -139,7 +139,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const workspaceReview = request.command === "review" &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction);
     if (workspaceReview) {
-      if (!vscode.workspace.isTrusted || vscode.env.remoteName || !vscode.workspace.workspaceFolders?.length) {
+      if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
         stream.markdown("Open a trusted local project folder before starting a workspace review. Nothing was sent.");
         return;
       }
@@ -233,14 +233,14 @@ export function activate(context: vscode.ExtensionContext): void {
         // VS Code may attach opaque implicit Chat context (for example, the
         // active editor) that extensions cannot dereference. Never forward it.
         // Resolve a trusted visible local editor below instead.
-        if (vscode.workspace.isTrusted && !vscode.env.remoteName &&
+        if (vscode.workspace.isTrusted && !vscode.env?.remoteName &&
             (vscode.window.visibleTextEditors.some(isCodeEditor) || lastCodeEditor)) {
           continue;
         }
         stream.markdown("An attached context item cannot be inspected. Open a trusted local code file and retry. Nothing was sent.");
         return;
       }
-      if (uri.scheme === "file" && (!vscode.workspace.isTrusted || vscode.env.remoteName)) {
+      if (uri.scheme === "file" && (!vscode.workspace.isTrusted || vscode.env?.remoteName)) {
         stream.markdown("Open a trusted local VS Code window to review files. Nothing was sent.");
         return;
       }
@@ -292,7 +292,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // code file over a stale selection captured before Chat took focus.
     // VS Code can add an opaque context reference for that same file.
     if (request.command === "review" && attachments.length === 0 && !activeSelection?.trim() &&
-        vscode.workspace.isTrusted && !vscode.env.remoteName) {
+        vscode.workspace.isTrusted && !vscode.env?.remoteName) {
       const visible = vscode.window.visibleTextEditors.filter(isCodeEditor);
       const preferred = visible.find(e => e.document.uri.toString() === lastCodeEditor?.document.uri.toString())
         ?? (visible.length === 1 ? visible[0] : undefined)
