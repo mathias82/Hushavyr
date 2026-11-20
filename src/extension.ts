@@ -228,6 +228,7 @@ export function activate(context: vscode.ExtensionContext): void {
       let failedReads = 0;
       try {
         // Deterministic checks run locally before Ollama availability is required.
+        if (request.command !== "dependencies") {
         const [configFiles, dotenvFiles] = await Promise.all([
           vscode.workspace.findFiles(secretInclude, excludes, 5001),
           vscode.workspace.findFiles(dotenvInclude, excludes, 5001)
@@ -250,6 +251,7 @@ export function activate(context: vscode.ExtensionContext): void {
             }
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
+        }
         }
         if (request.command === "scan" || request.command === "scan-changed") {
           stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security`, `/semgrep`, and `/gitleaks` separately for additional checks.\\n\\n");
@@ -292,7 +294,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 stream.markdown("**" + finding.severity + " · " + finding.rule + "** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " · " + finding.advice + "\n\n");
               }
             }
-            for (const finding of scanSecrets(localContent)) {
+            if (request.command !== "dependencies") for (const finding of scanSecrets(localContent)) {
               sourceFindings++;
               stream.markdown("**HIGH · Potential hardcoded credential** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
             }
