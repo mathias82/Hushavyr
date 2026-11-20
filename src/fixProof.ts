@@ -43,6 +43,11 @@ function summary(stage: ProofStage, run: TestRun): StageSummary {
     // Parameterized test names can contain personal data; never persist raw names.
     caseSetHash: sha256(run.cases.map(t => key(t) + "\0" + t.outcome).sort().join("\n"))};
 }
+/** The bug itself is proven once the approved test failed by assertion on the unchanged code, even if no fix was verified. */
+export function bugReproduced(receipt: FixProofReceipt): boolean {
+  return receipt.reason !== "regression-not-reproduced" &&
+    receipt.stages.some(s => s.stage === "red" && s.exitCode === 1 && !s.interrupted && s.failures > 0 && s.errors === 0 && s.skipped === 0);
+}
 /** Acceptance comes from the executable red/green pair and suite, never model claims. */
 export async function runFixProof(context: FixProofContext, deps: FixProofDependencies): Promise<FixProofReceipt> {
   context = Object.freeze({...context});

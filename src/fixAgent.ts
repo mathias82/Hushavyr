@@ -2,10 +2,14 @@ import * as vscode from "vscode";
 import {configuredModel} from "./model";
 import {join, sep} from "node:path";
 import {LocalOllama} from "./ollama";
-import {FixProofReceipt, runFixProof} from "./fixProof";
+import {FixProofReceipt, bugReproduced, runFixProof} from "./fixProof";
 import {FixSandbox} from "./fixSandbox";
 
 import {testSchema, fixSchema, parseTestProposal, parseFixProposal} from "./fixProposals";
+import {projectRootFor, runnerFor} from "./proofTarget";
+
+/** A /review finding to prove: its file and the marker text, which becomes the bug description. */
+export interface ProofRequest {file: string; message: string}
 
 async function approve(title: string, content: string, token: vscode.CancellationToken): Promise<boolean> {
   if (token.isCancellationRequested) return false;
@@ -34,21 +38,26 @@ async function approve(title: string, content: string, token: vscode.Cancellatio
   });
 }
 export function registerVerifiedFix(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.verifyLocalFix", async () => {
+  context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.verifyLocalFix", async (finding?: ProofRequest) => {
     const localProfile = (): boolean => vscode.workspace.isTrusted === true &&
       vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false) === true;
     if (!localProfile()) {
       void vscode.window.showWarningMessage("Use a trusted local-only profile with chat.disableAIFeatures enabled. This command never uses Copilot.");
       return;
     }
-    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js", "TypeScript / Node.js"],
+    // From a /review marker the runner, project, file and bug description are already known.
+    const findingFile = finding ? vscode.Uri.parse(finding.file) : undefined;
+    const workspaceRoot = findingFile && vscode.workspace.getWorkspaceFolder(findingFile)?.uri.fsPath;
+    const knownRunner = findingFile?.scheme === "file" ? runnerFor(findingFile.fsPath) : undefined;
+    const knownRoot = knownRunner && workspaceRoot ? projectRootFor(findingFile!.fsPath, knownRunner, workspaceRoot) : undefined;
+    const runner = knownRoot ? knownRunner : await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js", "TypeScript / Node.js"],
       {placeHolder: "Choose an offline test runner"});
     if (!runner) return;
     const python = runner === "Python / pytest";
     const typescript = runner === "TypeScript / Node.js";
     const node = runner === "JavaScript / Node.js" || typescript;
     const language = typescript ? "TypeScript" : node ? "JavaScript" : python ? "Python" : "Java";
-    const folder = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
+    const folder = knownRoot ? [vscode.Uri.file(knownRoot)] : await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
       canSelectMany: false, openLabel: node ? "Choose a project with Node.js native tests" : python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
       defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri});
     const project = folder?.[0];
@@ -57,12 +66,13 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       d.uri.fsPath.startsWith(project.fsPath + sep))) {
       void vscode.window.showWarningMessage("Save and commit project edits before verifying a committed snapshot."); return;
     }
-    const selected = await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
+    const selected = knownRoot ? [findingFile!] : await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
       defaultUri: python || node ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
       filters: {[language]: typescript ? ["ts", "cts", "mts"] : node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
       openLabel: "Choose 1–6 production " + language + " files for local analysis"});
     if (!selected?.length || selected.some(uri => uri.scheme !== "file")) return;
-    const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true});
+    const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true,
+      value: finding?.message.replace(/\s+/g, " ").slice(0, 1400)});
     if (!goal?.trim()) return;
     if (Buffer.byteLength(goal, "utf8") > 1500) {
       void vscode.window.showWarningMessage("Keep the bug description within 1.5 KB."); return;
@@ -132,7 +142,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       const receipt: FixProofReceipt = result.receipt;
       const message = "Local regression proof: " + receipt.status + " (" + receipt.reason + "). Artifacts: " + result.directory +
         ". The active checkout was not changed.";
-      if (receipt.status === "verified") void vscode.window.showInformationMessage(message +
+      if (receipt.status !== "verified" && bugReproduced(receipt)) void vscode.window.showWarningMessage("Bug confirmed: an approved test fails on the unchanged code. " + message);
+      else if (receipt.status === "verified") void vscode.window.showInformationMessage(message +
         " verified.patch is bound to base " + receipt.baseCommit + ". Review it before applying; this is not a proof of all behavior.");
       else void vscode.window.showWarningMessage(message);
     } catch {

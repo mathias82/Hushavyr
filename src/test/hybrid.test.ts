@@ -132,3 +132,23 @@ test("/security Semgrep uses the full bundled rule pack and short rule ids", asy
   assert.match(config, /hushavyr-review\.yml$/);
   assert.equal(result.findings[0].rule, "java-sql-concatenation");
 });
+
+test("a /review marker maps to the right offline runner and nearest project", async () => {
+  const { runnerFor, projectRootFor } = await import("../proofTarget");
+  assert.equal(runnerFor("/w/app/src/main/java/A.java"), "Java / Maven");
+  assert.equal(runnerFor("/w/a.mts"), "TypeScript / Node.js");
+  assert.equal(runnerFor("/w/a.go"), undefined);
+  const files = new Set(["/w/svc/pom.xml", "/w/pom.xml"]);
+  assert.equal(projectRootFor("/w/svc/src/main/java/A.java", "Java / Maven", "/w", p => files.has(p)), "/w/svc");
+  assert.equal(projectRootFor("/w/lib/x.py", "Python / pytest", "/w", p => files.has(p)), undefined);
+});
+
+test("a bug counts as reproduced only when the approved test failed by assertion", async () => {
+  const { bugReproduced } = await import("../fixProof");
+  const red = {stage: "red" as const, exitCode: 1, interrupted: false, durationMs: 1, passed: 0, failures: 1, errors: 0, skipped: 0, caseSetHash: ""};
+  const receipt = {baseCommit: "", imageId: "", testClass: "T", testPath: "t", policyVersion: "node-red-green-v1" as const,
+    runId: "", startedAtUtc: "", status: "not-verified" as const, reason: "fix-not-approved", stages: [red]};
+  assert.equal(bugReproduced(receipt), true);
+  assert.equal(bugReproduced({...receipt, stages: [{...red, failures: 0, errors: 1}]}), false);
+  assert.equal(bugReproduced({...receipt, reason: "regression-not-reproduced"}), false);
+});

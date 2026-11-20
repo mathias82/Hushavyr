@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.0.29
+- Quick fix **Hushavyr: prove with a failing test (offline Docker)** on `/review` markers (Java, Python, JS, TS): runner, project, file and bug description are filled in; a failing approved test reports the bug as confirmed even when no fix is verified.
 - `/semgrep` merged into `/security`: one project scan with the full bundled Semgrep rule pack, built-in rules and credentials, clickable locations and one finding per line.
 - New `/explain`: explains the open, selected or attached code in prose. `/review` is for bugs and security issues only; asking it to explain still works but points to `/explain`.
 - Hybrid `/review`: local model + bundled Semgrep rule pack (`rules/hushavyr-review.yml`: SQL/command/code injection, XSS, path traversal, SSRF, XXE, unsafe deserialization, disabled TLS, weak crypto) triaged together, then verified locally. Falls back to the built-in rules when Semgrep is not installed.
