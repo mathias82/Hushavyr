@@ -37,7 +37,7 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.7.vsix
+code --install-extension ai-privacy-router-0.0.8.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **Hushavyr: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **Hushavyr: Classify Selection** and **Hushavyr: Review Cloud Override (No Transfer)**.
@@ -58,7 +58,7 @@ npm run update:local
 npm ci --ignore-scripts
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.7.vsix --force
+code --install-extension ai-privacy-router-0.0.8.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -157,7 +157,7 @@ Every finding remains **potential**. Neither model agreement nor a successful ex
 
 ## Local Java regression-proof agent (0.0.5)
 
-On the development branch, select **Python / pytest**. Use a committed project with an existing `tests/` directory and select one to six tracked production `.py` files. Set `aiPrivacyRouter.fixPythonImage` to a preloaded local image containing Python, pytest and the project dependencies. The default image name is `hushavyr-pytest:local`. The verifier uses a fixed pytest command, disables plugin autoload, and runs with networking disabled. Projects that require plugins, live services or writing to the checkout need a compatible offline test setup.
+For Python projects, select **Python / pytest**. Use a committed project with an existing `tests/` directory and select one to six tracked production `.py` files. Set `aiPrivacyRouter.fixPythonImage` to a preloaded local image containing Python, pytest and the project dependencies. The default image name is `hushavyr-pytest:local`. The verifier uses a fixed pytest command, disables plugin autoload, and runs with networking disabled. Projects that require plugins, live services or writing to the checkout need a compatible offline test setup.
 
 The Python verifier checks that the existing suite passes, the approved generated test fails on an assertion, the same test passes after the fix, and the full suite still passes. Import, collection and runtime errors cannot establish a regression. The command writes the same patch and receipt artifacts as the Maven profile.
 
@@ -275,7 +275,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.7.vsix
+code --install-extension ai-privacy-router-0.0.8.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
