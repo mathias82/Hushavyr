@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.0.29
+- New `/explain`: explains the open, selected or attached code in prose. `/review` is for bugs and security issues only; asking it to explain still works but points to `/explain`.
 - Hybrid `/review`: local model + bundled Semgrep rule pack (`rules/hushavyr-review.yml`: SQL/command/code injection, XSS, path traversal, SSRF, XXE, unsafe deserialization, disabled TLS, weak crypto) triaged together, then verified locally. Falls back to the built-in rules when Semgrep is not installed.
 - Thorough review by default: general, security and robustness passes (`aiPrivacyRouter.reviewDepth`).
 - Review answers start with a summary: issue count by severity and the one to fix first.

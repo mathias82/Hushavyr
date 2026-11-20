@@ -264,7 +264,11 @@
         "commands": [
           {
             "name": "review",
-            "description": "Review the open code file with local Qwen; no prompt or selection needed"
+            "description": "Find bugs and security issues in the open code file locally; no prompt or selection needed"
+          },
+          {
+            "name": "explain",
+            "description": "Explain the open, selected or attached code locally (purpose, main flow, notable points)"
           },
           {
             "name": "review-changes",

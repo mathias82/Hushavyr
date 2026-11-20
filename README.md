@@ -8,7 +8,8 @@ Type `@ai-privacy` in VS Code Chat:
 
 | Command | Purpose |
 | --- | --- |
-| `/review` | Review the open or attached code locally |
+| `/review` | Find bugs and security issues in the open or attached code locally |
+| `/explain` | Explain the open, selected or attached code locally |
 | `/review-changes` | Review your uncommitted git changes locally |
 | `/test` | Run supported local project tests |
 | `/auto` | Privacy-aware routing of typed prompts |
