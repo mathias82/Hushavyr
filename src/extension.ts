@@ -25,7 +25,7 @@ import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
 import { publishFindings } from "./diagnostics";
-import { addDismissal, fingerprint, loadDismissals, withoutDismissed } from "./teamMemory";
+import { addDismissal, fingerprint, loadDismissals, loadTeamRules, withoutDismissed, withTeamRules } from "./teamMemory";
 import { runSetup, lowMemoryWarning } from "./setup";
 import { runWorkspaceScan, isScanCommand, clearDependencyMarkers } from "./workspaceScan";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
@@ -451,7 +451,13 @@ export function activate(context: vscode.ExtensionContext): void {
         const verifier = verifierModel === model ? client : new LocalOllama({model: verifierModel, endpoint, timeoutMs});
         const depth: ReviewDepth = config.get<string>("reviewDepth", "thorough") === "fast" ? "fast" : "thorough";
         const useStatic = config.get<boolean>("staticAnalysis", true);
-        const key = ResultCache.key(model, verifierModel, depth, useStatic, instruction, sources);
+        let teamRules = "";
+        try {
+          const ruleFolder = sources[0].path.startsWith("file:") && vscode.workspace.isTrusted ? vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(sources[0].path)) : undefined;
+          if (ruleFolder) teamRules = await loadTeamRules(ruleFolder.uri.fsPath);
+        } catch { teamRules = ""; }
+        const reviewInstruction = withTeamRules(instruction, teamRules);
+        const key = ResultCache.key(model, verifierModel, depth, useStatic, reviewInstruction, sources);
         const cached = reviewCache.get(key);
         if (cached) stream.progress("Same code as an earlier review: reusing the result");
         // Semgrep runs on temporary local copies while the model reviews; the two are triaged together.
@@ -460,7 +466,7 @@ export function activate(context: vscode.ExtensionContext): void {
           : undefined;
         if (!cached) stream.progress(depth === "thorough" ? "Local review: general, security and robustness passes + static rules..." : "Local review...");
         // Each pass has a fresh prompt; the same model may serve both passes.
-        const validated: ReviewResult | undefined = cached ? {...cached, cached: true} : await runLocalReview(withSignal(client), instruction, sources,
+        const validated: ReviewResult | undefined = cached ? {...cached, cached: true} : await runLocalReview(withSignal(client), reviewInstruction, sources,
           () => token.isCancellationRequested, withSignal(verifier), {depth, staticFindings});
         if (validated && !validated.error && !cached && !token.isCancellationRequested) reviewCache.set(key, validated);
         if (validated && !token.isCancellationRequested) {

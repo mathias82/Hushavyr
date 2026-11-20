@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.0.29
+- Team rules: write your standards in `.hushavyr/rules.md` (first 3 KB, trusted workspaces only); `/review` also reports concrete violations of them.
 - Team memory: quick fix **Hushavyr: not a real issue (hide for the team)** stores a fingerprint and reason in `.hushavyr/dismissed.json`; commit it and the finding stays hidden for everyone, even after the line moves.
 - Quick fix **Hushavyr: prove with a failing test (offline Docker)** on `/review` markers (Java, Python, JS, TS): runner, project, file and bug description are filled in; a failing approved test reports the bug as confirmed even when no fix is verified.
 - `/semgrep` merged into `/security`: one project scan with the full bundled Semgrep rule pack, built-in rules and credentials, clickable locations and one finding per line.

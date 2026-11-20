@@ -170,3 +170,20 @@ test("team dismissals are stored in the repo and hide the same finding after it 
     assert.deepEqual(await loadDismissals(join(root, "missing")), []);
   } finally { await rm(root, {recursive: true, force: true}); }
 });
+
+test("team rules file is capped and added to the review instruction as criteria", async () => {
+  const { loadTeamRules, withTeamRules } = await import("../teamMemory");
+  const root = await mkdtemp(join(tmpdir(), "hushavyr-rules-"));
+  try {
+    assert.equal(await loadTeamRules(root), "");
+    assert.equal(withTeamRules("Review", ""), "Review");
+    await mkdir(join(root, ".hushavyr"));
+    await writeFile(join(root, ".hushavyr", "rules.md"), "- Never log tokens\n\n\n\n- " + "x".repeat(5000));
+    const rules = await loadTeamRules(root);
+    assert.ok(rules.startsWith("- Never log tokens\n\n- x"));
+    assert.ok(Buffer.byteLength(rules) <= 3000);
+    const instruction = withTeamRules("Review", rules);
+    assert.ok(instruction.startsWith("Review\n\nTEAM REVIEW STANDARDS"));
+    assert.ok(instruction.includes("Never log tokens"));
+  } finally { await rm(root, {recursive: true, force: true}); }
+});
