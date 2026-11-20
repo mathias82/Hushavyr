@@ -36,6 +36,9 @@ export function reviewPrompt(instruction: string, code: ReviewInput): string {
     "Choose the narrowest source range supporting the failure: startLine and endLine are inclusive, 1-based, and at most 8 lines apart including both endpoints.",
     "Use only the supplied files. Follow calls across supplied files when possible; do not assume implementations or validation in absent files. Set path to the exact SOURCE path containing the evidence.",
     "Inspect correctness at input/output boundaries: serialization and escaping, null handling, state changes and error responses. Explain a concrete triggering input and its effect in the title or fix. Do not invent absent behavior.",
+    "Apply language-specific semantics, not Java assumptions: Java/Kotlin nullability, transactions and resource ownership; JavaScript/TypeScript async errors, truthiness and type coercion; Python mutable defaults, exception paths and subprocess handling; Go ignored errors and goroutine/channel lifecycle; Rust Result/Option handling and unsafe boundaries; C/C++ ownership, bounds and undefined behavior; C# async disposal and null handling; SQL joins, null semantics and parameter binding; shell quoting and exit status. For other languages infer only from visible syntax.",
+    "Inspect each file for a reproducible input -> operation -> incorrect output or side effect. Prioritize actual bugs over style, formatting and speculative vulnerabilities. For each finding include a precise trigger and a testable fix.",
+    "A clean review is allowed, but first check boundary values (null, empty, zero, negative, duplicate, concurrent), error propagation, resource cleanup and data escaping where relevant to the language.",
     "If evidence is insufficient, return an empty findings array. Do not invent tests, other files, or execution results.",
     "User request: " + instruction,
     sourcePrompt(code)

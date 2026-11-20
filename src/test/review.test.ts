@@ -18,3 +18,11 @@ test("keeps source-grounded finding as potential only", () => {
 });
 test("handles malformed JSON safely",()=>assert.match(formatReview(validateReview("invalid",source)),/not verified/));
 test("review prompt requires source evidence",()=>assert.match(reviewPrompt("review",source),/exact verbatim substring/));
+
+test("review prompt covers language-specific correctness",()=>{
+ const files=[{path:"main.go",text:"func f() error { return nil }"},{path:"worker.rs",text:"fn main() {}"},{path:"handler.py",text:"def run(x): return x"}];
+ const prompt=reviewPrompt("review correctness",files);
+ for(const term of ["Java/Kotlin","JavaScript/TypeScript","Python","Go ignored errors","Rust Result/Option","C/C++","C#","SQL joins","shell quoting"])assert.ok(prompt.includes(term),term);
+ for(const file of files)assert.ok(prompt.includes(file.path));
+ assert.match(prompt,/A clean review is allowed/);
+});
