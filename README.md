@@ -1,6 +1,10 @@
 # AI Privacy Router
 
-Private prototype of a privacy-first AI router for VS Code.
+AI Privacy Router is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
+
+The extension controls its own requests. For sensitive work, use a VS Code profile with independent Copilot features disabled. Live privacy checks across the router and that profile are still pending. Try the examples below with synthetic data.
+
+Report security issues using the [security policy](SECURITY.md).
 
 ## Principles
 - Classify the entire outbound payload, not only the prompt.
@@ -39,7 +43,7 @@ For a negative test, stop Ollama and repeat the local command. It must show a lo
 
 The Ollama endpoint defaults to `127.0.0.1:11434` and can be changed to another loopback HTTP origin with `aiPrivacyRouter.ollamaEndpoint`; in Remote SSH, containers, or WSL, this refers to the extension host, not necessarily your laptop. The default model can be changed in VS Code Settings under `aiPrivacyRouter.ollamaModel`.
 
-**Important limitations:** Privacy detection is heuristic; no content is certified safe for cloud use. The override UI is a **review-only prototype**; it records local audit metadata but does not send anything to Sonnet. The VSIX is for private local testing, not Marketplace publication. Do not test with actual company secrets or production personal data until the extension has been independently reviewed.
+**Important limitations:** Privacy detection is heuristic; no content is certified safe for cloud use. The override UI is a **review-only prototype**; it records local audit metadata but does not send anything to Sonnet. The VSIX is a preview package for manual installation. Do not test with actual company secrets or production personal data until the extension has been independently reviewed.
 
 
 ## Update an existing checkout safely
