@@ -164,9 +164,16 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
-        for (const uri of files) {
+        const batchSize = 50;
+        for (let batchStart = 0; batchStart < files.length; batchStart += batchSize) {
           if (token.isCancellationRequested) break;
-          const bytes = await vscode.workspace.fs.readFile(uri);
+          const batch = files.slice(batchStart, batchStart + batchSize);
+          stream.markdown("**Batch " + (Math.floor(batchStart / batchSize) + 1) + "/" + Math.ceil(files.length / batchSize) + "** · " + batch.length + " files · " + inspected + " completed\n\n");
+          for (const uri of batch) {
+          if (token.isCancellationRequested) break;
+          let bytes: Uint8Array;
+          try { bytes = await vscode.workspace.fs.readFile(uri); }
+          catch { skipped++; continue; }
           // Never load large, binary, or generated files into a model prompt.
           if (bytes.length > 60_000 || bytes.includes(0)) { skipped++; continue; }
           const content = Buffer.from(bytes).toString("utf8");
@@ -194,6 +201,8 @@ export function activate(context: vscode.ExtensionContext): void {
             start = end;
           }
           inspected++;
+          }
+          stream.markdown("Progress: " + inspected + "/" + files.length + " inspected, " + skipped + " skipped.\n\n");
         }
         stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped." +
           (token.isCancellationRequested ? " Cancelled." : " Review findings require human verification."));
