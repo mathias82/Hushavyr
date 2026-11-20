@@ -9,6 +9,7 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onCommand:aiPrivacyRouter.installOllama",
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
     "onCommand:aiPrivacyRouter.askLocalSelection",
@@ -20,7 +21,36 @@
     "onCommand:aiPrivacyRouter.verifyLocalFix"
   ],
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "hushavyr-local-setup",
+        "title": "Get started with Hushavyr",
+        "description": "Set up local code review with Ollama.",
+        "steps": [
+          {
+            "id": "install-ollama",
+            "title": "Install and start Ollama",
+            "description": "[Install Ollama](command:aiPrivacyRouter.installOllama) in the VS Code terminal, then start Ollama."
+          },
+          {
+            "id": "pull-model",
+            "title": "Download the local model",
+            "description": "In the VS Code terminal, run `ollama pull qwen2.5-coder:7b`."
+          },
+          {
+            "id": "try-local",
+            "title": "Ask a local question",
+            "description": "[Ask Local Qwen](command:aiPrivacyRouter.askLocal) to check your setup.",
+            "completionEvents": ["onCommand:aiPrivacyRouter.askLocal"]
+          }
+        ]
+      }
+    ],
     "commands": [
+      {
+        "command": "aiPrivacyRouter.installOllama",
+        "title": "Hushavyr: Install Ollama"
+      },
       {
         "command": "aiPrivacyRouter.classifySelection",
         "title": "Hushavyr: Classify Selection"
