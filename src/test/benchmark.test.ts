@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { benchmarkCases, scoreCase, scoreReviewResponses } from "../benchmark";
+import { benchmarkCases, scoreCase, scoreReviewResponses, compareReviewResponses } from "../benchmark";
 import { validateReview } from "../review";
 
 test("benchmark scores mechanisms and locations without counting duplicate findings twice", () => {
@@ -54,4 +54,21 @@ test("security benchmark contains paired vulnerable and safe controls", () => {
     assert.ok(benchmarkCases.find(x => x.id === bad)?.expected);
     assert.equal(benchmarkCases.find(x => x.id === good)?.expected, undefined);
   }
+});
+
+test("offline comparison scores identical fixtures across named provider responses", () => {
+  const empty = Object.fromEntries(benchmarkCases.map(fixture => [fixture.id, '{"findings":[]}']));
+  const compared = compareReviewResponses({localQwen: empty, "Claude Sonnet (imported)": {...empty}});
+  assert.equal(compared.fixtureCount, 20);
+  assert.equal(compared.providers.length, 2);
+  assert.equal(compared.providers[0].totals.falseNegative, 10);
+  assert.equal(compared.providers[1].recall, 0);
+  assert.match(compared.limitation, /No cloud requests/);
+});
+
+test("offline comparison rejects incomplete and malformed provider datasets", () => {
+  const empty = Object.fromEntries(benchmarkCases.map(fixture => [fixture.id, '{"findings":[]}']));
+  assert.throws(() => compareReviewResponses({}), /1-10/);
+  assert.throws(() => compareReviewResponses({copilot: {}}), /every benchmark case/);
+  assert.throws(() => compareReviewResponses({claude: {...empty, extra: "{}"}}), /every benchmark case/);
 });
