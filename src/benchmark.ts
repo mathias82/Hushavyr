@@ -1,6 +1,7 @@
 import { LocalOllama } from "./ollama";
 import { ReviewSource } from "./context";
-import { Finding } from "./review";
+import { Finding, reviewPrompt, validateReview } from "./review";
+import { readFileSync } from "node:fs";
 import { runLocalReview } from "./localReview";
 
 export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; mechanism: RegExp} }
@@ -67,7 +68,46 @@ export function scoreCase(fixture: BenchmarkCase, findings: readonly Finding[]) 
   return {truePositive: matched >= 0 ? 1 : 0, falseNegative: expected && matched < 0 ? 1 : 0,
     falsePositive: findings.length - (matched >= 0 ? 1 : 0), cleanPass: !expected && !findings.length};
 }
-async function main() {
+const instruction = "Review for concrete correctness bugs. Input parameters may be null or any value of their declared type unless guarded in source.";
+
+export function scoreReviewResponses(responses: Record<string, unknown>) {
+  const ids = benchmarkCases.map(fixture => fixture.id);
+  if (Object.keys(responses).length !== ids.length || ids.some(id => typeof responses[id] !== "string")) {
+    throw new Error("Provide one response string for every benchmark case ID.");
+  }
+  const cases = benchmarkCases.map(fixture => {
+    const review = validateReview(responses[fixture.id] as string, fixture.sources);
+    const score = scoreCase(fixture, review.findings);
+    return {id: fixture.id, ...score, cleanPass: score.cleanPass && !review.error && review.rejected === 0,
+      rejectedFindings: review.rejected, invalidResponse: Boolean(review.error)};
+  });
+  const totals = cases.reduce((sum, row) => ({
+    truePositive: sum.truePositive + row.truePositive,
+    falsePositive: sum.falsePositive + row.falsePositive,
+    falseNegative: sum.falseNegative + row.falseNegative,
+    rejectedFindings: sum.rejectedFindings + row.rejectedFindings,
+    invalidResponses: sum.invalidResponses + Number(row.invalidResponse)
+  }), {truePositive: 0, falsePositive: 0, falseNegative: 0, rejectedFindings: 0, invalidResponses: 0});
+  const {truePositive: tp, falsePositive: fp, falseNegative: fn} = totals;
+  return {cases, totals, precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null};
+}
+
+async function main(args: string[]) {
+  if (args.length === 1 && args[0] === "--prompts") {
+    console.log(JSON.stringify(Object.fromEntries(benchmarkCases.map(fixture =>
+      [fixture.id, reviewPrompt(instruction, fixture.sources)])), null, 2));
+    return;
+  }
+  if (args.length === 2 && args[0] === "--score") {
+    const responses: unknown = JSON.parse(readFileSync(args[1], "utf8"));
+    if (!responses || typeof responses !== "object" || Array.isArray(responses)) {
+      throw new Error("Expected a JSON object mapping case IDs to response strings.");
+    }
+    console.log(JSON.stringify(scoreReviewResponses(responses as Record<string, unknown>), null, 2));
+    return;
+  }
+  if (args.length) throw new Error("Usage: review:benchmark [--prompts | --score responses.json]");
+
   const model = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b";
   const verifierModel = process.env.OLLAMA_VERIFIER_MODEL ?? model;
   const endpoint = process.env.OLLAMA_ENDPOINT;
@@ -80,7 +120,7 @@ async function main() {
   for (const fixture of benchmarkCases) {
     const started = Date.now();
     try {
-      const result = await runLocalReview(client, "Review for concrete correctness bugs. Input parameters may be null or any value of their declared type unless guarded in source.", fixture.sources, () => false, verifier);
+      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier);
       if (!result || result.error) throw new Error("Review failed");
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;
@@ -97,7 +137,7 @@ async function main() {
     limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. No raw source or model response is included."}, null, 2));
   if (errors || verifierFailures || fp || fn) process.exitCode = 1;
 }
-if (require.main === module) main().catch(() => {
-  console.error("Local benchmark unavailable. Check Ollama and installed models. No cloud request was made.");
+if (require.main === module) main(process.argv.slice(2)).catch((error: Error) => {
+  console.error("Benchmark stopped:", error.message);
   process.exitCode = 1;
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { benchmarkCases, scoreCase } from "../benchmark";
+import { benchmarkCases, scoreCase, scoreReviewResponses } from "../benchmark";
 import { validateReview } from "../review";
 
 test("benchmark scores mechanisms and locations without counting duplicate findings twice", () => {
@@ -12,4 +12,17 @@ test("benchmark scores mechanisms and locations without counting duplicate findi
   assert.equal(scoreCase(fixture, [{...result.findings[0], title: "Wrong issue", fix: "Unrelated"}]).truePositive, 0);
   assert.equal(scoreCase(fixture, []).falseNegative, 1);
   assert.equal(scoreCase(benchmarkCases.find(c => !c.expected)!, []).cleanPass, true);
+});
+
+test("shared review scoring reports invalid responses and evidence rejections independently", () => {
+  const responses = Object.fromEntries(benchmarkCases.map(fixture => [fixture.id, '{"findings":[]}']));
+  responses["integer-overflow-bug"] = "invalid JSON";
+  responses["null-guard-clean"] = JSON.stringify({findings: [{path: "Invented.java"}]});
+  const score = scoreReviewResponses(responses);
+  assert.equal(score.totals.invalidResponses, 1);
+  assert.equal(score.totals.rejectedFindings, 1);
+  assert.equal(score.totals.falseNegative, 4);
+  assert.equal(score.precision, null);
+  assert.equal(score.recall, 0);
+  assert.throws(() => scoreReviewResponses({...responses, unknown: "{}"}), /every benchmark case/);
 });
