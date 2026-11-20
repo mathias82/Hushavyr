@@ -11,6 +11,9 @@ export function scanSecrets(content: string): SecretFinding[] {
     const match = ASSIGNMENT.exec(line);
     if (!match || !KEY.test(match[1])) continue;
     const value = match[2].trim().replace(/[,;]\s*$/, "").trim();
+    // GitHub Actions expressions and template variable references are not literal credentials.
+    if (/^["\x27]?\s*\$\{\{\s*(?:secrets|vars|env|github|inputs|steps|needs)\.[^}]+\}\}\s*["\x27]?$/.test(value)) continue;
+    if (/^["\x27]?\s*\$\{[A-Za-z_][\w.:-]*\}\s*["\x27]?$/.test(value)) continue;
     if (PLACEHOLDER.test(value) || /^["']\s*["']$/.test(value)) continue;
     findings.push({line: index + 1, rule: "Potential hardcoded credential", severity: "HIGH"});
   }

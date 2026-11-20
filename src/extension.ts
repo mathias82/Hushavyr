@@ -179,6 +179,8 @@ export function activate(context: vscode.ExtensionContext): void {
       let skipped = 0;
       let findings = 0;
       let modelResponses = 0;
+      let deterministicFindings = 0;
+      let failedReads = 0;
       try {
         // Deterministic checks run locally before Ollama availability is required.
         const [configFiles, dotenvFiles] = await Promise.all([
@@ -193,15 +195,19 @@ export function activate(context: vscode.ExtensionContext): void {
           for (const uri of secretFiles) {
             if (token.isCancellationRequested) break;
             let bytes: Uint8Array;
-            try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
-            if (bytes.length > 60_000 || bytes.includes(0)) continue;
+            try { bytes = await vscode.workspace.fs.readFile(uri); } catch { failedReads++; continue; }
+            if (bytes.length > 60_000 || bytes.includes(0)) { failedReads++; continue; }
             const relative = vscode.workspace.asRelativePath(uri);
             for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
               secretFindings++;
+              deterministicFindings++;
               stream.markdown("**" + finding.severity + "** · " + finding.rule + " · `" + relative.replace(/[`\\r\\n]/g, "") + ":" + finding.line + "` (value redacted)\n\n");
             }
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
+        }
+        if (request.command === "scan" || request.command === "scan-changed") {
+          stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security`, `/semgrep`, and `/gitleaks` separately for additional checks.\\n\\n");
         }
         if (request.command === "security") {
           const folders = vscode.workspace.workspaceFolders ?? [];
@@ -342,8 +348,8 @@ export function activate(context: vscode.ExtensionContext): void {
           await context.workspaceState.update(indexKey, undefined);
           stream.markdown("**Index not saved:** scan incomplete or files skipped. The next incremental scan will recheck all readable files.\n\n");
         }
-        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped, " + unchanged + " unchanged files reused from local index, " + modelResponses + " Ollama responses, " + findings + " responses with potential findings.\n\n" +
-          (token.isCancellationRequested ? "**Cancelled:** results are partial." : !completed ? "**Incomplete:** skipped files or chunks prevent a complete review." : findings === 0 ? "**No potential findings reported by Ollama.** This does not establish that the code is secure." : "**Potential findings require human verification.**"));
+        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped, " + unchanged + " unchanged files reused from local index, " + modelResponses + " Ollama responses, " + findings + " responses with potential findings, " + deterministicFindings + " potential configuration credentials, " + failedReads + " configuration files unreadable or skipped.\n\n" +
+          (token.isCancellationRequested ? "**Cancelled:** results are partial." : !completed ? "**Incomplete:** skipped files or chunks prevent a complete review." : findings === 0 ? "**AI coverage inconclusive:** Ollama reported no findings; this does not establish that the code is secure. Check the deterministic credential findings above and run dedicated local scanners." : "**Potential findings require human verification.**"));
       } catch (error) {
         await context.workspaceState.update(indexKey, undefined);
         if (!token.isCancellationRequested) {
