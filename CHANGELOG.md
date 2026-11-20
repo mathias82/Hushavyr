@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.27
+- `/review-changes`: reviews your uncommitted git changes locally (up to 4 files, 20 KB budget), with inline markers.
+- Quick fix "Hushavyr: propose a local fix" on `/review` markers: the local model rewrites the few marked lines, you see a diff and approve before anything changes.
+
 ## 0.0.26
 - `/dependencies` warns when the local Trivy vulnerability database is more than 7 days old.
 - Ollama context reduced to 16K tokens (still above the 20 KB review limit): less memory, steadier 14b.

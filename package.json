@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -26,7 +26,8 @@
     "onCommand:aiPrivacyRouter.startOllama",
     "onCommand:aiPrivacyRouter.downloadOllamaModel",
     "onCommand:aiPrivacyRouter.updateTrivyDb",
-    "onCommand:aiPrivacyRouter.exportSbom"
+    "onCommand:aiPrivacyRouter.exportSbom",
+    "onCommand:aiPrivacyRouter.applyReviewFix"
   ],
   "contributes": {
     "walkthroughs": [
@@ -236,6 +237,10 @@
           {
             "name": "review",
             "description": "Review the open code file with local Qwen; no prompt or selection needed"
+          },
+          {
+            "name": "review-changes",
+            "description": "Review your uncommitted changes (git) locally; no prompt or selection needed"
           },
           {
             "name": "test",

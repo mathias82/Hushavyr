@@ -78,3 +78,21 @@ test("computes vulnerability database age in whole days", () => {
   assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
   assert.equal(dbAgeDays("not json", now), undefined);
 });
+import {fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix} from "../fixEdit";
+import {parseChangedFiles} from "../changedFiles";
+test("fix window stays inside the file", () => {
+  assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});
+  assert.deepEqual(fixWindow(5, 4), {start: 1, end: 4});
+});
+test("reads title and fix from review markers and rejects bad replacements", () => {
+  assert.deepEqual(parseReviewMessage("Potential: NPE on null\nFix: add a check\nTest: x"), {title: "NPE on null", fix: "add a check"});
+  assert.equal(parseReviewMessage("CVE-1 in a 1 (HIGH). Fixed in 2."), undefined);
+  assert.equal(parseReplacement('{"replacement":""}'), undefined);
+  assert.equal(parseReplacement("nope"), undefined);
+  assert.equal(parseReplacement('{"replacement":"a\\nb\\n"}'), "a\nb");
+  assert.equal(isPlausibleFix(["a"], "a"), false);
+  assert.equal(isPlausibleFix(["a"], "b"), true);
+});
+test("changed file list drops traversal, lockfiles and build output", () => {
+  assert.deepEqual(parseChangedFiles("src/a.ts\n../x.ts\n/etc/p.py\npackage-lock.json\nnode_modules/q/i.js\ndist/b.js\nREADME.md\nsrc/B.java"), ["src/a.ts", "src/B.java"]);
+});
