@@ -2,7 +2,7 @@
   "name": "ai-privacy-router",
   "displayName": "Hushavyr",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
