@@ -296,11 +296,7 @@
           },
           {
             "name": "security",
-            "description": "Offline security engineer: local source code security indicators and credential checks"
-          },
-          {
-            "name": "semgrep",
-            "description": "Run bundled offline Semgrep security rules locally"
+            "description": "Offline security scan of the project: bundled Semgrep rules, built-in rules and hardcoded credentials"
           },
           {
             "name": "gitleaks",

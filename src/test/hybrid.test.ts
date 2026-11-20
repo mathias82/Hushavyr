@@ -121,3 +121,14 @@ test("review summary names the most serious issue to fix first", () => {
   assert.match(summary, /Fix first:\*\* SQL injection \(`A.java:7`\)/);
   assert.match(reviewSummary({findings: [], rejected: 0}), /nothing to fix/);
 });
+
+test("/security Semgrep uses the full bundled rule pack and short rule ids", async () => {
+  const { runSemgrep } = await import("../semgrep");
+  let config = "";
+  const result = await runSemgrep("/repo", (_file, args, _options, callback) => {
+    config = args[args.indexOf("--config") + 1];
+    callback(null, JSON.stringify({results: [{path: "src/A.java", start: {line: 4}, check_id: "Users.me.rules.hushavyr.java-sql-concatenation", extra: {severity: "ERROR", message: "SQL"}}]}), "");
+  });
+  assert.match(config, /hushavyr-review\.yml$/);
+  assert.equal(result.findings[0].rule, "java-sql-concatenation");
+});
