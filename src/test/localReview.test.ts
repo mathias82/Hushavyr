@@ -104,3 +104,33 @@ test("reports empty and rejected reviews distinctly without showing rejected mod
   assert.match(formatReview(rejected!), /inconclusive/);
   assert.doesNotMatch(formatReview(rejected!), /PRIVATE_VALUE_NOT_IN_SOURCE/);
 });
+
+test("review adds a clearly labeled offline TLS indicator when Qwen returns zero findings", async () => {
+  const vulnerable = [{path: "client.js", text: 'import https from "node:https";\nconst agent = new https.Agent({rejectUnauthorized: false});'}];
+  const {client, prompts} = scripted(['{"findings":[]}', '{"findings":[]}']);
+  const result = await runLocalReview(client, "review", vulnerable);
+  assert.equal(prompts.length, 2);
+  assert.equal(result?.proposed, 0, "offline indicators must not inflate AI proposals");
+  assert.equal(result?.findings.length, 1);
+  assert.equal(result?.findings[0].line, 2);
+  assert.match(result!.findings[0].title, /^Local rule:/);
+  assert.equal(result?.findings[0].status, "potential");
+  assert.match(formatReview(result!), /Local rule: TLS certificate validation disabled/);
+});
+
+test("review does not flag safe TLS or unrelated command execution", async () => {
+  for (const code of [
+    'const agent = new https.Agent({rejectUnauthorized: true});',
+    'subprocess.run(["cat", filename], shell=False)'
+  ]) {
+    const path = code.startsWith("subprocess") ? "runner.py" : "client.js";
+    const result = await runLocalReview(scripted(['{"findings":[]}', '{"findings":[]}']).client, "review", [{path,text:code}]);
+    assert.equal(result?.findings.length, 0);
+  }
+});
+
+test("offline review indicators retain source offsets and avoid duplicates", async () => {
+  const sourceWithOffset = [{path:"client.js",startLine: 30,text:"const agent = new https.Agent({rejectUnauthorized: false});"}];
+  const result = await runLocalReview(scripted(['{"findings":[]}', '{"findings":[]}']).client, "review", sourceWithOffset);
+  assert.equal(result?.findings[0]?.line, 30);
+});
