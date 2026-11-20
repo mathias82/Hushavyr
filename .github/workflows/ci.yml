@@ -20,3 +20,13 @@ jobs:
       - name: Run regression tests
         run: npm test
 
+      - name: Build Python proof fixture image
+        run: |
+          docker build -t hushavyr-pytest:local - <<'DOCKERFILE'
+          FROM python:3.12-slim
+          RUN pip install --no-cache-dir pytest==8.3.5
+          DOCKERFILE
+      - name: Run Python proof in the offline container
+        env:
+          HUSHAVYR_PYTHON_DOCKER_SMOKE: '1'
+        run: node --test dist/test/fix-python.test.js
