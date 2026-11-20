@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -228,5 +228,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/mathias82/Hushavyr.git"
-  }
+  },
+  "icon": "images/hushavyr-icon.png"
 }
