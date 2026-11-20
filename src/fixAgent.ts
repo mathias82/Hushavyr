@@ -40,13 +40,14 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Use a trusted local-only profile with chat.disableAIFeatures enabled. This command never uses Copilot.");
       return;
     }
-    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest"],
+    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js"],
       {placeHolder: "Choose an offline test runner"});
     if (!runner) return;
     const python = runner === "Python / pytest";
-    const language = python ? "Python" : "Java";
+    const node = runner === "JavaScript / Node.js";
+    const language = node ? "JavaScript" : python ? "Python" : "Java";
     const folder = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
-      canSelectMany: false, openLabel: python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
+      canSelectMany: false, openLabel: node ? "Choose a project with Node.js native tests" : python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
       defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri});
     const project = folder?.[0];
     if (!project || project.scheme !== "file") return;
@@ -55,8 +56,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Save and commit project edits before verifying a committed snapshot."); return;
     }
     const selected = await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
-      defaultUri: python ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
-      filters: {[language]: [python ? "py" : "java"]},
+      defaultUri: python || node ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
+      filters: {[language]: node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
       openLabel: "Choose 1–6 production " + language + " files for local analysis"});
     if (!selected?.length || selected.some(uri => uri.scheme !== "file")) return;
     const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true});
@@ -78,8 +79,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
           const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
           sandbox = await FixSandbox.create({project: project.fsPath, selected: selected.map(uri => uri.fsPath),
             storage: join(context.globalStorageUri.fsPath, "verified-fixes"),
-            profile: python ? "python" : undefined,
-            image: python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
+            profile: node ? "node" : python ? "python" : undefined,
+            image: node ? config.get<string>("fixNodeImage", "node:24-slim") : python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
               : config.get<string>("fixMavenImage", "maven:3.9-eclipse-temurin-21"),
             cache: config.get<string>("fixMavenCache", "").trim() || undefined, signal: controller.signal});
           const box = sandbox;
@@ -96,7 +97,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
               await client.ensureAvailable(controller.signal);
               return parseTestProposal(await client.generate(instructions +
                 "\nCreate a behavioral regression test for the reported bug. Use a real assertion. " +
-                (python ? "Define top-level pytest test functions in " + box.context.testPath
+                (node ? "Write top-level node:test cases in a CommonJS file using node:assert/strict in " + box.context.testPath
+                  : python ? "Define top-level pytest test functions in " + box.context.testPath
                   : "The exact public class is " + box.context.testClass + " in " + box.context.testPath) +
                 ". Return JSON {source: complete " + language + " file}. Never alter production code or build files in the test. " +
                 "Turn unexpected behavior or exceptions into assertion failures; compile/runtime errors are not accepted evidence. " +

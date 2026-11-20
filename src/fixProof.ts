@@ -5,7 +5,7 @@ export interface TestCase {className: string; name: string; outcome: CaseOutcome
 export interface TestRun {exitCode: number | null; interrupted: boolean; durationMs: number; cases: TestCase[]}
 export interface SourceChange {path: string; content: string}
 export type ProofStage = "baseline" | "red" | "green" | "suite";
-export interface FixProofContext {profile?: "python"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
+export interface FixProofContext {profile?: "python" | "node"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
 export interface FixProofDependencies {
   cancelled(): boolean;
   run(stage: ProofStage, target?: string): Promise<TestRun>;
@@ -21,7 +21,7 @@ export interface StageSummary {
   passed: number; failures: number; errors: number; skipped: number; caseSetHash: string;
 }
 export interface FixProofReceipt extends FixProofContext {
-  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1";
+  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1" | "node-red-green-v1";
   runId: string; startedAtUtc: string; finishedAtUtc?: string; totalDurationMs?: number;
   status: "verified" | "not-verified" | "cancelled";
   reason: string; stages: StageSummary[]; testHash?: string;
@@ -47,7 +47,7 @@ function summary(stage: ProofStage, run: TestRun): StageSummary {
 export async function runFixProof(context: FixProofContext, deps: FixProofDependencies): Promise<FixProofReceipt> {
   context = Object.freeze({...context});
   const started = Date.now();
-  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
+  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "node" ? "node-red-green-v1" : context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
   const stop = (reason: string): FixProofReceipt => ({...receipt, reason, finishedAtUtc: new Date().toISOString(), totalDurationMs: Date.now() - started,
     status: deps.cancelled() ? "cancelled" : "not-verified"});
   const run = async (stage: ProofStage, target?: string): Promise<TestRun> => {
@@ -137,4 +137,28 @@ export function parsePytestReport(xml: string): TestCase[] {
     throw new Error("Pytest failure is not an assertion");
   }
   return cases.map(test => ({...test, className: test.className.replace(/^tests\./, "")}));
+}
+
+/** Node 24's JUnit reporter writes file-qualified test cases and summary comments. */
+export function parseNodeReport(xml: string): TestCase[] {
+  if (Buffer.byteLength(xml) > 1048576 || /<!DOCTYPE|<!ENTITY/i.test(xml) ||
+    !/^\s*<\?xml[^?]*\?>\s*<testsuites>[\s\S]*<\/testsuites>\s*$/.test(xml)) {
+    throw new Error("Invalid Node test report");
+  }
+  const cases: TestCase[] = [];
+  for (const match of xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)) {
+    const info = attributes(match[1]);
+    if (!info.file || !info.name) throw new Error("Missing Node test identity");
+    const body = match[2] ?? "";
+    const skipped = /<skipped\b/.test(body);
+    const failure = /<failure\b/.test(body);
+    const isAssertion = /cause: AssertionError \[ERR_ASSERTION\]:/.test(body);
+    const file = info.file.replace(/^\.\//, "");
+    const generated = file.match(/(?:^|\/)(hushavyr-[a-f0-9]{32}\.test\.cjs)$/);
+    cases.push({className: generated?.[1] ?? file, name: info.name,
+      outcome: failure ? isAssertion ? "failure" : "error" : skipped ? "skipped" : "passed"});
+  }
+  const summary = xml.match(/<!-- tests (\d+) -->/);
+  if (!summary || Number(summary[1]) !== cases.length || !unique(cases)) throw new Error("Node test totals mismatch");
+  return cases;
 }
