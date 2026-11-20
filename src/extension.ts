@@ -1,7 +1,7 @@
 import {relatedJavaSources} from "./relatedJava";
 import {auditDependencies} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
-import {join} from "node:path";
+import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
@@ -306,11 +306,19 @@ export function activate(context: vscode.ExtensionContext): void {
               scannerFindingCount += scan.findings.length;
               stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\\n");
               for (const finding of scan.findings) {
-                // Never display source snippets, scanner messages, or credential values.
-                const safePath = finding.path.replace(/[\\r\\n\\`]/g, "");
-                const safeRule = finding.rule.replace(/[\\r\\n\\`]/g, "");
-                stream.markdown("  - **" + finding.severity.replace(/[^A-Za-z]/g, "") +
-                  "** · \`" + safePath + ":" + finding.line + "\` · " + safeRule + " (value redacted)\\n");
+                // Scanner metadata is untrusted: never render secret values or arbitrary messages.
+                const absolute = resolve(folder.uri.fsPath, finding.path);
+                const inside = relative(folder.uri.fsPath, absolute);
+                if (!inside || inside.startsWith("..") || isAbsolute(inside)) continue;
+                const safeRule = finding.rule.replace(/[\\r\\n\\`\\[\\]]/g, "").slice(0, 120);
+                const safeSeverity = finding.severity.replace(/[^A-Za-z]/g, "");
+                const target = vscode.Uri.file(absolute);
+                const location = findingLink(target, finding.line, inside + ":" + finding.line);
+                const advice = tool === "gitleaks"
+                  ? "Check whether this is a real credential; if active, revoke/rotate it and move it to a secret manager."
+                  : "Inspect the flagged code and rule; verify the risk and apply the rule-specific remediation.";
+                stream.markdown("  - **" + safeSeverity + " · " + tool + " · " + safeRule +
+                  "** · " + location + " · " + advice + " (sensitive values hidden)\\n");
               }
             }
           }
