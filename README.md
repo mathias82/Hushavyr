@@ -74,7 +74,7 @@ For supported languages, verification requirements, privacy limitations, and opt
 
 ## Security review in VS Code Chat (local Qwen)
 
-For a **trusted local workspace**, run `@ai-privacy /scan` to review supported source files without selecting an editor or attaching a file. The scan uses Ollama only, excludes common build/dependency directories, stops if over 200 candidate files are found, and skips files over 60 KB. Treat findings as unverified; no cloud fallback. This is a bounded source review, not a comprehensive security audit.
+For a **trusted local workspace**, run `@ai-privacy /scan` to review supported source files without selecting an editor or attaching a file. The scan uses Ollama only, excludes common build/dependency directories, stops if over 5,000 candidate files are found, and skips files over 60 KB. Treat findings as unverified; no cloud fallback. This is a bounded source review, not a comprehensive security audit.
 
 
 The VS Code Chat model picker (for example, **Agent / Claude Sonnet**) is **not** the Hushavyr local model selector. Hushavyr exposes a Chat participant named `@ai-privacy`, which uses the configured local Ollama model. The local model does not appear as a Copilot model-picker option.
