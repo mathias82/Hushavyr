@@ -32,7 +32,7 @@ jobs:
         run: |
           node - <<'NODE'
           const p = require('./package.json');
-          if (p.publisher !== 'mathias82' || p.name !== 'hushavyr' || p.version !== '0.0.11') {
+          if (p.publisher !== 'mathias82' || p.name !== 'hushavyr' || p.version !== '0.0.12') {
             throw new Error('Refusing to build unexpected publisher, name, or version');
           }
           NODE
@@ -41,21 +41,21 @@ jobs:
       - name: Run regression tests
         run: npm test
       - name: Package Marketplace VSIX
-        run: npm run package:vsix -- --out hushavyr-0.0.11.vsix
+        run: npm run package:vsix -- --out hushavyr-0.0.12.vsix
       - name: Verify packaged manifest
         run: |
-          unzip -p hushavyr-0.0.11.vsix extension/package.json > packaged-manifest.json
+          unzip -p hushavyr-0.0.12.vsix extension/package.json > packaged-manifest.json
           node - <<'NODE'
           const p = require('./packaged-manifest.json');
-          if (p.publisher !== 'mathias82' || p.name !== 'hushavyr' || p.version !== '0.0.11') {
+          if (p.publisher !== 'mathias82' || p.name !== 'hushavyr' || p.version !== '0.0.12') {
             throw new Error('Packaged extension identity differs from expected');
           }
           NODE
       - name: Upload installable VSIX
         uses: actions/upload-artifact@v4
         with:
-          name: hushavyr-0.0.11-vsix
-          path: hushavyr-0.0.11.vsix
+          name: hushavyr-0.0.12-vsix
+          path: hushavyr-0.0.12.vsix
           if-no-files-found: error
 
   publish:
@@ -69,11 +69,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: hushavyr-0.0.11-vsix
+          name: hushavyr-0.0.12-vsix
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install VSCE with OIDC support
         run: npm install --global @vscode/vsce@4.0.2
       - name: Publish verified package
-        run: vsce publish --oidc --packagePath hushavyr-0.0.11.vsix
+        run: vsce publish --oidc --packagePath hushavyr-0.0.12.vsix
