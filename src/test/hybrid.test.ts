@@ -187,3 +187,18 @@ test("team rules file is capped and added to the review instruction as criteria"
     assert.ok(instruction.includes("Never log tokens"));
   } finally { await rm(root, {recursive: true, force: true}); }
 });
+
+test("PR review keeps only findings on changed lines and renders a safe comment", async () => {
+  const { changedLines, onChangedLines, prComment, COMMENT_MARKER } = await import("../prReview");
+  const diff = ["diff --git a/src/A.java b/src/A.java", "--- a/src/A.java", "+++ b/src/A.java", "@@ -10,0 +11,2 @@", "+x", "+y", "@@ -30 +32 @@", "-a", "+b",
+    "+++ /dev/null", "@@ -1,3 +0,0 @@"].join("\n");
+  const changed = changedLines(diff);
+  assert.deepEqual([...changed.keys()], ["src/A.java"]);
+  assert.deepEqual([...changed.get("src/A.java")!].sort((a, b) => a - b), [11, 12, 32]);
+  const kept = onChangedLines([{...finding(12), evidence: "x"}, {...finding(80), evidence: "z"}], changed.get("src/A.java")!);
+  assert.deepEqual(kept.map(f => f.line), [12]);
+  const md = prComment([{...finding(12), path: "src/A.java", title: "XSS <script>|`x`", fix: "escape\noutput"}], 1, 2);
+  assert.ok(md.startsWith(COMMENT_MARKER));
+  assert.ok(!md.includes("<script>") && md.includes("escape output") && md.includes("2 finding(s) hidden"));
+  assert.ok(prComment([], 3, 0).includes("No bugs or security issues found in the changed lines of 3 file(s)."));
+});

@@ -12,3 +12,6 @@ package-lock.local.backup.json
 # Maven build output for the public local-fix fixture
 **/target/
 hushavyr.sarif
+
+hushavyr-comment.md
+.hushavyr-tool/
