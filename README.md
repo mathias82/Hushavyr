@@ -6,12 +6,35 @@
 - **Verify fixes locally.** Run Java/Maven, Python/pytest or native Node tests for JavaScript and TypeScript. Export a patch once the new regression test and the existing suite pass locally.
 - **Use Copilot for public questions.** In optional hybrid mode, approve the exact message before sending it from an empty VS Code window.
 
-## Quick start
+## Quick start — install Ollama and Qwen from VS Code
 
-1. In VS Code, open **Extensions** (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Windows/Linux). Search for **Hushavyr - Private AI Code Review** by **Matthaios Stavrou**, or open the [official Marketplace listing](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr). Select **Install**. The extension ID is `mathias82.hushavyr`.
-2. Open **Get started with Hushavyr** in VS Code. Follow the walkthrough to install Ollama if needed, start it, and download the local Qwen model. Model downloads require your consent.
-3. Select a code snippet, open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`), and run **Hushavyr: Ask Local Qwen About Selection**.
-4. For a typed local prompt, run **Hushavyr: Ask Local Qwen**. For local code review and verified fixes, see the [user guide](https://github.com/mathias82/Hushavyr/blob/main/docs/guide.md).
+1. Open **Extensions** (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Windows/Linux). Search for **Hushavyr - Private AI Code Review** by **Matthaios Stavrou**, or use the [official Marketplace listing](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr). Click **Install**. Extension ID: `mathias82.hushavyr`.
+2. Open the **Command Palette** with `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux), type **Hushavyr**, and select **Hushavyr: Install Ollama**. On macOS this offers a Homebrew installation if `brew` is available; otherwise it opens the official Ollama download page. Windows uses WinGet when available; Linux offers its installation script. Installation requires your confirmation.
+3. In the Command Palette, run **Hushavyr: Start Ollama**. Confirm the terminal command if Ollama is not already running.
+4. Run **Hushavyr: Download Local Qwen Model**. Confirm the download of `qwen2.5-coder:7b` (a multi-GB download); it is not downloaded automatically when you install the extension.
+5. Run **Hushavyr: Ask Local Qwen** and enter a simple question to test the local connection. To review code, select a snippet and run **Hushavyr: Ask Local Qwen About Selection**.
+
+> **Important:** Installing Hushavyr does **not** silently install Ollama, start a server, or download a model. Each setup command requires user action/confirmation. Ollama runs locally; if it is unavailable, Hushavyr does not silently send your code to a cloud provider. If commands are missing, run **Developer: Reload Window**, then search for `Hushavyr` again.
+
+### Available Hushavyr commands
+
+Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type `Hushavyr` to find:
+
+| Command | Purpose |
+| --- | --- |
+| **Hushavyr: Install Ollama** | Offer local Ollama installation or official download |
+| **Hushavyr: Start Ollama** | Start the local Ollama server in a terminal |
+| **Hushavyr: Download Local Qwen Model** | Download `qwen2.5-coder:7b` with confirmation |
+| **Hushavyr: Ask Local Qwen** | Ask a typed question using the local model |
+| **Hushavyr: Ask Local Qwen About Selection** | Ask about selected code locally |
+| **Hushavyr: Classify Selection** | Preview privacy classification for selected text |
+| **Hushavyr: Privacy Preview of Selection** | Inspect the selected content's privacy routing |
+| **Hushavyr: Propose and Verify Local Fix** | Propose a code fix and run supported local verification |
+| **Hushavyr: Review Cloud Override (No Transfer)** | Review-only cloud override; does not transfer content |
+| **Hushavyr: Route Typed Prompt (Local by Default)** | Route a typed prompt according to configured policy |
+| **Hushavyr: Run Existing Regression Tests** | Run a supported existing local test suite |
+
+For supported languages, verification requirements, privacy limitations, and optional Copilot routing, read the [user guide](https://github.com/mathias82/Hushavyr/blob/main/docs/guide.md).
 
 ### Moving from the previous extension
 
