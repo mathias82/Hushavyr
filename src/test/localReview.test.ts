@@ -65,12 +65,15 @@ test("repairs malformed JSON but never loops past two requests", async () => {
   assert.equal(result?.retryFailed, true);
 });
 
-test("valid empty review and useful findings do not trigger retries", async () => {
-  for (const response of ['{"findings":[]}', json(valid)]) {
-    const {client, prompts} = scripted([response]);
-    await runLocalReview(client, "review", source);
-    assert.equal(prompts.length, 1);
-  }
+test("empty review triggers one focused retry while useful findings do not", async () => {
+  const empty = scripted(['{"findings":[]}', '{"findings":[]}']);
+  const result = await runLocalReview(empty.client, "review", source);
+  assert.equal(empty.prompts.length, 2);
+  assert.equal(result?.proposed, 0);
+  assert.match(empty.prompts[1], /No candidate findings were proposed/);
+  const useful = scripted([json(valid)]);
+  await runLocalReview(useful.client, "review", source);
+  assert.equal(useful.prompts.length, 1);
 });
 
 test("failed repair preserves validation feedback without leaking raw model output", async () => {
@@ -93,7 +96,7 @@ test("cancellation prevents repair and suppresses returned results", async () =>
 });
 
 test("reports empty and rejected reviews distinctly without showing rejected model evidence", async () => {
-  const empty = await runLocalReview(scripted(['{"findings":[]}']).client, "review", source);
+  const empty = await runLocalReview(scripted(['{"findings":[]}', '{"findings":[]}']).client, "review", source);
   assert.match(formatReview(empty!), /0 proposed/);
   assert.match(formatReview(empty!), /model proposed no findings/);
   const rejected = await runLocalReview(scripted([json({...valid, title:"SQL injection", evidence:"PRIVATE_VALUE_NOT_IN_SOURCE"}), json({...valid, title:"SQL injection", evidence:"PRIVATE_VALUE_NOT_IN_SOURCE"})]).client, "review", source);
