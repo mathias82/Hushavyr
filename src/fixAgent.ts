@@ -40,8 +40,13 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Use a trusted local-only profile with chat.disableAIFeatures enabled. This command never uses Copilot.");
       return;
     }
+    const runner = await vscode.window.showQuickPick(["Java / Maven", "Python / pytest"],
+      {placeHolder: "Choose an offline test runner"});
+    if (!runner) return;
+    const python = runner === "Python / pytest";
+    const language = python ? "Python" : "Java";
     const folder = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
-      canSelectMany: false, openLabel: "Choose a leaf Maven project",
+      canSelectMany: false, openLabel: python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
       defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri});
     const project = folder?.[0];
     if (!project || project.scheme !== "file") return;
@@ -50,8 +55,9 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Save and commit project edits before verifying a committed snapshot."); return;
     }
     const selected = await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
-      defaultUri: vscode.Uri.joinPath(project, "src", "main", "java"), filters: {Java: ["java"]},
-      openLabel: "Choose 1–6 production Java files for local analysis"});
+      defaultUri: python ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
+      filters: {[language]: [python ? "py" : "java"]},
+      openLabel: "Choose 1–6 production " + language + " files for local analysis"});
     if (!selected?.length || selected.some(uri => uri.scheme !== "file")) return;
     const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true});
     if (!goal?.trim()) return;
@@ -72,7 +78,9 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
           const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
           sandbox = await FixSandbox.create({project: project.fsPath, selected: selected.map(uri => uri.fsPath),
             storage: join(context.globalStorageUri.fsPath, "verified-fixes"),
-            image: config.get<string>("fixMavenImage", "maven:3.9-eclipse-temurin-21"),
+            profile: python ? "python" : undefined,
+            image: python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
+              : config.get<string>("fixMavenImage", "maven:3.9-eclipse-temurin-21"),
             cache: config.get<string>("fixMavenCache", "").trim() || undefined, signal: controller.signal});
           const box = sandbox;
           const client = new LocalOllama({model: config.get<string>("ollamaModel", "qwen2.5-coder:7b"),
@@ -87,9 +95,10 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
               progress.report({message: "Generating one local regression test"});
               await client.ensureAvailable(controller.signal);
               return parseTestProposal(await client.generate(instructions +
-                "\nCreate a behavioral regression test for the reported bug. Use a real assertion. The exact public class is " +
-                box.context.testClass + " in " + box.context.testPath +
-                ". Return JSON {source: complete Java file}. Never alter production code or build files in the test. " +
+                "\nCreate a behavioral regression test for the reported bug. Use a real assertion. " +
+                (python ? "Define top-level pytest test functions in " + box.context.testPath
+                  : "The exact public class is " + box.context.testClass + " in " + box.context.testPath) +
+                ". Return JSON {source: complete " + language + " file}. Never alter production code or build files in the test. " +
                 "Turn unexpected behavior or exceptions into assertion failures; compile/runtime errors are not accepted evidence. " +
                 "If the bug cannot be supported, return an empty source.\nUNTRUSTED INPUT:\n" + input,
                 {schema: testSchema, signal: controller.signal}));
@@ -100,8 +109,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
               progress.report({message: "Generating one local production fix"});
               return parseFixProposal(await client.generate(instructions +
                 "\nThe approved test produced an assertion failure before any production edit. Propose the smallest production fix. " +
-                "Return JSON {changes:[{path: exact supplied production path, content: complete Java file}]}. " +
-                "Only existing selected production Java files may change. Do not change the test, POM, settings or dependencies." +
+                "Return JSON {changes:[{path: exact supplied production path, content: complete " + language + " file}]}. " +
+                "Only existing selected production files may change. Do not change the test, build files, settings or dependencies." +
                 "\nFROZEN TEST:\n" + testSource + "\nUNTRUSTED INPUT:\n" + input,
                 {schema: fixSchema, signal: controller.signal}));
             },
@@ -123,7 +132,7 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
         " verified.patch is bound to base " + receipt.baseCommit + ". Review it before applying; this is not a proof of all behavior.");
       else void vscode.window.showWarningMessage(message);
     } catch {
-      void vscode.window.showErrorMessage("Local verification stopped. Check: clean committed sources, a leaf Maven project, non-root macOS/Linux, local Docker, a preloaded Maven image and a populated dependency cache. No cloud fallback or active-checkout patch was attempted.");
+      void vscode.window.showErrorMessage("Local verification stopped. Check: clean committed sources, the selected project layout, non-root macOS/Linux, local Docker and a preloaded runner image. Maven also needs a populated dependency cache. No cloud fallback or active-checkout patch was attempted.");
     }
   }));
 }

@@ -51,7 +51,7 @@
       },
       {
         "command": "aiPrivacyRouter.verifyLocalFix",
-        "title": "Hushavyr: Propose and Verify Local Java Fix"
+        "title": "Hushavyr: Propose and Verify Local Fix"
       }
     ],
     "configuration": {
@@ -104,6 +104,12 @@
           "default": "local-only",
           "scope": "application",
           "description": "Local-only by default. Hybrid mode offers Copilot only for complex, explicitly approved typed public prompts in an empty window with no project or files open. Never filters independent Copilot usage."
+        },
+        "aiPrivacyRouter.fixPythonImage": {
+          "type": "string",
+          "default": "hushavyr-pytest:local",
+          "scope": "application",
+          "description": "Preloaded Python image with pytest and project dependencies for offline verification."
         },
         "aiPrivacyRouter.fixMavenImage": {
           "type": "string",
