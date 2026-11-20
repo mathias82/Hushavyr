@@ -64,6 +64,26 @@ Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type `Hushavyr` to
 
 For supported languages, verification requirements, privacy limitations, and optional Copilot routing, read the [user guide](https://github.com/mathias82/Hushavyr/blob/main/docs/guide.md).
 
+## Security review in VS Code Chat (local Qwen)
+
+The VS Code Chat model picker (for example, **Agent / Claude Sonnet**) is **not** the Hushavyr local model selector. Hushavyr exposes a Chat participant named `@ai-privacy`, which uses the configured local Ollama model. The local model does not appear as a Copilot model-picker option.
+
+1. Install and start Ollama and download `qwen2.5-coder:7b` using the commands above. Open a source file and **select the code** you want reviewed.
+2. Open **VS Code Chat** and type `@ai-privacy`. Select the Hushavyr participant if prompted; do **not** send a private snippet to the ordinary Copilot/Claude agent.
+3. Send this example request with **synthetic or public test code only**:
+
+   ```text
+   @ai-privacy /review Find security vulnerabilities in the selected Java code.
+   Check for SQL injection, hardcoded secrets, insecure deserialization,
+   authorization flaws and sensitive data exposure.
+   Include file paths, line numbers and severity.
+   ```
+
+4. Inspect each finding against the source and verify it independently. Findings are **potential issues**, not a completed security audit. The participant supports `/review` and remains selected within the same Chat conversation unless you switch agents.
+5. To preview routing without submitting content to an external model, select code and run **Hushavyr: Privacy Preview of Selection** or **Hushavyr: Classify Selection** from the Command Palette.
+
+**Privacy boundary:** Only requests sent through Hushavyr are governed by its local routing policy. Ordinary Copilot/Claude Chat, inline suggestions, other extensions, and their attachments are **not** intercepted by Hushavyr. For sensitive work, use a separate VS Code profile with independent Copilot features disabled; in such a profile, built-in Chat may be unavailable, but Hushavyr's standalone local commands remain available. A successful local answer does not by itself prove the absence of network exfiltration. Do not use real credentials, customer data, or company secrets for smoke tests.
+
 ### Moving from the previous extension
 
 If you previously installed `mathias82.ai-privacy-router` (also displayed as **Hushavyr**), install the new `mathias82.hushavyr` extension from the Marketplace. VS Code treats these as **different extensions**; updating the old extension does not install the new one. After checking the new installation and your settings, uninstall the old extension to avoid duplicate commands.
