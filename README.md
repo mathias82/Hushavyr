@@ -18,7 +18,7 @@ The commands available in VS Code depend on the **installed extension version**.
 
 ## Preview
 
-![Illustrative Hushavyr local review interface](docs/images/hushavyr-local-review.svg)
+See the [Hushavyr interface preview](docs/images/hushavyr-local-review.svg) on GitHub.
 
 *Illustrative interface with synthetic text; no company source code.*
 
