@@ -140,6 +140,14 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           stream.markdown("**Offline dependency audit:** " + audit.status + " · ecosystem: " +
             (audit.manager ?? "unknown") + " · vulnerabilities reported: " + audit.findings +
             ". " + audit.note + ". No cloud requests.\n\n");
+          const shown = (audit.vulnerabilities ?? []).slice(0, 50);
+          for (const v of shown) {
+            const id = /^CVE-\d{4}-\d{4,}$/.test(v.id) ? "[" + v.id + "](https://nvd.nist.gov/vuln/detail/" + v.id + ")" : "`" + v.id.replace(/`/g, "") + "`";
+            stream.markdown("- **" + v.severity + "** · " + id + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
+              (v.target ? "in `" + v.target.replace(/`/g, "") + "` · " : "") + (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix available") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
+          }
+          if ((audit.vulnerabilities?.length ?? 0) > shown.length) stream.markdown("\n_" + ((audit.vulnerabilities?.length ?? 0) - shown.length) + " more not shown; links open the public NVD page only if you click them._\n");
+          if (shown.length) stream.markdown("\n");
           if (audit.status === "missing") await offerToolInstallation("trivy");
         }
         return;
