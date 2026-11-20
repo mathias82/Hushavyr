@@ -237,8 +237,8 @@ export function activate(context: vscode.ExtensionContext): void {
           for (const uri of files) {
             if (token.isCancellationRequested) break;
             let bytes: Uint8Array;
-            try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
-            if (bytes.length > 60_000 || bytes.includes(0)) continue;
+            try { bytes = await vscode.workspace.fs.readFile(uri); } catch { configSkipped++; continue; }
+            if (bytes.length > 60_000 || bytes.includes(0)) { configSkipped++; continue; }
             const relative = vscode.workspace.asRelativePath(uri);
             const localContent = Buffer.from(bytes).toString("utf8");
             if (request.command === "security") {
