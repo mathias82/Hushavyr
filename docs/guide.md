@@ -1,5 +1,7 @@
 # Hushavyr user guide
 
+See the [live privacy and routing smoke test](privacy-smoke-test.md) for repeatable checks in VS Code.
+
 Hushavyr (formerly AI Privacy Router) is a public preview for local-first AI assistance in VS Code. Use Ollama to review selected code or typed prompts. The optional Copilot route accepts explicitly approved public prompts from an isolated empty window.
 
 The extension controls its own requests. For sensitive work, use a VS Code profile with independent Copilot features disabled. Live privacy checks across the router and that profile are still pending. Try the examples below with synthetic data.
