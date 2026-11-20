@@ -11,6 +11,7 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onCommand:aiPrivacyRouter.setup",
     "onCommand:aiPrivacyRouter.installOllama",
     "onCommand:aiPrivacyRouter.classifySelection",
     "onCommand:aiPrivacyRouter.askLocal",
@@ -58,6 +59,10 @@
       }
     ],
     "commands": [
+      {
+        "command": "aiPrivacyRouter.setup",
+        "title": "Hushavyr: Setup"
+      },
       {
         "command": "aiPrivacyRouter.installOllama",
         "title": "Hushavyr: Install Ollama"

@@ -47,15 +47,19 @@ export class LocalOllama {
       throw new Error("Configured model is not installed locally. Run npm run ai:serve or install it with Ollama. No cloud fallback.");
     }
   }
+  /** True when the loopback Ollama server answers; never throws. */
+  async isRunning(signal?: AbortSignal): Promise<boolean> {
+    try { await this.request("/api/tags", {method: "GET"}, signal); return true; } catch { return false; }
+  }
   /** Downloads the configured model from the local Ollama server when it is not installed yet. */
-  async ensureInstalled(signal?: AbortSignal, onPull?: () => void): Promise<void> {
+  async ensureInstalled(signal?: AbortSignal, onProgress?: (percent?: number, status?: string) => void): Promise<void> {
     try {
       await this.ensureAvailable(signal);
       return;
     } catch (error) {
       if (!(error instanceof Error) || !error.message.startsWith("Configured model is not installed")) throw error;
     }
-    onPull?.();
+    onProgress?.(0, "starting");
     const controller = new AbortController();
     const abort = (): void => controller.abort();
     if (signal?.aborted) abort();
@@ -64,10 +68,32 @@ export class LocalOllama {
     try {
       const response = await this.transport(this.base + "/api/pull", {
         method: "POST", headers: {"Content-Type": "application/json"}, redirect: "error", signal: controller.signal,
-        body: JSON.stringify({model: this.config.model, stream: false})
+        body: JSON.stringify({model: this.config.model, stream: true})
       });
-      const data: unknown = response.ok ? await response.json() : undefined;
-      if (!data || typeof data !== "object" || !("status" in data) || data.status !== "success") throw new Error("pull failed");
+      if (!response.ok || !response.body) throw new Error("pull failed");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "", success = false;
+      const handle = (line: string): void => {
+        if (!line.trim()) return;
+        const event = JSON.parse(line) as {status?: unknown; total?: unknown; completed?: unknown; error?: unknown};
+        if (event.error) throw new Error("pull failed");
+        const status = typeof event.status === "string" ? event.status : undefined;
+        if (status === "success") success = true;
+        const percent = typeof event.total === "number" && event.total > 0 && typeof event.completed === "number"
+          ? Math.min(100, Math.floor(event.completed / event.total * 100)) : undefined;
+        onProgress?.(percent, status);
+      };
+      for (;;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        lines.forEach(handle);
+      }
+      handle(buffer);
+      if (!success) throw new Error("pull failed");
     } catch {
       throw new Error("Could not download the local model. No cloud fallback.");
     } finally {
