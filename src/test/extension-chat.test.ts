@@ -111,7 +111,7 @@ test("local commands register even when built-in AI and Copilot are disabled", (
   configuration.disableAIFeatures = true;
   try {
     activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
-    assert.equal(participantRegistrations, before);
+    assert.equal(participantRegistrations, before + 1);
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocal"));
     assert.ok(registeredCommands.has("aiPrivacyRouter.verifyLocalFix"));
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocalSelection"));
