@@ -221,6 +221,14 @@
           {
             "name": "security",
             "description": "Offline security engineer: local source code security indicators and credential checks"
+          },
+          {
+            "name": "semgrep",
+            "description": "Run bundled offline Semgrep security rules locally"
+          },
+          {
+            "name": "gitleaks",
+            "description": "Run local Gitleaks credential scanner without showing secret values"
           }
         ]
       }
