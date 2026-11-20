@@ -6,6 +6,7 @@ import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {auditDependencies, findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
 import {SarifResult, sarifLevel, toSarif} from "./sarif";
+import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
 
 const SKIP = new Set([".git", "node_modules", "target", "build", "dist", "out", "coverage", ".venv", "venv", ".next", ".idea", ".vscode", "vendor", "__pycache__"]);
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
@@ -36,17 +37,21 @@ function semgrep(root: string, rules: string): Promise<SarifResult[]> {
 /** Offline scan of a folder: bundled rules, semgrep (if installed), credentials, Trivy dependencies (if installed). */
 export async function scanFolder(root: string, rules: string, log: (line: string) => void = () => undefined): Promise<SarifResult[]> {
   const results: SarifResult[] = [];
+  const taintFiles: TaintFile[] = [];
   for (const file of await walk(root)) {
     if ((await stat(file)).size > 200_000) continue;
     const text = await readFile(file, "utf8");
     if (text.includes("\0")) continue;
     const path = relative(root, file);
+    if (SOURCE.test(file)) taintFiles.push({path, text});
     if (SOURCE.test(file)) for (const issue of scanSecurity(path, text))
       results.push({ruleId: issue.rule.replace(/\W+/g, "-").toLowerCase(), message: issue.rule + ": " + issue.advice, path, line: issue.line, level: sarifLevel(issue.severity)});
     // Lockfiles hold package names and integrity hashes, never credentials.
     if (!LOCKFILE.test(file)) for (const secret of scanSecrets(text))
       results.push({ruleId: "hardcoded-credential", message: "Potential hardcoded credential (" + secret.rule + "); value redacted", path, line: secret.line, level: "error"});
   }
+  for (const flow of taintFlows(taintFiles))
+    results.push({ruleId: "taint-" + flow.kind, message: flowTitle(flow) + " (input at " + flow.source.path + ":" + flow.source.line + ")", path: flow.sink.path, line: flow.sink.line, level: sarifLevel(flowSeverity(flow))});
   const fromSemgrep = await semgrep(root, rules);
   log("semgrep: " + fromSemgrep.length + " findings");
   for (const r of fromSemgrep) {

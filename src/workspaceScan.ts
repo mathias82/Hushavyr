@@ -7,6 +7,7 @@ import {auditDependencies, trivyDbAgeDays, findDependencyLine, groupVulnerabilit
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
+import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
 import {collectImports, reachability} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
@@ -126,6 +127,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       let sourceFindings = 0;
       let securityFindings = 0;
       const imports = new Set<string>();
+      const taintFiles: TaintFile[] = [];
+      const uriOf = new Map<string, vscode.Uri>();
       for (const uri of files) {
         if (token.isCancellationRequested) break;
         let bytes: Uint8Array;
@@ -135,6 +138,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         const localContent = Buffer.from(bytes).toString("utf8");
         if (request.command === "dependencies") for (const name of collectImports(uri.path, localContent)) imports.add(name);
         if (request.command === "security") {
+          taintFiles.push({path: relative, text: localContent});
+          uriOf.set(relative, uri);
           for (const finding of scanSecurity(relative, localContent)) {
             if (semgrepLines.has(uri.fsPath + ":" + finding.line)) continue;
             securityFindings++;
@@ -199,7 +204,19 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         }
         return;
       }
-      stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators" + (request.command === "security" ? ", " + semgrepCount + " Semgrep findings" : "") + ". No Ollama or cloud requests. These findings require manual verification.\n\n");
+      let flowCount = 0;
+      if (request.command === "security" && !token.isCancellationRequested) {
+        const flows = taintFlows(taintFiles);
+        flowCount = flows.length;
+        if (flows.length) stream.markdown("**Data flow (request input to dangerous call, across files):**\n\n");
+        for (const flow of flows.slice(0, 50)) {
+          const sink = uriOf.get(flow.sink.path), source = uriOf.get(flow.source.path);
+          if (!sink || !source) continue;
+          stream.markdown("**" + flowSeverity(flow).toUpperCase() + " · " + flowTitle(flow).replace(/[\r\n`\[\]]/g, " ") + "** · sink " + findingLink(sink, flow.sink.line, flow.sink.path + ":" + flow.sink.line) +
+            " · input " + findingLink(source, flow.source.line, flow.source.path + ":" + flow.source.line) + "\n\n");
+        }
+      }
+      stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators" + (request.command === "security" ? ", " + semgrepCount + " Semgrep findings, " + flowCount + " cross-file data flows" : "") + ". No Ollama or cloud requests. These findings require manual verification.\n\n");
       return;
     }
     if (!files.length) {

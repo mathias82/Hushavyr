@@ -41,6 +41,7 @@ Available commands depend on the extension installed in VS Code. Semgrep, Gitlea
 - **CI and SARIF:** from a clone of this repository, `npm run build && node dist/cli.js [folder] --sarif hushavyr.sarif --fail-on high` scans a folder offline (bundled rules, Semgrep, credentials, Trivy) for pipelines; see `.github/workflows/hushavyr-scan.yml` for upload to GitHub code scanning.
 - **Smart default model:** unless you set `aiPrivacyRouter.ollamaModel`, Hushavyr uses `qwen2.5-coder:14b` on 20 GB+ memory and `32b` on 48 GB+ (otherwise `7b`), downloaded automatically on first use.
 - **Proven bugs:** on a `/review` marker choose *Hushavyr: prove with a failing test*; the local model writes a test, it runs in an offline Docker container, and the bug is reported as confirmed only if that test fails on your unchanged code.
+- **Cross-file data flow:** `/security` shows where request input reaches a dangerous call (SQL, shell, eval, files, URLs, HTML), even through other files.
 - **PR review in CI:** copy `examples/hushavyr-pr-review.yml` to `.github/workflows/`. On a self-hosted runner with Ollama it reviews only the changed lines and comments on the PR. Code never leaves the runner.
 - **Team rules:** put your standards in `.hushavyr/rules.md` (for example "never log tokens", "every query goes through Repo"). `/review` checks the code against them too.
 - **Team memory:** on a false positive choose *Hushavyr: not a real issue (hide for the team)*. It is saved in `.hushavyr/dismissed.json`; commit that file and nobody sees the finding again.

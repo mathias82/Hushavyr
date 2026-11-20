@@ -202,3 +202,24 @@ test("PR review keeps only findings on changed lines and renders a safe comment"
   assert.ok(!md.includes("<script>") && md.includes("escape output") && md.includes("2 finding(s) hidden"));
   assert.ok(prComment([], 3, 0).includes("No bugs or security issues found in the changed lines of 3 file(s)."));
 });
+
+test("taint follows request input across files and functions to the sink", async () => {
+  const { taintFlows, flowTitle } = await import("../taint");
+  const js = taintFlows([
+    {path: "routes.js", text: "app.get('/u', (req, res) => {\n  const id = req.query.id;\n  res.json(users.find(id));\n});\napp.get('/n', (req, res) => res.json(users.find(parseInt(req.query.n))));"},
+    {path: "users.js", text: "function find(id) {\n  return load(id);\n}\nfunction load(key) {\n  return db.query(\"SELECT * FROM u WHERE id=\" + key);\n}\nfunction safe(id) {\n  return db.query(\"SELECT * FROM u WHERE id=?\", [id]);\n}"}
+  ]);
+  assert.equal(js.length, 1);
+  assert.deepEqual(js[0], {kind: "sql", source: {path: "routes.js", line: 2}, sink: {path: "users.js", line: 5}, via: ["find", "load"]});
+  assert.equal(flowTitle(js[0]), "SQL injection: request input reaches this sink through find → load");
+  const py = taintFlows([
+    {path: "app.py", text: "@app.route('/f/<name>')\ndef show(name):\n    return files.cat(name)"},
+    {path: "files.py", text: "import os\ndef cat(name):\n    os.system('cat ' + name)\ndef safe(name):\n    subprocess.run(['cat', name])"}
+  ]);
+  assert.deepEqual(py.map(f => [f.kind, f.sink.path, f.sink.line, f.source.line]), [["command", "files.py", 3, 2]]);
+  const java = taintFlows([
+    {path: "Api.java", text: "class Api {\n  @GetMapping(\"/u\")\n  public User get(@RequestParam String id) {\n    return repo.byId(id);\n  }\n}"},
+    {path: "Repo.java", text: "class Repo {\n  public User byId(String id) {\n    return stmt.executeQuery(\"SELECT * FROM u WHERE id=\" + id);\n  }\n}"}
+  ]);
+  assert.deepEqual(java.map(f => [f.kind, f.sink.path, f.sink.line, f.via]), [["sql", "Repo.java", 3, ["byId"]]]);
+});

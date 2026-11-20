@@ -5,6 +5,7 @@ import {join} from "node:path";
 import {Finding} from "./review";
 import {ReviewInput, reviewSources} from "./context";
 import {scanSecurity} from "./securityRules";
+import {flowSeverity, flowTitle, taintFlows} from "./taint";
 
 /** Runs semgrep and resolves with stdout; rejects with code "ENOENT" when semgrep is not installed. */
 export type SemgrepRunner = (args: string[], cwd: string, signal?: AbortSignal) => Promise<string>;
@@ -71,6 +72,22 @@ export function regexFindings(source: ReviewInput): Finding[] {
   return dedupe(findings);
 }
 
+/** Request input that reaches a dangerous call, followed across the supplied files and functions. */
+export function taintFindings(source: ReviewInput): Finding[] {
+  const files = reviewSources(source).filter(f => EXT.test(f.path));
+  const findings: Finding[] = [];
+  for (const flow of taintFlows(files)) {
+    const file = files.find(f => f.path === flow.sink.path)!;
+    const evidence = file.text.split(/\r?\n/)[flow.sink.line - 1]?.trim() ?? "";
+    if (evidence.length < 8) continue;
+    findings.push({title: "Local rule: " + flowTitle(flow), severity: flowSeverity(flow), evidence, status: "potential",
+      path: file.path, line: (file.startLine ?? 1) + flow.sink.line - 1,
+      fix: "Validate or parameterise the input before it reaches this call (bind SQL parameters, avoid shell strings, allow-list paths and hosts, encode HTML).",
+      regressionTest: "Call the entry point with a hostile value and assert it is rejected or handled as data."});
+  }
+  return findings;
+}
+
 function dedupe(findings: Finding[]): Finding[] {
   const seen = new Set<string>();
   return findings.filter(f => { const key = f.path + ":" + f.line; return !seen.has(key) && !!seen.add(key); });
@@ -87,10 +104,10 @@ export async function staticReview(source: ReviewInput, rulesPath: string,
     for (const {i, ext, file} of scannable) await writeFile(join(dir, "f" + i + "." + ext), file.text, "utf8");
     const stdout = await runner(["scan", "--config", rulesPath, "--json", "--metrics=off",
       "--disable-version-check", "--no-git-ignore", "--quiet", "."], dir, signal);
-    return {status: "ok", findings: semgrepToFindings(stdout, files)};
+    return {status: "ok", findings: dedupe([...semgrepToFindings(stdout, files), ...taintFindings(source)])};
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return {status: missing ? "missing" : "failed", findings: regexFindings(source)};
+    return {status: missing ? "missing" : "failed", findings: dedupe([...regexFindings(source), ...taintFindings(source)])};
   } finally {
     await rm(dir, {recursive: true, force: true});
   }
