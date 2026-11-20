@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {execFile} from "node:child_process";
 import {totalmem} from "node:os";
 import {LocalOllama} from "./ollama";
+import {tr} from "./i18n";
 import {configuredModel, recommendedModel} from "./model";
 export {recommendedModel};
 
@@ -72,6 +73,7 @@ export async function runSetup(): Promise<void> {
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
   const endpoint = config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434");
   const timeoutMs = config.get<number>("timeoutSeconds", 180) * 1000;
+  const language = config.get<string>("language", "en");
   let model = configuredModel(config);
   const summary: string[] = [];
   const probe = new LocalOllama({model, endpoint, timeoutMs});
@@ -86,8 +88,8 @@ export async function runSetup(): Promise<void> {
   const best = recommendedModel(totalmem());
   const options = [...new Set([model, best, "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"])];
   const pick = await vscode.window.showQuickPick(options.map(label => ({
-    label, description: label === best ? "recommended for this machine's memory" : label === model ? "current" : undefined
-  })), {placeHolder: "Choose the local review model (downloaded automatically if missing)"});
+    label, description: label === best ? tr(language, "setupRecommended") : label === model ? tr(language, "setupCurrent") : undefined
+  })), {placeHolder: tr(language, "setupPick")});
   if (!pick) return;
   if (pick.label !== model) {
     model = pick.label;
@@ -104,15 +106,15 @@ export async function runSetup(): Promise<void> {
         last = percent;
       });
     });
-    summary.push("Model " + model + ": ready");
+    summary.push("Model " + model + ": " + tr(language, "setupReady"));
   } catch {
-    void vscode.window.showErrorMessage("Hushavyr: could not prepare " + model + ". Check Ollama and disk space. No cloud fallback.");
+    void vscode.window.showErrorMessage("Hushavyr: " + model + " " + tr(language, "setupFailed"));
     return;
   }
   const tools = await detectTools();
   for (const tool of Object.keys(tools) as InstallableTool[]) {
     summary.push(installCommands[tool].label + ": " + (tools[tool] ? "installed" : "not installed (optional)"));
   }
-  void vscode.window.showInformationMessage("Hushavyr setup: " + summary.join(" · "));
+  void vscode.window.showInformationMessage(tr(language, "setupDone") + " " + summary.join(" · "));
   for (const tool of Object.keys(tools) as InstallableTool[]) if (!tools[tool]) await offerToolInstallation(tool);
 }

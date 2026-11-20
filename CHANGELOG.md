@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.26
+- `/dependencies` warns when the local Trivy vulnerability database is more than 7 days old.
+- Ollama context reduced to 16K tokens (still above the 20 KB review limit): less memory, steadier 14b.
+- Greek (`aiPrivacyRouter.language: el`) for Setup messages too.
+
 ## 0.0.25
 - Default model now follows your machine: unless `aiPrivacyRouter.ollamaModel` is set, Hushavyr uses `qwen2.5-coder:14b` (20 GB+ memory) or `32b` (48 GB+) instead of `7b`; first use downloads it automatically.
 
