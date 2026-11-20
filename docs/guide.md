@@ -37,7 +37,7 @@ In another terminal:
 
 ```bash
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.6.vsix
+code --install-extension ai-privacy-router-0.0.7.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **Hushavyr: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **Hushavyr: Classify Selection** and **Hushavyr: Review Cloud Override (No Transfer)**.
@@ -58,7 +58,7 @@ npm run update:local
 npm ci --ignore-scripts
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.6.vsix --force
+code --install-extension ai-privacy-router-0.0.7.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -271,7 +271,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 npm run package:vsix
-code --install-extension ai-privacy-router-0.0.6.vsix
+code --install-extension ai-privacy-router-0.0.7.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
