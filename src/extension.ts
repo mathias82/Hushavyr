@@ -219,6 +219,13 @@ export function activate(context: vscode.ExtensionContext): void {
           const content = Buffer.from(bytes).toString("utf8");
           if (!content.trim()) { skipped++; completed = false; continue; }
           const relative = vscode.workspace.asRelativePath(uri);
+          // Scan source files for credentials independently of Ollama, even when
+          // the incremental model review skips unchanged content.
+          for (const finding of scanSecrets(content)) {
+            stream.markdown("**" + finding.severity + " · " + finding.rule + "** · `" +
+              relative.replace(/[`\r\n]/g, "") + ":" + finding.line +
+              "` (value redacted; verify and rotate if real)\n\n");
+          }
           const fp = fingerprint(relative, bytes);
           currentFingerprints.push(fp);
           if (incremental && previous.length > 0 && previousHashes.get(relative) === fp.sha256) { unchanged++; continue; }
