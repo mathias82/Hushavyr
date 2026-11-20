@@ -196,7 +196,7 @@
         "commands": [
           {
             "name": "review",
-            "description": "Review selected or attached code with local Qwen"
+            "description": "Review the open code file with local Qwen; no prompt or selection needed"
           },
           {
             "name": "test",
