@@ -1,4 +1,5 @@
 import {execFile} from "node:child_process";
+import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import {homedir} from "node:os";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
@@ -129,15 +130,15 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = ((request.command === "scan" || request.command === "scan-changed") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = request.command === "review" &&
-      /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction);
+    const workspaceReview = (request.command === "scan" || request.command === "scan-changed") || (request.command === "review" &&
+      /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
         stream.markdown("Open a trusted local project folder before starting a workspace review. Nothing was sent.");
@@ -145,12 +146,18 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const excludes = "**/{.git,node_modules,target,build,dist,out,coverage,.venv,venv,.next,.idea,.vscode,vendor}/**";
       const include = "**/*.{java,kt,py,js,jsx,ts,tsx,go,rs,cs,rb,php}";
-      const files = (await vscode.workspace.findFiles(include, excludes, 201)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
-      if (files.length > 200) {
-        stream.markdown("Workspace contains over 200 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
+      const files = (await vscode.workspace.findFiles(include, excludes, 5001)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
+      if (files.length > 5000) {
+        stream.markdown("Workspace contains over 5000 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
         return;
       }
       if (!files.length) { stream.markdown("No supported source files found in this workspace."); return; }
+      const indexKey = "hushavyr.scanIndex.v1:" + vscode.workspace.workspaceFolders.map(folder => folder.uri.toString()).join("|");
+      const incremental = request.command === "scan-changed";
+      const previous = parseIndex(context.workspaceState.get<unknown>(indexKey));
+      const previousHashes = new Map(previous.map(item => [item.path, item.sha256]));
+      const currentFingerprints: FileFingerprint[] = [];
+      let unchanged = 0;
       const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
       const client = new LocalOllama({
         model: config.get<string>("ollamaModel", "qwen2.5-coder:7b"),
@@ -164,14 +171,24 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
-        for (const uri of files) {
+        const batchSize = 50;
+        for (let batchStart = 0; batchStart < files.length; batchStart += batchSize) {
           if (token.isCancellationRequested) break;
-          const bytes = await vscode.workspace.fs.readFile(uri);
+          const batch = files.slice(batchStart, batchStart + batchSize);
+          stream.markdown("**Batch " + (Math.floor(batchStart / batchSize) + 1) + "/" + Math.ceil(files.length / batchSize) + "** · " + batch.length + " files · " + inspected + " completed\n\n");
+          for (const uri of batch) {
+          if (token.isCancellationRequested) break;
+          let bytes: Uint8Array;
+          try { bytes = await vscode.workspace.fs.readFile(uri); }
+          catch { skipped++; continue; }
           // Never load large, binary, or generated files into a model prompt.
           if (bytes.length > 60_000 || bytes.includes(0)) { skipped++; continue; }
           const content = Buffer.from(bytes).toString("utf8");
           if (!content.trim()) { skipped++; continue; }
           const relative = vscode.workspace.asRelativePath(uri);
+          const fp = fingerprint(relative, bytes);
+          currentFingerprints.push(fp);
+          if (incremental && previousHashes.get(relative) === fp.sha256) { unchanged++; continue; }
           // Keep each request below the existing 20 KB context budget, retaining line numbers.
           const lines = content.split(/\r?\n/);
           let start = 0;
@@ -194,8 +211,11 @@ export function activate(context: vscode.ExtensionContext): void {
             start = end;
           }
           inspected++;
+          }
+          stream.markdown("Progress: " + inspected + "/" + files.length + " inspected, " + skipped + " skipped.\n\n");
         }
-        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped." +
+        if (!token.isCancellationRequested) await context.workspaceState.update(indexKey, currentFingerprints);
+        stream.markdown("\n**Scan summary:** " + inspected + " files inspected, " + skipped + " files/chunks skipped, " + unchanged + " unchanged files reused from local index." +
           (token.isCancellationRequested ? " Cancelled." : " Review findings require human verification."));
       } catch {
         if (!token.isCancellationRequested) stream.markdown("Local workspace review stopped. Check Ollama connectivity; no cloud fallback.");
