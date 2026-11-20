@@ -13,8 +13,12 @@ Type `@ai-privacy` in VS Code Chat:
 | `/auto` | Privacy-aware routing of typed prompts |
 | `/scan` | Local project review (up to 5,000 files, batches of 50) |
 | `/scan-changed` | Review changed files using local SHA-256 indexing |
+| `/secrets` | Offline heuristic scan for hardcoded credentials (values redacted) |
+| `/security` | Offline source security indicators and credentials scan |
+| `/semgrep` | Run bundled offline Semgrep rules using locally installed Semgrep |
+| `/gitleaks` | Run locally installed Gitleaks to detect exposed secrets (values redacted) |
 
-The commands available in VS Code depend on the **installed extension version**. Project scanning requires **0.0.17 or later**.
+The commands available in VS Code depend on the **installed extension version**. Project scanning requires **0.0.17 or later**. The `/semgrep` and `/gitleaks` commands require the upcoming extension release after PR #78 is merged, plus locally installed scanner executables; they are not included in 0.0.18.
 
 ## Preview
 
@@ -27,6 +31,7 @@ See the [Hushavyr interface preview](docs/images/hushavyr-local-review.svg) on G
 1. [Install Hushavyr from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr).
 2. In the Command Palette, run **Hushavyr: Install Ollama**, **Start Ollama**, and **Download Local Qwen Model** (`qwen2.5-coder:7b`).
 3. Open a trusted local project and try `@ai-privacy /review` or, on version 0.0.17+, `@ai-privacy /scan`.
+4. Once the scanner-enabled extension version is published, install Semgrep and/or Gitleaks locally and run `@ai-privacy /semgrep` or `@ai-privacy /gitleaks`. The extension does not automatically download scanner binaries or rules.
 
 **Privacy boundary:** Local review and scanning use Ollama without cloud fallback. Hushavyr cannot intercept requests made directly to Copilot, Claude, or other VS Code assistants. Findings are potential issues requiring independent verification.
 
