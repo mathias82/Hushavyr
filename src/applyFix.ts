@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import {runnerFor} from "./proofTarget";
 import {configuredModel} from "./model";
 import {LocalOllama} from "./ollama";
 import {fixPrompt, fixWindow, isPlausibleFix, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
@@ -54,8 +55,12 @@ export function registerApplyFix(context: vscode.ExtensionContext): void {
         action.diagnostics = [d];
         action.command = {command: "aiPrivacyRouter.applyReviewFix", title: "Propose fix",
           arguments: [document.uri.toString(), d.range.start.line, d.message]};
-        return action;
-      });
+        const prove = new vscode.CodeAction("Hushavyr: prove with a failing test (offline Docker)", vscode.CodeActionKind.QuickFix);
+        prove.diagnostics = [d];
+        prove.command = {command: "aiPrivacyRouter.verifyLocalFix", title: "Prove with a test",
+          arguments: [{file: document.uri.toString(), message: d.message}]};
+        return document.uri.scheme === "file" && runnerFor(document.uri.fsPath) ? [action, prove] : [action];
+      }).flat();
     }
   }, {providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]}));
 }
