@@ -1,3 +1,38 @@
+
+// Only the user can approve installing an external executable. No silent downloads.
+let semgrepInstallPromptOpen = false;
+async function offerSemgrepInstallation(): Promise<void> {
+  if (semgrepInstallPromptOpen) return;
+  semgrepInstallPromptOpen = true;
+  try {
+    const choice = await vscode.window.showInformationMessage(
+      "Hushavyr: Semgrep is not installed. Install it locally to enable additional offline security checks?",
+      "Show install command", "Not now"
+    );
+    if (choice !== "Show install command") return;
+    if (process.platform === "win32") {
+      await vscode.window.showInformationMessage(
+        "Semgrep CLI is supported on Windows through WSL. Install WSL and Semgrep inside your Linux distribution, then run Hushavyr in a WSL workspace. No command was executed.",
+        { modal: true }, "OK"
+      );
+      return;
+    }
+    const command = process.platform === "darwin" ? "brew install semgrep" : "pipx install semgrep";
+    const confirm = await vscode.window.showWarningMessage(
+      "Run this command in a new terminal? " + command + ". This downloads software from the package manager; Hushavyr will not send project code.",
+      { modal: true }, "Run install command", "Copy command"
+    );
+    if (confirm === "Copy command") {
+      await vscode.env.clipboard.writeText(command);
+    } else if (confirm === "Run install command") {
+      const terminal = vscode.window.createTerminal({ name: "Hushavyr · Install Semgrep" });
+      terminal.show();
+      terminal.sendText(command);
+    }
+  } finally {
+    semgrepInstallPromptOpen = false;
+  }
+}
 import {relatedJavaSources} from "./relatedJava";
 import {auditDependencies} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
@@ -225,6 +260,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (token.isCancellationRequested) break;
             const semgrep = await runSemgrep(folder.uri.fsPath);
             if (semgrep.status === "missing") {
+              await offerSemgrepInstallation();
               stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\\n\\n");
             } else if (semgrep.status === "failed") {
               stream.markdown("**Semgrep incomplete:** Local scan failed; no Semgrep findings reported. Existing security checks continue.\\n\\n");
@@ -276,6 +312,7 @@ export function activate(context: vscode.ExtensionContext): void {
             for (const folder of vscode.workspace.workspaceFolders ?? []) {
               const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal);
               if (result.status !== "ok") {
+                if (tool === "semgrep" && result.status === "missing") await offerSemgrepInstallation();
                 stream.markdown("**" + tool + ": " + result.status + "**. Install the local scanner or inspect its setup. No cloud fallback.\\n\\n");
                 continue;
               }
