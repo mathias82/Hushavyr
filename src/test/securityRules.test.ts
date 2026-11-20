@@ -12,3 +12,11 @@ test("does not claim vulnerabilities in comments or unsupported files",()=>{
  assert.deepEqual(scanSecurity("Demo.java","// Runtime.getRuntime().exec(command)"),[]);
  assert.deepEqual(scanSecurity("notes.txt","rejectUnauthorized: false"),[]);
 });
+test("covers Go, C#, PHP and Python indicators without flagging safe forms",()=>{
+ assert.equal(scanSecurity("main.go","tls.Config{InsecureSkipVerify: true}")[0].rule,"TLS certificate validation disabled");
+ assert.equal(scanSecurity("Api.cs","handler.ServerCertificateValidationCallback = (m, c, ch, e) => true;")[0].rule,"TLS certificate validation disabled");
+ assert.equal(scanSecurity("job.py","data = pickle.loads(blob)")[0].rule,"Unsafe Python deserialization");
+ assert.equal(scanSecurity("job.py","yaml.load(text, Loader=yaml.SafeLoader)").length,0);
+ assert.equal(scanSecurity("app.js","eval(userInput)")[0].rule,"Unsafe dynamic code evaluation");
+ assert.equal(scanSecurity("app.js","eval('1+1')").length,0);
+});
