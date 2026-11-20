@@ -21,8 +21,26 @@ test("shared review scoring reports invalid responses and evidence rejections in
   const score = scoreReviewResponses(responses);
   assert.equal(score.totals.invalidResponses, 1);
   assert.equal(score.totals.rejectedFindings, 1);
-  assert.equal(score.totals.falseNegative, 4);
+  assert.equal(score.totals.falseNegative, 7);
   assert.equal(score.precision, null);
   assert.equal(score.recall, 0);
   assert.throws(() => scoreReviewResponses({...responses, unknown: "{}"}), /every benchmark case/);
+});
+
+test("benchmark scores evidence in Python, TypeScript and JavaScript fixtures", () => {
+  const responses = Object.fromEntries(benchmarkCases.map(fixture => [fixture.id, '{"findings":[]}']));
+  for (const [id, path, line, title] of [
+    ["python-mutable-default-bug", "events.py", 1, "Mutable default list leaks events across calls"],
+    ["typescript-zero-limit-bug", "limits.ts", 3, "Falsy check discards explicit zero"],
+    ["javascript-numeric-sort-bug", "scores.js", 3, "Default sort orders numeric values as strings"]
+  ] as const) {
+    responses[id] = JSON.stringify({findings: [{
+      title, severity: "medium", path, startLine: line, endLine: line,
+      fix: "Preserve documented behavior", regressionTest: "Check a triggering input"
+    }]});
+  }
+  const score = scoreReviewResponses(responses);
+  assert.equal(score.totals.truePositive, 3);
+  assert.equal(score.totals.rejectedFindings, 0);
+  assert.equal(score.totals.falsePositive, 0);
 });

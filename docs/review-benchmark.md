@@ -1,6 +1,6 @@
 # Qwen and Sonnet review comparison
 
-Use the same eight public Java fixtures and the same first-pass review prompt for both models. Record the model version and run date. For single-pass comparison, send each prompt independently without tools, history, repairs or a second reviewer pass.
+Use the same 14 public Java, Python, TypeScript and JavaScript fixtures and the same first-pass review prompt for both models. Record the model version and run date. For single-pass comparison, send each prompt independently without tools, history, repairs or a second reviewer pass.
 
 ```sh
 npm ci

@@ -28,7 +28,7 @@ function field(obj: Record<string, unknown>, key: string): string {
 }
 export function reviewPrompt(instruction: string, code: ReviewInput): string {
   return [
-    "You are a skeptical Java code reviewer. Return ONLY valid JSON, no Markdown.",
+    "You are a skeptical code reviewer. Review each source using its own language and runtime semantics. Use the file name and source syntax to identify the language. Follow relevant boundaries between languages when both sides are supplied. Return ONLY valid JSON, no Markdown.",
     'Schema: {"findings":[{"title":"...","severity":"high|medium|low","path":"exact SOURCE path","startLine":1,"endLine":2,"fix":"...","regressionTest":"..."}]}.',
     "Only report concrete failure mechanisms visible in supplied code. Never claim SQL injection without a SQL query or execution sink in the provided code.",
     "Do not claim a getter throws exceptions unless source code shows that behavior.",

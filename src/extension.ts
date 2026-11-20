@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const instruction = (request.command === "review" && !request.prompt.trim() ? "Review the selected or attached code. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
-      stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected Java code`.");
+      stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // VS Code may change editor focus when Chat opens. Use the last non-empty selection.
