@@ -13,6 +13,23 @@ import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
+  for (const task of [
+    {id: "startOllama", title: "Ollama server", args: ["serve"]},
+    {id: "downloadOllamaModel", title: "Qwen model download", args: ["pull", "qwen2.5-coder:7b"]}
+  ]) {
+    context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter." + task.id, async () => {
+      if (!vscode.workspace.isTrusted || vscode.env.remoteName) {
+        await vscode.window.showInformationMessage("Open a trusted local VS Code window to set up Ollama.");
+        return;
+      }
+      const command = ["ollama", ...task.args].join(" ");
+      const action = await vscode.window.showInformationMessage("Run " + command + "?", {modal: true}, "Run in Terminal");
+      if (action !== "Run in Terminal") return;
+      const terminal = vscode.window.createTerminal({name: "Hushavyr: " + task.title, cwd: homedir()});
+      terminal.show();
+      terminal.sendText(command);
+    }));
+  }
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
     if (!vscode.workspace.isTrusted || vscode.env.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
