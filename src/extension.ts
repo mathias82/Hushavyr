@@ -1,3 +1,4 @@
+import {execFile} from "node:child_process";
 import {homedir} from "node:os";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
@@ -35,21 +36,32 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
       return;
     }
-    const commands = {
-      darwin: "brew install ollama",
-      win32: "winget install --id Ollama.Ollama --exact",
-      linux: "curl -fsSL https://ollama.com/install.sh | sh"
+    const installers = {
+      darwin: {tool: "Homebrew", executable: "brew", args: ["--version"], command: "brew install ollama", page: "mac"},
+      win32: {tool: "WinGet", executable: "winget", args: ["--version"], command: "winget install --id Ollama.Ollama --exact", page: "windows"},
+      linux: {tool: "curl and sh", executable: "sh", args: ["-c", "command -v curl"], command: "curl -fsSL https://ollama.com/install.sh | sh", page: "linux"}
     };
     const platform = process.platform;
     if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
       await vscode.env.openExternal(vscode.Uri.parse("https://ollama.com/download"));
       return;
     }
-    const command = commands[platform];
+    const {tool, executable, args, command, page} = installers[platform];
+    const download = vscode.Uri.parse("https://ollama.com/download/" + page);
+    const available = await new Promise<boolean>(resolve => {
+      execFile(executable, args, {cwd: homedir(), timeout: 5000, windowsHide: true}, error => resolve(!error));
+    });
+    if (!available) {
+      const action = await vscode.window.showInformationMessage(
+        tool + " is unavailable. Download and install Ollama first, then return to the Hushavyr guide.",
+        "Download Ollama");
+      if (action === "Download Ollama") await vscode.env.openExternal(download);
+      return;
+    }
     const action = await vscode.window.showInformationMessage("Run the Ollama installer in the VS Code terminal?",
       {modal: true, detail: command}, "Run installer", "Open download page");
     if (action === "Open download page") {
-      await vscode.env.openExternal(vscode.Uri.parse("https://ollama.com/download"));
+      await vscode.env.openExternal(download);
     } else if (action === "Run installer") {
       const terminal = vscode.window.createTerminal({name: "Hushavyr: Ollama setup", cwd: homedir()});
       terminal.show();
