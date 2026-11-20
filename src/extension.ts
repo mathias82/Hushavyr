@@ -145,9 +145,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const excludes = "**/{.git,node_modules,target,build,dist,out,coverage,.venv,venv,.next,.idea,.vscode,vendor}/**";
       const include = "**/*.{java,kt,py,js,jsx,ts,tsx,go,rs,cs,rb,php}";
-      const files = (await vscode.workspace.findFiles(include, excludes, 201)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
-      if (files.length > 200) {
-        stream.markdown("Workspace contains over 200 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
+      const files = (await vscode.workspace.findFiles(include, excludes, 5001)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
+      if (files.length > 5000) {
+        stream.markdown("Workspace contains over 5000 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
         return;
       }
       if (!files.length) { stream.markdown("No supported source files found in this workspace."); return; }
