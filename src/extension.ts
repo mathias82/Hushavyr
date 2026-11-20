@@ -220,7 +220,7 @@ export function activate(context: vscode.ExtensionContext): void {
         : candidate && typeof candidate === "object" && "scheme" in candidate
           && "path" in candidate && typeof (candidate as {scheme: unknown}).scheme === "string"
           && typeof (candidate as {path: unknown}).path === "string"
-          ? vscode.Uri.from(candidate as vscode.UriComponents) : undefined;
+          ? vscode.Uri.from(candidate as { scheme: string; path: string; authority?: string; query?: string; fragment?: string }) : undefined;
       const rangeValue = value && typeof value === "object" && "range" in value
         ? (value as {range: unknown}).range : undefined;
       const range = rangeValue instanceof vscode.Range ? rangeValue
