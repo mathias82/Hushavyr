@@ -1,6 +1,6 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
-import {auditDependencies} from "./dependencyAudit";
+import {auditDependencies, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
@@ -140,14 +140,17 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           stream.markdown("**Offline dependency audit:** " + audit.status + " · ecosystem: " +
             (audit.manager ?? "unknown") + " · vulnerabilities reported: " + audit.findings +
             ". " + audit.note + ". No cloud requests.\n\n");
-          const shown = (audit.vulnerabilities ?? []).slice(0, 50);
+          const groups = groupVulnerabilities(audit.vulnerabilities ?? []);
+          const shown = groups.slice(0, 50);
           for (const v of shown) {
             const id = /^CVE-\d{4}-\d{4,}$/.test(v.id) ? "[" + v.id + "](https://nvd.nist.gov/vuln/detail/" + v.id + ")" : "`" + v.id.replace(/`/g, "") + "`";
+            const files = v.targets.slice(0, 5).map(t => "`" + t.replace(/`/g, "") + "`").join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
             stream.markdown("- **" + v.severity + "** · " + id + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
-              (v.target ? "in `" + v.target.replace(/`/g, "") + "` · " : "") + (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix available") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
+              (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix available") + (files ? " · in " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
           }
-          if ((audit.vulnerabilities?.length ?? 0) > shown.length) stream.markdown("\n_" + ((audit.vulnerabilities?.length ?? 0) - shown.length) + " more not shown; links open the public NVD page only if you click them._\n");
+          if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " more not shown. Links open the public NVD page only if you click them._\n");
           if (shown.length) stream.markdown("\n");
+          await markDependencies(context, folder.uri, groups);
           if (audit.status === "missing") await offerToolInstallation("trivy");
         }
         return;
@@ -283,4 +286,34 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
     }
   } finally { cancellation.dispose(); }
   return;
+}
+
+let dependencyMarkers: vscode.DiagnosticCollection | undefined;
+export function clearDependencyMarkers(): void { dependencyMarkers?.clear(); }
+
+/** Puts each CVE on its declaration line in the manifest (pom.xml, package.json, ...); markers are local only. */
+async function markDependencies(context: vscode.ExtensionContext, root: vscode.Uri, groups: readonly GroupedVulnerability[]): Promise<void> {
+  if (!dependencyMarkers) { dependencyMarkers = vscode.languages.createDiagnosticCollection("hushavyr-dependencies"); context.subscriptions.push(dependencyMarkers); }
+  dependencyMarkers.clear();
+  const byFile = new Map<string, vscode.Diagnostic[]>();
+  const texts = new Map<string, string | undefined>();
+  const levels: Record<string, vscode.DiagnosticSeverity> = {
+    CRITICAL: vscode.DiagnosticSeverity.Error, HIGH: vscode.DiagnosticSeverity.Error, MEDIUM: vscode.DiagnosticSeverity.Warning
+  };
+  for (const v of groups) for (const target of v.targets) {
+    if (!target || target.startsWith("/") || target.split(/[\\/]/).includes("..")) continue;
+    const uri = vscode.Uri.joinPath(root, target);
+    if (!texts.has(uri.toString())) {
+      try { texts.set(uri.toString(), Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8")); } catch { texts.set(uri.toString(), undefined); }
+    }
+    const text = texts.get(uri.toString());
+    if (text === undefined) continue;
+    const line = findDependencyLine(text, v.pkg, v.installed) - 1;
+    const diagnostic = new vscode.Diagnostic(new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER),
+      v.id + " in " + v.pkg + " " + v.installed + " (" + v.severity + ")" + (v.fixed ? ". Fixed in " + v.fixed + "." : ". No fix available."),
+      levels[v.severity] ?? vscode.DiagnosticSeverity.Information);
+    diagnostic.source = "Hushavyr";
+    byFile.set(uri.toString(), [...(byFile.get(uri.toString()) ?? []), diagnostic]);
+  }
+  for (const [uri, list] of byFile) dependencyMarkers.set(vscode.Uri.parse(uri), list);
 }

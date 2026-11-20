@@ -13,3 +13,19 @@ test("lists CVEs worst-first with fixed versions and sanitized text", () => {
   assert.doesNotMatch(result[0].title, /[\n\u0000]/);
   assert.deepEqual(parseTrivyVulnerabilities(null), []);
 });
+import { groupVulnerabilities, findDependencyLine } from "../dependencyAudit";
+test("groups the same CVE across manifests into one row", () => {
+  const v = {id: "CVE-2026-1", pkg: "g:a", installed: "1", severity: "MEDIUM", title: "", target: "pom.xml"};
+  const groups = groupVulnerabilities([v, {...v}, {...v, target: "mod/pom.xml"}, {...v, installed: "2"}]);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].targets, ["pom.xml", "mod/pom.xml"]);
+});
+test("finds the declaration line per manifest type, falling back to line 1", () => {
+  assert.equal(findDependencyLine("<project>\n<dependency>\n <artifactId>opentelemetry-api</artifactId>\n", "io.opentelemetry:opentelemetry-api"), 3);
+  assert.equal(findDependencyLine('{\n "dependencies": {\n  "lodash": "4.0.0"\n }\n}', "lodash"), 3);
+  assert.equal(findDependencyLine("flask==1.0\nrequests>=2", "requests"), 2);
+  assert.equal(findDependencyLine("<project/>", "g:inherited"), 1);
+});
+test("finds version properties that pin an inherited dependency", () => {
+  assert.equal(findDependencyLine("<properties>\n <java>21</java>\n <opentelemetry.version>1.62.0</opentelemetry.version>\n</properties>", "io.opentelemetry:opentelemetry-api", "1.62.0"), 3);
+});

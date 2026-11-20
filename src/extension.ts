@@ -15,14 +15,14 @@ import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
 import { publishFindings } from "./diagnostics";
 import { runSetup, lowMemoryWarning } from "./setup";
-import { runWorkspaceScan, isScanCommand } from "./workspaceScan";
+import { runWorkspaceScan, isScanCommand, clearDependencyMarkers } from "./workspaceScan";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
   const reviewDiagnostics = vscode.languages.createDiagnosticCollection("hushavyr");
   context.subscriptions.push(reviewDiagnostics,
-    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => reviewDiagnostics.clear()));
+    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); }));
   // One-time, non-blocking invitation; the user can dismiss it permanently.
   if (!context.globalState.get<boolean>("hushavyr.setupOffered")) {
     void context.globalState.update("hushavyr.setupOffered", true);

@@ -7,7 +7,7 @@
 - Fixed double-escaped `\n`/`\r` sequences that corrupted `/semgrep`, `/gitleaks`, `/dependencies` and `/scan` output and sanitizers.
 - Install prompts for Gitleaks and Trivy (previously Semgrep only).
 - `/review` findings now appear inline as editor Problems (`Hushavyr: Clear Review Markers` removes them).
-- `/dependencies` now lists each CVE (severity, package, installed and fixed version) instead of only a count.
+- `/dependencies` now lists each CVE (severity, package, installed and fixed version) instead of only a count, grouped across manifests, with markers on the dependency line (or version property) in each manifest; `Clear Review Markers` clears them.
 - First-launch Setup invitation, low-memory warning for oversized models, README quick start updated.
 - `extension.ts` split: the workspace scan handler now lives in `workspaceScan.ts`.
 - Offline rules now cover Go, C#, PHP, Ruby and Rust TLS checks, Python deserialization, dynamic `eval`, and more shell execution sinks.

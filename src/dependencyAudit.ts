@@ -48,3 +48,27 @@ export async function auditDependencies(root:string,signal?:AbortSignal):Promise
   return {status:err.code==="ENOENT"?"missing":"failed",manager,findings:0,note:err.code==="ENOENT"?"Install Trivy and provision its vulnerability database locally first":"Offline scan failed; check local database availability and scanner setup"};
  }
 }
+
+export interface GroupedVulnerability extends Omit<DependencyVulnerability,"target"> {targets:string[]}
+/** One row per CVE and package version; the same vulnerability in parent and module POMs is listed once. */
+export function groupVulnerabilities(list:readonly DependencyVulnerability[]):GroupedVulnerability[]{
+ const groups=new Map<string,GroupedVulnerability>();
+ for(const v of list){
+  const key=[v.id,v.pkg,v.installed].join("|");
+  const existing=groups.get(key);
+  if(!existing){const {target,...rest}=v;groups.set(key,{...rest,targets:target?[target]:[]})}
+  else if(v.target&&!existing.targets.includes(v.target))existing.targets.push(v.target);
+ }
+ return [...groups.values()];
+}
+/** 1-based line of the dependency declaration in a manifest, or 1 when it is only inherited (BOM, parent). */
+export function findDependencyLine(text:string,pkg:string,installed?:string):number{
+ const artifact=pkg.includes(":")?pkg.split(":").pop()!:pkg;
+ const escaped=artifact.replace(/[.*+?^${}()|[\]]/g,"\\$&");
+ const patterns=[new RegExp("<artifactId>\\s*"+escaped+"\\s*</artifactId>"),new RegExp("[\"']"+escaped+"[\"']"),new RegExp("^\\s*"+escaped+"(?:\\s|[=<>~!;]|$)","i")];
+ const lines=text.split(/\r?\n/);
+ const esc=(v:string)=>v.replace(/[.*+?^${}()|[\]]/g,"\\$&");
+ if(installed){const stem=artifact.split(/[-_.]/)[0];if(stem.length>2)patterns.push(new RegExp("<[\\w.-]*"+esc(stem)+"[\\w.-]*>\\s*"+esc(installed)+"\\s*</"))}
+ for(const pattern of patterns){const i=lines.findIndex(l=>pattern.test(l));if(i>=0)return i+1}
+ return 1;
+}
