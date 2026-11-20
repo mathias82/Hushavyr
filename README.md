@@ -17,6 +17,7 @@ Type `@ai-privacy` in VS Code Chat:
 | `/security` | Offline source security indicators and credentials scan |
 | `/semgrep` | Run bundled offline Semgrep rules using locally installed Semgrep |
 | `/gitleaks` | Run locally installed Gitleaks to detect exposed secrets (values redacted) |
+| `/dependencies` | Audit dependencies offline with locally installed Trivy and preloaded vulnerability database |
 
 The commands available in VS Code depend on the **installed extension version**. Project scanning requires **0.0.17 or later**. The `/semgrep` and `/gitleaks` commands require the upcoming extension release after PR #78 is merged, plus locally installed scanner executables; they are not included in 0.0.18.
 
@@ -38,3 +39,5 @@ See the [Hushavyr interface preview](docs/images/hushavyr-local-review.svg) on G
 For setup, supported languages, security limits, and troubleshooting, see the [full user guide](docs/guide.md).
 
 **Author:** Matthaios Stavrou · [GitHub](https://github.com/mathias82/Hushavyr)
+
+**Offline dependency audit:** Install Trivy and preload its vulnerability database while outside restricted networks. Hushavyr runs Trivy with offline scanning and DB updates disabled. An absent or outdated database must not be interpreted as a clean scan. This initial integration reports counts, not verified fixed-version recommendations.
