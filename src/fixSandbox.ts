@@ -4,7 +4,7 @@ import {cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeF
 import {homedir} from "node:os";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {randomUUID} from "node:crypto";
-import {FixProofContext, FixProofReceipt, ProofStage, SourceChange, TestRun, TestCase, parseSurefire, sha256} from "./fixProof";
+import {FixProofContext, FixProofReceipt, ProofStage, SourceChange, TestRun, TestCase, parsePytestReport, parseSurefire, sha256} from "./fixProof";
 
 export function safeRelative(path: string): string {
   if (!path || isAbsolute(path) || /[\\\x00-\x1f]/.test(path) ||
@@ -27,9 +27,9 @@ async function command(file: string, args: string[], cwd: string): Promise<Buffe
 function git(args: string[], cwd: string): Promise<Buffer> {
   return command("git", ["-c", "core.fsmonitor=false", ...args], cwd);
 }
-interface DockerMounts {snapshot: string; target: string; cache: string; project: string; image: string; uid: number; gid: number; name: string}
+interface DockerMounts {snapshot: string; target: string; cache?: string; project: string; image: string; uid: number; gid: number; name: string}
 export function dockerCreateArgs(input: DockerMounts, targetClass?: string): string[] {
-  for (const path of [input.snapshot, input.target, input.cache]) {
+  for (const path of [input.snapshot, input.target, ...(input.cache ? [input.cache] : [])]) {
     if (!isAbsolute(path) || /[,\x00-\x1f]/.test(path)) throw new Error("unsupported-mount-path");
   }
   if (!/^sha256:[a-f0-9]{64}$/.test(input.image) || !/^ai-privacy-fix-[a-f0-9-]{36}$/.test(input.name) ||
@@ -37,12 +37,20 @@ export function dockerCreateArgs(input: DockerMounts, targetClass?: string): str
   if (input.project) safeRelative(input.project);
   if (targetClass && !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(targetClass)) throw new Error("invalid-test-selector");
   const project = "/work" + (input.project ? "/" + input.project : "");
-  return ["create", "--name", input.name, "--pull=never", "--network=none", "--read-only",
+  const isolated = ["create", "--name", input.name, "--pull=never", "--network=none", "--read-only",
     "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256",
     "--memory=4g", "--cpus=2", "--log-driver=none", "--user", input.uid + ":" + input.gid,
     "--tmpfs", "/tmp:rw,nosuid,nodev,size=536870912",
-    "--mount", "type=bind,src=" + input.snapshot + ",dst=/work,readonly",
-    "--mount", "type=bind,src=" + input.target + ",dst=" + project + "/target",
+    "--mount", "type=bind,src=" + input.snapshot + ",dst=/work,readonly"];
+  if (!input.cache) {
+    if (targetClass && !/^test_hushavyr_[a-f0-9]{32}$/.test(targetClass)) throw new Error("invalid-python-test-selector");
+    return [...isolated, "--mount", "type=bind,src=" + input.target + ",dst=/reports",
+      "--workdir", project, "--env", "HOME=/tmp", "--env", "PYTHONDONTWRITEBYTECODE=1",
+      "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "--entrypoint", "python", input.image,
+      "-m", "pytest", "-o", "addopts=", "-p", "no:cacheprovider", "--junitxml=/reports/pytest.xml",
+      targetClass ? "tests/" + targetClass + ".py" : "tests"];
+  }
+  return [...isolated, "--mount", "type=bind,src=" + input.target + ",dst=" + project + "/target",
     "--mount", "type=bind,src=" + input.cache + ",dst=/m2,readonly",
     "--workdir", project, "--env", "HOME=/tmp", "--env", "MAVEN_CONFIG=/tmp/.m2",
     "--env", "MAVEN_OPTS=-Duser.home=/tmp", "--entrypoint", "mvn", input.image,
@@ -78,7 +86,7 @@ async function regularText(path: string, maxBytes: number): Promise<string> {
   return (await regularBytes(path, maxBytes)).toString("utf8");
 }
 export interface FixSandboxOptions {
-  project: string; selected: string[]; storage: string; image: string; cache?: string; signal: AbortSignal;
+  project: string; selected: string[]; storage: string; image: string; cache?: string; profile?: "python"; signal: AbortSignal;
 }
 export class FixSandbox {
   readonly context: FixProofContext;
@@ -91,7 +99,7 @@ export class FixSandbox {
   private constructor(
     readonly directory: string, private readonly snapshot: string, private readonly project: string,
     private readonly targetDirectory: string, private readonly docker: string[],
-    private readonly cache: string, readonly contextSources: {path: string; text: string}[],
+    private readonly cache: string | undefined, readonly contextSources: {path: string; text: string}[],
     context: FixProofContext, private readonly signal: AbortSignal
   ) {this.context = context; this.sources = contextSources;}
   static async create(options: FixSandboxOptions): Promise<FixSandbox> {
@@ -131,19 +139,26 @@ export class FixSandbox {
         texts.set(path, bytes);
       }
       const prefix = project ? project + "/" : "";
+      const python = options.profile === "python";
       const pomPath = prefix + "pom.xml", pom = texts.get(pomPath)?.toString("utf8");
-      if (!pom || /<modules\b/i.test(pom.replace(/<!--[\s\S]*?-->/g, ""))) throw new Error("select-a-leaf-maven-project");
+      if (!python && (!pom || /<modules\b/i.test(pom.replace(/<!--[\s\S]*?-->/g, "")))) throw new Error("select-a-leaf-maven-project");
       if (!options.selected.length || options.selected.length > 6) throw new Error("select-one-to-six-java-files");
-      const sources = [{path: pomPath, text: pom}];
+      if (python && ![...texts.keys()].some(path => path.startsWith(prefix + "tests/") && path.endsWith(".py"))) {
+        throw new Error("tracked-pytest-suite-required");
+      }
+      const sources: {path: string; text: string}[] = python ? [] : [{path: pomPath, text: pom!}];
       for (const absolute of options.selected) {
         const path = relative(rootPath, await realpath(absolute)).split(sep).join("/");
         safeRelative(path);
-        if (!path.startsWith(prefix + "src/main/java/") || !path.endsWith(".java") || !texts.has(path)) throw new Error("select-tracked-production-java");
+        const allowed = python
+          ? path.startsWith(prefix) && path.endsWith(".py") && !/(?:^|\/)(?:tests?|test_[^/]*|[^/]*_test\.py|conftest\.py|setup\.py)(?:\/|$)/.test(path)
+          : path.startsWith(prefix + "src/main/java/") && path.endsWith(".java");
+        if (!allowed || !texts.has(path)) throw new Error("select-tracked-production-source");
         if (sources.some(s => s.path === path)) throw new Error("duplicate-source");
         sources.push({path, text: texts.get(path)!.toString("utf8")});
       }
       if (Buffer.byteLength(JSON.stringify(sources), "utf8") > 12000) throw new Error("model-context-exceeds-12kb");
-      if ([...texts.keys()].some(path => path === prefix + "target" || path.startsWith(prefix + "target/"))) throw new Error("tracked-build-output-not-supported");
+      if (!python && [...texts.keys()].some(path => path === prefix + "target" || path.startsWith(prefix + "target/"))) throw new Error("tracked-build-output-not-supported");
       const endpoint = JSON.parse((await command("docker", ["context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"], directory)).toString("utf8").trim());
       if (typeof endpoint !== "string" || !endpoint.startsWith("unix:///") || /[,\x00-\x1f]/.test(endpoint)) throw new Error("local-unix-docker-context-required");
       const config = join(directory, "docker-config"); await mkdir(config, {mode: 0o700});
@@ -151,6 +166,15 @@ export class FixSandbox {
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/.test(options.image)) throw new Error("invalid-image");
       const imageId = (await command("docker", [...docker, "image", "inspect", options.image, "--format", "{{.Id}}"], directory)).toString("utf8").trim();
       if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error("preload-a-local-maven-image");
+      if (python) {
+        const testClass = "test_hushavyr_" + randomUUID().replace(/-/g, "");
+        const context: FixProofContext = {baseCommit, imageId, testClass, testPath: prefix + "tests/" + testClass + ".py", profile: "python"};
+        if (texts.has(context.testPath)) throw new Error("test-path-exists");
+        const sandbox = new FixSandbox(directory, snapshot, project, targetDirectory, docker, undefined, sources, context, options.signal);
+        for (const [path, bytes] of texts) sandbox.expected.set(path, sha256(bytes));
+        for (const source of sources) sandbox.original.set(source.path, source.text);
+        return sandbox;
+      }
       const cacheSource = await realpath(options.cache ?? join(homedir(), ".m2", "repository"));
       if (!(await lstat(cacheSource)).isDirectory()) throw new Error("maven-cache-required");
       const cache = join(directory, "maven-cache");
@@ -191,8 +215,10 @@ export class FixSandbox {
     const name = this.context.testClass.split(".").at(-1)!;
     const expectedPackage = this.context.testClass.split(".").slice(0, -1).join(".");
     const actualPackage = source.replace(/\/\*[\s\S]*?\*\//g, "").match(/^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/m)?.[1] ?? "";
-    if (Buffer.byteLength(source, "utf8") > 8000 || actualPackage !== expectedPackage ||
-      !new RegExp("\\bpublic\\s+(?:final\\s+)?class\\s+" + name + "\\b").test(source)) throw new Error("invalid-regression-source");
+    const valid = this.context.profile === "python"
+      ? /^def test_[A-Za-z0-9_]+\s*\(/m.test(source)
+      : actualPackage === expectedPackage && new RegExp("\\bpublic\\s+(?:final\\s+)?class\\s+" + name + "\\b").test(source);
+    if (!valid || Buffer.byteLength(source, "utf8") > 8000) throw new Error("invalid-regression-source");
     const path = at(this.snapshot, this.context.testPath);
     await mkdir(dirname(path), {recursive: true});
     await writeFile(path, source, {flag: "wx", mode: 0o600});
@@ -219,7 +245,7 @@ export class FixSandbox {
     await mkdir(this.targetDirectory, {mode: 0o700});
     const prefix = this.project ? this.project + "/" : "";
     const targetMount = at(this.snapshot, prefix + "target");
-    await mkdir(targetMount, {recursive: true});
+    if (this.cache) await mkdir(targetMount, {recursive: true});
     const name = "ai-privacy-fix-" + randomUUID();
     const args = dockerCreateArgs({snapshot: this.snapshot, target: this.targetDirectory, cache: this.cache,
       project: this.project, image: this.context.imageId, uid: process.getuid!(), gid: process.getgid!(), name}, targetClass);
@@ -238,6 +264,10 @@ export class FixSandbox {
     if (!interrupted) {
       const reports = join(this.targetDirectory, "surefire-reports");
       try {
+        if (this.context.profile === "python") {
+          cases.push(...parsePytestReport(await regularText(join(this.targetDirectory, "pytest.xml"), 1048576)));
+          return {exitCode, interrupted, durationMs: Date.now() - started, cases};
+        }
         const info = await lstat(reports);
         if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid-reports");
         const names = (await readdir(reports)).filter(n => /^TEST-[A-Za-z0-9_.$-]+\.xml$/.test(n));
@@ -256,7 +286,7 @@ export class FixSandbox {
       await writeFile(join(this.directory, "verified.patch"), patch, {flag: "wx", mode: 0o600});
       patchHash = sha256(patch);
     }
-    if (this.testSource) await writeFile(join(this.directory, "proposed-regression.java"), this.testSource, {flag: "wx", mode: 0o600});
+    if (this.testSource) await writeFile(join(this.directory, "proposed-regression." + (this.context.profile === "python" ? "py" : "java")), this.testSource, {flag: "wx", mode: 0o600});
     // Write the completion marker last, after its content-addressed artifact exists.
     await writeFile(join(this.directory, "receipt.json"), JSON.stringify({...receipt, patchHash,
       cleanupRequiresAttention: this.unsafeCleanup}, null, 2) + "\n", {flag: "wx", mode: 0o600});
@@ -266,7 +296,7 @@ export class FixSandbox {
     if (this.unsafeCleanup) return; // Preserve mounts if Docker cleanup could not be confirmed.
     await rm(this.snapshot, {recursive: true, force: true});
     await rm(this.targetDirectory, {recursive: true, force: true});
-    await rm(this.cache, {recursive: true, force: true});
+    if (this.cache) await rm(this.cache, {recursive: true, force: true});
     await rm(join(this.directory, "docker-config"), {recursive: true, force: true});
   }
 }

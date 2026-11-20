@@ -157,7 +157,11 @@ Every finding remains **potential**. Neither model agreement nor a successful ex
 
 ## Local Java regression-proof agent (0.0.5)
 
-Run **Hushavyr: Propose and Verify Local Java Fix** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
+On the development branch, select **Python / pytest**. Use a committed project with an existing `tests/` directory and select one to six tracked production `.py` files. Set `aiPrivacyRouter.fixPythonImage` to a preloaded local image containing Python, pytest and the project dependencies. The default image name is `hushavyr-pytest:local`. The verifier uses a fixed pytest command, disables plugin autoload, and runs with networking disabled. Projects that require plugins, live services or writing to the checkout need a compatible offline test setup.
+
+The Python verifier checks that the existing suite passes, the approved generated test fails on an assertion, the same test passes after the fix, and the full suite still passes. Import, collection and runtime errors cannot establish a regression. The command writes the same patch and receipt artifacts as the Maven profile.
+
+Run **Hushavyr: Propose and Verify Local Fix** and choose **Java / Maven** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
 
 ### What it does
 
