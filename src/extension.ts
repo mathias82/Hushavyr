@@ -287,6 +287,22 @@ export function activate(context: vscode.ExtensionContext): void {
           stream.markdown("No supported source files found. Configuration secrets check completed locally; no Ollama request needed.");
           return;
         }
+        if (request.command === "scan") {
+          for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            for (const tool of ["semgrep", "gitleaks"] as const) {
+              if (token.isCancellationRequested) { completed = false; break; }
+              const scanner = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr.yml"), controller.signal);
+              stream.markdown("**" + tool + " offline scanner:** " + scanner.status +
+                " · " + scanner.findings.length + " location-only findings.\\n\\n");
+              for (const finding of scanner.findings) {
+                stream.markdown("- **" + finding.severity.replace(/[^A-Za-z]/g, "") + "** · \`" +
+                  finding.path.replace(/[\`\\r\\n]/g, "") + ":" + finding.line + "\` · rule " +
+                  finding.rule.replace(/[\`\\r\\n]/g, "") + " (value redacted)\\n");
+              }
+              if (scanner.findings.length) stream.markdown("\\n");
+            }
+          }
+        }
         await client.ensureAvailable(controller.signal);
         stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
         const batchSize = 50;
