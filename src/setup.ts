@@ -9,6 +9,15 @@ export function recommendedModel(memoryBytes: number): string {
   return gb >= 48 ? "qwen2.5-coder:32b" : gb >= 20 ? "qwen2.5-coder:14b" : "qwen2.5-coder:7b";
 }
 
+/** Approximate resident size of common quantized models; warn before loading one that will swap. */
+export function lowMemoryWarning(model: string, memoryBytes = totalmem()): string {
+  const size = /(\d+(?:\.\d+)?)b\b/i.exec(model);
+  if (!size) return "";
+  const needGb = Number(size[1]) * 0.7 + 2;
+  const haveGb = memoryBytes / 1024 ** 3;
+  return needGb > haveGb ? "**Warning:** " + model + " needs about " + Math.ceil(needGb) + " GB of memory but this machine has " + Math.floor(haveGb) + " GB; expect slow responses. Run **Hushavyr: Setup** to pick a smaller model." : "";
+}
+
 export type Runner = (executable: string, args: string[]) => Promise<boolean>;
 const defaultRunner: Runner = (executable, args) => new Promise(resolve =>
   execFile(executable, args, {timeout: 8000, windowsHide: true}, error => resolve(!error)));
