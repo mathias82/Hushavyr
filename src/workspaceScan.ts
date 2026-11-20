@@ -1,5 +1,7 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
+import {tr} from "./i18n";
+import {uiLanguage} from "./trivyCommands";
 import {auditDependencies, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
@@ -137,18 +139,19 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       if (request.command === "dependencies") {
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
           const audit = await auditDependencies(folder.uri.fsPath, controller.signal);
-          stream.markdown("**Offline dependency audit:** " + audit.status + " · ecosystem: " +
-            (audit.manager ?? "unknown") + " · vulnerabilities reported: " + audit.findings +
-            ". " + audit.note + ". No cloud requests.\n\n");
+          const lang = uiLanguage();
+          stream.markdown("**" + tr(lang, "auditHeader") + "** " + audit.status + " · " + tr(lang, "ecosystem") + ": " +
+            (audit.manager ?? "unknown") + " · " + tr(lang, "reported") + ": " + audit.findings +
+            ". " + audit.note + ". " + tr(lang, "noCloud") + "\n\n");
           const groups = groupVulnerabilities(audit.vulnerabilities ?? []);
           const shown = groups.slice(0, 50);
           for (const v of shown) {
             const id = /^CVE-\d{4}-\d{4,}$/.test(v.id) ? "[" + v.id + "](https://nvd.nist.gov/vuln/detail/" + v.id + ")" : "`" + v.id.replace(/`/g, "") + "`";
             const files = v.targets.slice(0, 5).map(t => "`" + t.replace(/`/g, "") + "`").join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
             stream.markdown("- **" + v.severity + "** · " + id + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
-              (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix available") + (files ? " · in " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
+              (v.fixed ? tr(lang, "fixedIn") + " `" + v.fixed.replace(/`/g, "") + "`" : tr(lang, "noFix")) + (files ? " · " + tr(lang, "inFiles") + " " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") + "\n");
           }
-          if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " more not shown. Links open the public NVD page only if you click them._\n");
+          if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " " + tr(lang, "moreHidden") + ". Links open the public NVD page only if you click them._\n");
           if (shown.length) stream.markdown("\n");
           await markDependencies(context, folder.uri, groups);
           if (audit.status === "missing") await offerToolInstallation("trivy");
