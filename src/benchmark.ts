@@ -57,7 +57,32 @@ class Mapper {
     String value = lookup.find(id);
     return value == null ? "" : value.trim();
   }
-}`}]} 
+}`}]},
+  {id: "python-mutable-default-bug", sources: [{path: "events.py", text: `def add_event(event, events=[]):
+    events.append(event)
+    return events`}], expected: {path: "events.py", line: 1, mechanism: /mutable|shared|default/i}},
+  {id: "python-mutable-default-clean", sources: [{path: "events.py", text: `def add_event(event, events=None):
+    if events is None:
+        events = []
+    events.append(event)
+    return events`}]},
+  {id: "typescript-zero-limit-bug", sources: [{path: "limits.ts", text: `// An explicit limit of zero must stay zero.
+export function getLimit(limit?: number): number {
+  return limit || 10;
+}`}], expected: {path: "limits.ts", line: 3, mechanism: /zero|0|nullish|falsy/i}},
+  {id: "typescript-zero-limit-clean", sources: [{path: "limits.ts", text: `// An explicit limit of zero must stay zero.
+export function getLimit(limit?: number): number {
+  return limit ?? 10;
+}`}]},
+  {id: "javascript-numeric-sort-bug", sources: [{path: "scores.js", text: `// Return a sorted copy in ascending numeric order.
+export function sortedScores(scores) {
+  return [...scores].sort();
+}`}], expected: {path: "scores.js", line: 3, mechanism: /string|lexicograph|comparator|numeric/i}},
+  {id: "javascript-numeric-sort-clean", sources: [{path: "scores.js", text: `// Return a sorted copy in ascending numeric order.
+export function sortedScores(scores) {
+  return [...scores].sort((a, b) => a - b);
+}`}]}
+
 ];
 
 export function scoreCase(fixture: BenchmarkCase, findings: readonly Finding[]) {
