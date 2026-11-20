@@ -15,8 +15,8 @@ import * as vscode from "vscode";
 import { LocalOllama } from "./ollama";
 import { offerToolInstallation } from "./setup";
 
-const scanCommands = new Set(["scan", "scan-changed", "secrets", "security", "semgrep", "gitleaks", "dependencies"]);
-const deterministicCommands = new Set(["secrets", "security", "semgrep", "gitleaks", "dependencies"]);
+const scanCommands = new Set(["scan", "scan-changed", "secrets", "security", "gitleaks", "dependencies"]);
+const deterministicCommands = new Set(["secrets", "security", "gitleaks", "dependencies"]);
 export const isScanCommand = (command?: string): boolean => !!command && scanCommands.has(command);
 export const isDeterministicCommand = (command?: string): boolean => !!command && deterministicCommands.has(command);
 
@@ -93,8 +93,11 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
     }
     }
     if (request.command === "scan" || request.command === "scan-changed") {
-      stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security`, `/semgrep`, and `/gitleaks` separately for additional checks.\n\n");
+      stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security` (bundled rules + Semgrep) and `/gitleaks` separately for additional checks.\n\n");
     }
+    // /security = Semgrep with the bundled rule pack + built-in rules + credentials; one finding per line.
+    const semgrepLines = new Set<string>();
+    let semgrepCount = 0;
     if (request.command === "security") {
       const folders = vscode.workspace.workspaceFolders ?? [];
       for (const folder of folders) {
@@ -108,11 +111,13 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         } else {
           for (const issue of semgrep.findings) {
             if (token.isCancellationRequested) break;
-            stream.markdown("**Semgrep · " + issue.severity.replace(/[^A-Za-z]/g,"") + "** · \`" +
-              issue.path.replace(/[\`\r\n]/g,"") + ":" + issue.line + "\` · " +
-              issue.rule.replace(/[\`\r\n]/g,"") + " · " + issue.message.replace(/[\r\n]/g," ") + "\n\n");
+            const target = vscode.Uri.file(resolve(folder.uri.fsPath, issue.path));
+            semgrepLines.add(target.fsPath + ":" + issue.line);
+            semgrepCount++;
+            const severity = ({ERROR: "HIGH", WARNING: "MEDIUM", INFO: "LOW"} as Record<string, string>)[issue.severity.toUpperCase()] ?? "MEDIUM";
+            stream.markdown("**" + severity + " · " + issue.message.replace(/[\r\n`\[\]]/g, " ").slice(0, 160) + "** · " +
+              findingLink(target, issue.line, vscode.workspace.asRelativePath(target) + ":" + issue.line) + " · Semgrep `" + issue.rule.replace(/[`\r\n]/g, "") + "`\n\n");
           }
-          stream.markdown("**Offline Semgrep:** " + semgrep.findings.length + " potential findings; local bundled rules only.\n\n");
         }
       }
     }
@@ -131,6 +136,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         if (request.command === "dependencies") for (const name of collectImports(uri.path, localContent)) imports.add(name);
         if (request.command === "security") {
           for (const finding of scanSecurity(relative, localContent)) {
+            if (semgrepLines.has(uri.fsPath + ":" + finding.line)) continue;
             securityFindings++;
             stream.markdown("**" + finding.severity + " · " + finding.rule + "** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " · " + finding.advice + "\n\n");
           }
@@ -173,9 +179,9 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         }
         return;
       }
-      if (request.command === "semgrep" || request.command === "gitleaks") {
+      if (request.command === "gitleaks") {
         const tool = request.command;
-        const rules = join(context.extensionPath, "rules", "hushavyr.yml");
+        const rules = join(context.extensionPath, "rules", "hushavyr-review.yml");
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
           const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal);
           if (result.status !== "ok") {
@@ -193,7 +199,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         }
         return;
       }
-      stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators. No Ollama or cloud requests. These findings require manual verification.\n\n");
+      stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators" + (request.command === "security" ? ", " + semgrepCount + " Semgrep findings" : "") + ". No Ollama or cloud requests. These findings require manual verification.\n\n");
       return;
     }
     if (!files.length) {
@@ -205,7 +211,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
         for (const tool of ["semgrep", "gitleaks"] as const) {
           if (token.isCancellationRequested) { completed = false; break; }
-          const scan = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr.yml"), controller.signal);
+          const scan = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr-review.yml"), controller.signal);
           scannerTotals.push(tool + ": " + scan.status + " (" + scan.findings.length + " findings)");
           scannerFindingCount += scan.findings.length;
           stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\n");

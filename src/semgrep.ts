@@ -7,10 +7,8 @@ type Runner = (file:string,args:string[],options:object,callback:(error:Error|nu
 
 /** Semgrep is invoked locally, without registry rules or network-dependent configuration. */
 export async function runSemgrep(root:string,runner:Runner=execFile as unknown as Runner):Promise<SemgrepResult>{
- const args=["scan","--config","auto"]; // replaced below: auto downloads rules, which is forbidden.
- args.splice(2,2,"--config","p/security-audit");
- // Do not use remote rulesets. Only built-in local rule file is accepted.
- args.splice(2,2,"--config",resolve(__dirname,"..","rules","hushavyr-semgrep.yml"));
+ // Only the bundled local rule file: no registry or "auto" rules, which would need the network.
+ const args=["scan","--config",resolve(__dirname,"..","rules","hushavyr-review.yml")];
  args.push("--json","--disable-version-check","--metrics=off","--no-git-ignore",root);
  return new Promise(resolveResult=>runner("semgrep",args,{cwd:root,timeout:120000,maxBuffer:8*1024*1024,windowsHide:true,env:{...process.env,SEMGREP_SEND_METRICS:"off",SEMGREP_ENABLE_VERSION_CHECK:"0"}},(error,stdout)=>{
    if(error && (error as NodeJS.ErrnoException).code==="ENOENT"){resolveResult({status:"missing",findings:[]});return;}
@@ -24,7 +22,7 @@ export async function runSemgrep(root:string,runner:Runner=execFile as unknown a
      const full=resolve(root,f.path),rel=relative(root,full);
      if(rel.startsWith("..")||isAbsolute(rel))continue;
      const line=f.start?.line;if(typeof line!=="number"||!Number.isInteger(line)||line<1)continue;
-     findings.push({path:rel,line,rule:String(f.check_id??"local-rule").slice(0,120),severity:String(f.extra?.severity??"WARNING").slice(0,30),message:String(f.extra?.message??"Review finding").slice(0,300)});
+     findings.push({path:rel,line,rule:String(f.check_id??"local-rule").split(".").pop()!.slice(0,120),severity:String(f.extra?.severity??"WARNING").slice(0,30),message:String(f.extra?.message??"Review finding").slice(0,300)});
    }
    resolveResult({status:"ok",findings});
  }));

@@ -23,7 +23,8 @@ test("missing bundled Semgrep rules fail safely before invoking CLI",async()=>{
 test("bundled rules cover Java JavaScript TypeScript and Python",()=>{
  const {readFileSync}=require("node:fs") as typeof import("node:fs");
  const {join}=require("node:path") as typeof import("node:path");
- const yaml=readFileSync(join(__dirname,"../../rules/hushavyr.yml"),"utf8");
+ const yaml=readFileSync(join(__dirname,"../../rules/hushavyr-review.yml"),"utf8");
  for(const language of ["java","javascript","typescript","python"])assert.match(yaml,new RegExp(language));
- assert.match(yaml,/hushavyr-java-sql-concatenation/);
+ assert.match(yaml,/hushavyr.java-sql-concatenation/);
+ assert.match(yaml,/InsecureTrustManagerFactory/);
 });
