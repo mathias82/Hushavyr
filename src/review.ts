@@ -99,6 +99,7 @@ export function formatReview(result: ReviewResult): string {
     (result.retryFailed ? " The local repair attempt also failed." : "") + " Try again with a smaller selection.";
   const lines = ["### Evidence-gated local review", "", "All findings are **potential**, not confirmed. Tests were suggested, not executed.", ""];
   lines.push("**Review diagnostics:** " + (result.proposed ?? result.findings.length + result.rejected) + " proposed · " + result.findings.length + " passed source validation · " + result.rejected + " rejected by source validation · " + (result.verifierRejected ?? 0) + " rejected by second local pass.", "");
+  if (result.findings.some(f => f.title.startsWith("Local rule:"))) lines.push("**Offline indicators:** Separately detected by bundled local rules, not proposed or verified by the AI model.", "");
   if (!result.findings.length) lines.push(result.proposed === 0 ? "The local model proposed no findings. This does not establish that the code is bug-free." : "No findings passed the evidence checks. The review was inconclusive; this does not establish that the code is bug-free.", "");
   for (const [i,f] of result.findings.entries()) lines.push(
     "#### " + (i+1) + ". " + f.title,
