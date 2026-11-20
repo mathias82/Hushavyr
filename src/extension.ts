@@ -209,7 +209,7 @@ export function activate(context: vscode.ExtensionContext): void {
             for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
               secretFindings++;
               deterministicFindings++;
-              stream.markdown("**" + finding.severity + "** · " + finding.rule + " · `" + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
+              stream.markdown("**" + finding.severity + "** · " + finding.rule + " · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
             }
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
@@ -251,12 +251,12 @@ export function activate(context: vscode.ExtensionContext): void {
             if (request.command === "security") {
               for (const finding of scanSecurity(relative, localContent)) {
                 securityFindings++;
-                stream.markdown("**" + finding.severity + " · " + finding.rule + "** · `" + findingLink(uri, finding.line, relative + ":" + finding.line) + " · " + finding.advice + "\n\n");
+                stream.markdown("**" + finding.severity + " · " + finding.rule + "** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " · " + finding.advice + "\n\n");
               }
             }
             for (const finding of scanSecrets(localContent)) {
               sourceFindings++;
-              stream.markdown("**HIGH · Potential hardcoded credential** · `" + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
+              stream.markdown("**HIGH · Potential hardcoded credential** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
             }
           }
           if (request.command === "dependencies") {
