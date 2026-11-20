@@ -11,7 +11,7 @@ const load = (Module as unknown as {_load: (name: string, ...args: unknown[]) =>
 (Module as unknown as {_load: unknown})._load = function(this: unknown, name: string, ...args: unknown[]) {
   return name === "vscode" ? stub : load.call(this, name, ...args);
 };
-const {recommendedModel, detectTools} = require("../setup") as typeof import("../setup");
+const {recommendedModel, detectTools, lowMemoryWarning} = require("../setup") as typeof import("../setup");
 
 const ndjson = (...events: object[]) => new Response(events.map(e => JSON.stringify(e)).join("\n") + "\n");
 
@@ -61,4 +61,10 @@ test("source has no double-escaped newline, quote or bracket sequences", () => {
   for (const file of readdirSync(dir).filter(f => f.endsWith(".ts"))) {
     assert.doesNotMatch(readFileSync(join(dir, file), "utf8"), /\\\\[nr`\[\]]/, file);
   }
+});
+test("lowMemoryWarning flags models that will not fit", () => {
+  const gb = 1024 ** 3;
+  assert.match(lowMemoryWarning("qwen2.5-coder:32b", 16 * gb), /needs about/);
+  assert.equal(lowMemoryWarning("qwen2.5-coder:14b", 24 * gb), "");
+  assert.equal(lowMemoryWarning("llama3", 8 * gb), "");
 });

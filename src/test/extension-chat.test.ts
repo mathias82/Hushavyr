@@ -56,7 +56,7 @@ async function chat(files: Record<string, string>, responses: string[], prompt =
     return new Response(JSON.stringify({response}));
   };
   try {
-    activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
+    activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}, globalState: {get: () => true, update: async () => undefined}} as unknown as vscode.ExtensionContext);
     await handler({command: commandOverride ?? (prompt === "Explain" ? undefined : "review"), prompt,
       references: unknown ? [{value: "unreadable"}] : Object.keys(files).map(path => ({value: new Uri(path)}))}, {},
     {markdown: (text: string) => output.push(text)}, {isCancellationRequested: false, onCancellationRequested: () => disposable});
@@ -110,7 +110,7 @@ test("local commands register even when built-in AI and Copilot are disabled", (
   const before = participantRegistrations;
   configuration.disableAIFeatures = true;
   try {
-    activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}} as unknown as vscode.ExtensionContext);
+    activate({subscriptions: [], globalStorageUri: {fsPath: "/unused"}, globalState: {get: () => true, update: async () => undefined}} as unknown as vscode.ExtensionContext);
     assert.equal(participantRegistrations, before + 1);
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocal"));
     assert.ok(registeredCommands.has("aiPrivacyRouter.verifyLocalFix"));
