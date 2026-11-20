@@ -1,10 +1,10 @@
 {
-  "name": "ai-privacy-router",
+  "name": "hushavyr",
   "displayName": "Hushavyr",
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
