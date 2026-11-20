@@ -9,6 +9,7 @@ import {SarifResult, sarifLevel, toSarif} from "./sarif";
 
 const SKIP = new Set([".git", "node_modules", "target", "build", "dist", "out", "coverage", ".venv", "venv", ".next", ".idea", ".vscode", "vendor", "__pycache__"]);
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
+const LOCKFILE = /(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Cargo\.lock|poetry\.lock|go\.sum)$/;
 const CONFIG = /(?:\.(?:env|properties|ya?ml|json|xml|toml|ini|conf)|^\.env(?:\..*)?)$/;
 
 async function walk(dir: string, found: string[] = []): Promise<string[]> {
@@ -42,7 +43,8 @@ export async function scanFolder(root: string, rules: string, log: (line: string
     const path = relative(root, file);
     if (SOURCE.test(file)) for (const issue of scanSecurity(path, text))
       results.push({ruleId: issue.rule.replace(/\W+/g, "-").toLowerCase(), message: issue.rule + ": " + issue.advice, path, line: issue.line, level: sarifLevel(issue.severity)});
-    for (const secret of scanSecrets(text))
+    // Lockfiles hold package names and integrity hashes, never credentials.
+    if (!LOCKFILE.test(file)) for (const secret of scanSecrets(text))
       results.push({ruleId: "hardcoded-credential", message: "Potential hardcoded credential (" + secret.rule + "); value redacted", path, line: secret.line, level: "error"});
   }
   const fromSemgrep = await semgrep(root, rules);
