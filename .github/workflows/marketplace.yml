@@ -74,6 +74,6 @@ jobs:
         with:
           node-version: '22'
       - name: Install VSCE with OIDC support
-        run: npm install --global @vscode/vsce@4.0.2
+        run: npm install --global @vscode/vsce@4.1.0
       - name: Publish verified package
         run: vsce publish --oidc --packagePath hushavyr-0.0.13.vsix
