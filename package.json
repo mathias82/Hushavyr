@@ -217,6 +217,10 @@
           {
             "name": "secrets",
             "description": "Scan local configuration and source files for hardcoded credentials without Ollama"
+          },
+          {
+            "name": "security",
+            "description": "Offline security engineer: local source code security indicators and credential checks"
           }
         ]
       }

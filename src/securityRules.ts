@@ -1,0 +1,22 @@
+/** Conservative, offline security checks. These are indicators, not exploit proofs. */
+export interface SecurityIssue {line:number; rule:string; severity:"HIGH"|"MEDIUM"; advice:string}
+type Rule={id:string;severity:"HIGH"|"MEDIUM";pattern:RegExp;advice:string;extensions:RegExp}
+const rules:Rule[]=[
+{id:"Weak cryptographic hash",severity:"MEDIUM",pattern:/MessageDigest\.getInstance\s*\(\s*["\x27](?:MD5|SHA-1)["\x27]|createHash\s*\(\s*["\x27](?:md5|sha1)["\x27]|hashlib\.(?:md5|sha1)\s*\(/i,advice:"Avoid weak hashes for security-sensitive purposes; verify usage context",extensions:/\.(?:java|kt|js|ts|py)$/},
+{id:"TLS certificate validation disabled",severity:"HIGH",pattern:/\b(?:rejectUnauthorized\s*:\s*false|verify\s*=\s*False|checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|InsecureTrustManagerFactory\.INSTANCE)\b/,advice:"Enable certificate and hostname validation",extensions:/\.(?:java|kt|js|ts|py)$/},
+{id:"Weak cryptographic hash",severity:"MEDIUM",pattern:/\b(?:MessageDigest\.getInstance\s*\(\s*["'](?:MD5|SHA-1)["']|createHash\s*\(\s*["'](?:md5|sha1)["']|hashlib\.(?:md5|sha1)\s*\()/i,advice:"Avoid weak hashes for security-sensitive purposes; verify usage context",extensions:/\.(?:java|kt|js|ts|py)$/},
+{id:"Java deserialization",severity:"MEDIUM",pattern:/\bnew\s+ObjectInputStream\s*\(|\bObjectInputStream\s*\(/,advice:"Avoid deserializing untrusted objects; enforce serialization filters",extensions:/\.(?:java|kt)$/},
+{id:"Potential command execution",severity:"MEDIUM",pattern:/\b(?:Runtime\.getRuntime\(\)\.exec|child_process\.exec\s*\(|os\.system\s*\(|subprocess\.(?:run|Popen)\s*\()/,advice:"Review user-controlled arguments and prefer argument arrays without a shell",extensions:/\.(?:java|kt|js|ts|py)$/}
+];
+export function scanSecurity(path:string,source:string):SecurityIssue[]{
+ const results:SecurityIssue[]=[];if(!/\.(?:java|kt|js|ts|py)$/.test(path))return results;
+ const lines=source.split(/\r?\n/);
+ for(let i=0;i<lines.length&&i<20000;i++){
+  const line=lines[i];if(/^\s*(?:\/\/|#|\*)/.test(line))continue;
+  for(const rule of rules)if(rule.extensions.test(path)&&rule.pattern.test(line)){
+   results.push({line:i+1,rule:rule.id,severity:rule.severity,advice:rule.advice});
+   if(results.length>=200)return results;
+  }
+ }
+ return results;
+}
