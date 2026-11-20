@@ -13,3 +13,8 @@ test("ignores placeholders and comments", () => {
 test("detects YAML and properties credentials", () => {
  assert.deepEqual(scanSecrets("client_secret: example-client-secret\npassword=sample-password").map(x => x.line), [1,2]);
 });
+
+test("does not flag GitHub Actions secret references or env placeholders", () => {
+ const content = 'password: ${{ secrets.DATABASE_PASSWORD }}\nclient_secret: "${{ vars.CLIENT_SECRET }}"\napi_key: "${API_KEY}"\npassword: literal-example-value';
+ assert.deepEqual(scanSecrets(content).map(x => x.line), [4]);
+});
