@@ -1,0 +1,60 @@
+name: Publish preview VSIX
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/preview-release.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run package:vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-vsix
+          path: '*.vsix'
+          if-no-files-found: error
+
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: preview-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: preview-vsix
+      - name: Publish versioned preview asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(ai-privacy-router-*.vsix)
+          [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]]
+          package="${packages[0]}"
+          version="${package#ai-privacy-router-}"
+          version="${version%.vsix}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists"
+            exit 0
+          fi
+          sha256sum "$package" > SHA256SUMS
+          gh release create "$tag" "$package" SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "AI Privacy Router $version preview" --prerelease \
+            --notes "Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."
