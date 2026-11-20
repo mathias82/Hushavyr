@@ -157,6 +157,8 @@ Every finding remains **potential**. Neither model agreement nor a successful ex
 
 ## Local Java regression-proof agent (0.0.5)
 
+On the development branch, choose **JavaScript / Node.js** for projects with an existing `node:test` suite. Preload `node:24-slim` outside the verifier. Select one to six tracked `.js`, `.cjs` or `.mjs` production files. Generated tests use CommonJS and the built-in Node test runner. This profile uses Node's default test discovery and does not install dependencies or run package scripts. Use a project whose suite can run from the committed snapshot in the selected image.
+
 For Python projects, select **Python / pytest**. Use a committed project with an existing `tests/` directory and select one to six tracked production `.py` files. Set `aiPrivacyRouter.fixPythonImage` to a preloaded local image containing Python, pytest and the project dependencies. The default image name is `hushavyr-pytest:local`. The verifier uses a fixed pytest command, disables plugin autoload, and runs with networking disabled. Projects that require plugins, live services or writing to the checkout need a compatible offline test setup.
 
 The Python verifier checks that the existing suite passes, the approved generated test fails on an assertion, the same test passes after the fix, and the full suite still passes. Import, collection and runtime errors cannot establish a regression. The command writes the same patch and receipt artifacts as the Maven profile.
