@@ -18,7 +18,9 @@
     "onChatParticipant:ai-privacy-router.privacy",
     "onCommand:aiPrivacyRouter.runTests",
     "onCommand:aiPrivacyRouter.askAuto",
-    "onCommand:aiPrivacyRouter.verifyLocalFix"
+    "onCommand:aiPrivacyRouter.verifyLocalFix",
+    "onCommand:aiPrivacyRouter.startOllama",
+    "onCommand:aiPrivacyRouter.downloadOllamaModel"
   ],
   "contributes": {
     "walkthroughs": [
@@ -30,18 +32,25 @@
           {
             "id": "install-ollama",
             "title": "Install and start Ollama",
-            "description": "[Install Ollama](command:aiPrivacyRouter.installOllama) in the VS Code terminal, then start Ollama."
+            "description": "[Install Ollama](command:aiPrivacyRouter.installOllama) from the VS Code terminal."
+          },
+          {
+            "id": "start-ollama",
+            "title": "Start Ollama",
+            "description": "[Start Ollama](command:aiPrivacyRouter.startOllama). If Ollama is already running, continue to the next step."
           },
           {
             "id": "pull-model",
             "title": "Download the local model",
-            "description": "In the VS Code terminal, run `ollama pull qwen2.5-coder:7b`."
+            "description": "[Download Qwen](command:aiPrivacyRouter.downloadOllamaModel) to run code review locally."
           },
           {
             "id": "try-local",
             "title": "Ask a local question",
             "description": "[Ask Local Qwen](command:aiPrivacyRouter.askLocal) to check your setup.",
-            "completionEvents": ["onCommand:aiPrivacyRouter.askLocal"]
+            "completionEvents": [
+              "onCommand:aiPrivacyRouter.askLocal"
+            ]
           }
         ]
       }
@@ -82,6 +91,14 @@
       {
         "command": "aiPrivacyRouter.verifyLocalFix",
         "title": "Hushavyr: Propose and Verify Local Fix"
+      },
+      {
+        "command": "aiPrivacyRouter.startOllama",
+        "title": "Hushavyr: Start Ollama"
+      },
+      {
+        "command": "aiPrivacyRouter.downloadOllamaModel",
+        "title": "Hushavyr: Download Local Qwen Model"
       }
     ],
     "configuration": {
