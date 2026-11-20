@@ -1,3 +1,4 @@
+import {runSemgrep} from "./semgrep";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {execFile} from "node:child_process";
@@ -198,6 +199,26 @@ export function activate(context: vscode.ExtensionContext): void {
             }
           }
           stream.markdown("**Local configuration secrets scan:** " + secretFiles.length + " files checked; " + secretFindings + " potential credential findings.\n\n");
+        }
+        if (request.command === "security") {
+          const folders = vscode.workspace.workspaceFolders ?? [];
+          for (const folder of folders) {
+            if (token.isCancellationRequested) break;
+            const semgrep = await runSemgrep(folder.uri.fsPath);
+            if (semgrep.status === "missing") {
+              stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\\n\\n");
+            } else if (semgrep.status === "failed") {
+              stream.markdown("**Semgrep incomplete:** Local scan failed; no Semgrep findings reported. Existing security checks continue.\\n\\n");
+            } else {
+              for (const issue of semgrep.findings) {
+                if (token.isCancellationRequested) break;
+                stream.markdown("**Semgrep · " + issue.severity.replace(/[^A-Za-z]/g,"") + "** · \`" +
+                  issue.path.replace(/[\\`\\r\\n]/g,"") + ":" + issue.line + "\` · " +
+                  issue.rule.replace(/[\\`\\r\\n]/g,"") + " · " + issue.message.replace(/[\\r\\n]/g," ") + "\\n\\n");
+              }
+              stream.markdown("**Offline Semgrep:** " + semgrep.findings.length + " potential findings; local bundled rules only.\\n\\n");
+            }
+          }
         }
         if (request.command === "secrets" || request.command === "security") {
           // Explicit deterministic mode: never invoke Ollama or any cloud provider.
