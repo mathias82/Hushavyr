@@ -1,0 +1,11 @@
+rules:
+  - id: hushavyr-js-insecure-tls
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: TLS verification disabled
+    pattern: 'rejectUnauthorized: false'
+  - id: hushavyr-python-shell
+    languages: [python]
+    severity: WARNING
+    message: Review shell execution with user-controlled input
+    pattern: 'subprocess.run(..., shell=True, ...)'
