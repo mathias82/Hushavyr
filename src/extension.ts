@@ -15,13 +15,18 @@ import {registerVerifiedFix} from "./fixAgent";
 import { classifyInput } from "./classifier";
 import { createAutoPrompt, formatRouted } from "./autoPrompt";
 import { LocalOllama } from "./ollama";
-import { formatReview } from "./review";
+import { formatReview, modelHint } from "./review";
 import { runLocalReview } from "./localReview";
 import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
 import { offerToolInstallation, runSetup } from "./setup";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
+
+const scanCommands = new Set(["scan", "scan-changed", "secrets", "security", "semgrep", "gitleaks", "dependencies"]);
+const deterministicCommands = new Set(["secrets", "security", "semgrep", "gitleaks", "dependencies"]);
+const isScanCommand = (command?: string): boolean => !!command && scanCommands.has(command);
+const isDeterministicCommand = (command?: string): boolean => !!command && deterministicCommands.has(command);
 
 /** Chat file links use the original workspace URI, never user-controlled markdown paths. */
 function findingLink(uri: vscode.Uri, line: number, label: string): string {
@@ -148,14 +153,14 @@ export function activate(context: vscode.ExtensionContext): void {
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
       return;
     }
-    const instruction = ((request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks" || request.command === "dependencies") && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the currently open code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
+    const instruction = (isScanCommand(request.command) && !request.prompt.trim() ? "Scan the local project for potential security vulnerabilities." : request.command === "review" && !request.prompt.trim() ? "Review the currently open code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests." : request.prompt).trim();
     if (!instruction) {
       stream.markdown("Ask a question, e.g. `@ai-privacy Find bugs in the selected code`.");
       return;
     }
     // An explicit workspace review needs no editor selection or Chat attachment.
     // Keep all code local; bound the scan and process small independent batches.
-    const workspaceReview = (request.command === "scan" || request.command === "scan-changed" || request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks" || request.command === "dependencies") || (request.command === "review" &&
+    const workspaceReview = isScanCommand(request.command) || (request.command === "review" &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
@@ -246,7 +251,7 @@ export function activate(context: vscode.ExtensionContext): void {
             }
           }
         }
-        if (request.command === "secrets" || request.command === "security" || request.command === "semgrep" || request.command === "gitleaks" || request.command === "dependencies") {
+        if (isDeterministicCommand(request.command)) {
           // Explicit deterministic mode: never invoke Ollama or any cloud provider.
           let sourceFindings = 0;
           let securityFindings = 0;
@@ -581,7 +586,7 @@ export function activate(context: vscode.ExtensionContext): void {
         // Each pass has a fresh prompt; the same model may serve both passes.
         const validated = await runLocalReview(withSignal(client), instruction, sources,
           () => token.isCancellationRequested, withSignal(verifier));
-        if (validated && !token.isCancellationRequested) stream.markdown(formatReview(validated));
+        if (validated && !token.isCancellationRequested) stream.markdown(formatReview(validated) + modelHint(model, validated));
       }
     } catch {
       if (!token.isCancellationRequested) stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");

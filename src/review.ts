@@ -97,6 +97,12 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
   }
   return {findings,rejected,proposed,rejectionReasons:[...rejectionReasons]};
 }
+/** Small models often return nothing; point users at a larger local model without implying the code is clean. */
+export function modelHint(model: string, result: ReviewResult): string {
+  const size = /(?:^|[:\-_])(\d+(?:\.\d+)?)b(?:$|[^a-z0-9])/i.exec(model);
+  if (result.findings.some(f => !f.title.startsWith("Local rule:")) || result.error || !size || Number(size[1]) >= 14) return "";
+  return "\n\n_Tip: " + model + " is a small model and often misses bugs. Run **Hushavyr: Setup** to switch to a larger local model (e.g. qwen2.5-coder:14b)._";
+}
 export function formatReview(result: ReviewResult): string {
   if (result.error) return "**Review not verified:** " + result.error + ". No findings promoted." +
     (result.retryFailed ? " The local repair attempt also failed." : "") + " Try again with a smaller selection.";
