@@ -122,3 +122,18 @@ test("local commands register even when built-in AI and Copilot are disabled", (
     assert.ok(registeredCommands.has("aiPrivacyRouter.askLocalSelection"));
   } finally {delete configuration.disableAIFeatures;}
 });
+test("/explain answers in prose about the attached file without the review schema", async () => {
+  const result = await chat({"file:///Svc.java": "class Svc { int twice(int x) { return x * 2; } }"}, ["It doubles a number."], "", false, "explain");
+  assert.equal(result.requests.length, 3);
+  assert.equal(result.requests[2].payload.format, undefined);
+  assert.match(result.requests[2].payload.prompt, /Explain what this code does/);
+  assert.match(result.requests[2].payload.prompt, /twice/);
+  assert.match(result.output, /It doubles a number/);
+  assert.doesNotMatch(result.output, /use `@ai-privacy \/explain`/);
+});
+test("/review asked to explain still answers, and points to /explain", async () => {
+  const result = await chat({"file:///Svc.java": "class Svc {}"}, ["An empty class."], "explain the code", false, "review");
+  assert.equal(result.requests.length, 3);
+  assert.match(result.output, /An empty class/);
+  assert.match(result.output, /use `@ai-privacy \/explain`/);
+});
