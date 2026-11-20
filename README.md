@@ -6,6 +6,27 @@
 - **Verify fixes locally.** Run Java/Maven, Python/pytest or native Node tests for JavaScript and TypeScript. Export a patch once the new regression test and the existing suite pass locally.
 - **Use Copilot for public questions.** In optional hybrid mode, approve the exact message before sending it from an empty VS Code window.
 
+## VS Code Chat commands
+
+Open **VS Code Chat**, type `@ai-privacy`, then choose a command. **These commands run through Hushavyr, not the ordinary Copilot/Claude chat participant.**
+
+| Command | What it does | Availability |
+| --- | --- | --- |
+| `@ai-privacy /review` | Review the active, selected, or attached local source file using Ollama | Current release |
+| `@ai-privacy /test` | Run the supported existing local project test suite | Current release |
+| `@ai-privacy /auto` | Route typed requests according to the configured privacy policy; attached context remains local | Current release |
+| `@ai-privacy /scan` | Scan up to 5,000 source files in local batches | Planned; not in the published 0.0.16 release |
+| `@ai-privacy /scan-changed` | Scan only files changed since the last completed local index | Planned; not in the published 0.0.16 release |
+
+**Example — local code review**
+
+```text
+@ai-privacy /review Find security vulnerabilities in the current Java file.
+Include severity, file paths, line numbers, and suggested mitigations.
+```
+
+**Privacy:** Hushavyr's local routing policy applies only to requests made through Hushavyr. Other VS Code assistants are not intercepted. No code is sent to the cloud by the local review or planned scan commands.
+
 ## Screenshots
 
 These **illustrative UI previews** show the Hushavyr local-first chat workflow using synthetic example text. They are not screenshots of company source code or evidence of completed vulnerability detection.
