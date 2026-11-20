@@ -1,12 +1,12 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {resolve,relative,isAbsolute,join} from "node:path";
-import {mkdtemp,readFile,rm} from "node:fs/promises";
+import {mkdtemp,readFile,rm,access} from "node:fs/promises";
 import {tmpdir} from "node:os";
 const run=promisify(execFile);
 export type Scanner="semgrep"|"gitleaks";
 export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number}
-export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[]}
+export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[];reason?:"rules-missing"|"execution-failed"|"invalid-output"}
 function safePath(root:string,p:string):string|undefined{
  const rel=relative(root,resolve(root,p));
  return rel&&!rel.startsWith("..")&&!isAbsolute(rel)?rel.replace(/\\/g,"/"):undefined;
@@ -30,6 +30,7 @@ export function parseScannerOutput(tool:Scanner,output:string,root:string):Scann
  return findings;
 }
 export async function runScanner(tool:Scanner,root:string,semgrepRules:string,signal?:AbortSignal):Promise<ScannerResult>{
+ if(tool==="semgrep"){try{await access(semgrepRules)}catch{return {tool,status:"failed",findings:[],reason:"rules-missing"}}}
  const temp=await mkdtemp(join(tmpdir(),"hushavyr-scan-"));
  const report=join(temp,"gitleaks.json");
  const args=tool==="semgrep"
@@ -41,7 +42,7 @@ export async function runScanner(tool:Scanner,root:string,semgrepRules:string,si
   catch(e){
    const err=e as NodeJS.ErrnoException&{stdout?:string;code?:string|number};
    if(err.code==="ENOENT")return {tool,status:"missing",findings:[]};
-   if(typeof err.stdout!=="string"&&err.code!=="1")return {tool,status:"failed",findings:[]};
+   if(typeof err.stdout!=="string"&&err.code!=="1")return {tool,status:"failed",findings:[],reason:"execution-failed"};
    stdout=err.stdout??"";
   }
   if(tool==="gitleaks"){try{stdout=await readFile(report,"utf8")}catch{return {tool,status:"failed",findings:[]}}}
