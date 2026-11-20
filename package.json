@@ -1,8 +1,8 @@
 {
   "name": "ai-privacy-router",
-  "displayName": "AI Privacy Router",
+  "displayName": "Hushavyr",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -23,39 +23,39 @@
     "commands": [
       {
         "command": "aiPrivacyRouter.classifySelection",
-        "title": "AI Privacy Router: Classify Selection"
+        "title": "Hushavyr: Classify Selection"
       },
       {
         "command": "aiPrivacyRouter.askLocal",
-        "title": "AI Privacy Router: Ask Local Qwen"
+        "title": "Hushavyr: Ask Local Qwen"
       },
       {
         "command": "aiPrivacyRouter.askLocalSelection",
-        "title": "AI Privacy Router: Ask Local Qwen About Selection"
+        "title": "Hushavyr: Ask Local Qwen About Selection"
       },
       {
         "command": "aiPrivacyRouter.reviewCloudOverride",
-        "title": "AI Privacy Router: Review Cloud Override (No Transfer)"
+        "title": "Hushavyr: Review Cloud Override (No Transfer)"
       },
       {
         "command": "aiPrivacyRouter.privacyPreview",
-        "title": "AI Privacy Router: Privacy Preview of Selection"
+        "title": "Hushavyr: Privacy Preview of Selection"
       },
       {
         "command": "aiPrivacyRouter.runTests",
-        "title": "AI Privacy Router: Run Existing Regression Tests"
+        "title": "Hushavyr: Run Existing Regression Tests"
       },
       {
         "command": "aiPrivacyRouter.askAuto",
-        "title": "AI Privacy Router: Route Typed Prompt (Local by Default)"
+        "title": "Hushavyr: Route Typed Prompt (Local by Default)"
       },
       {
         "command": "aiPrivacyRouter.verifyLocalFix",
-        "title": "AI Privacy Router: Propose and Verify Local Java Fix"
+        "title": "Hushavyr: Propose and Verify Local Java Fix"
       }
     ],
     "configuration": {
-      "title": "AI Privacy Router",
+      "title": "Hushavyr",
       "properties": {
         "aiPrivacyRouter.ollamaModel": {
           "type": "string",
@@ -123,7 +123,7 @@
       {
         "id": "ai-privacy-router.privacy",
         "name": "ai-privacy",
-        "fullName": "AI Privacy Router",
+        "fullName": "Hushavyr",
         "description": "Local-first assistant; optional isolated public-prompt Copilot routing",
         "isSticky": true,
         "commands": [
