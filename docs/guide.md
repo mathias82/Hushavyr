@@ -36,8 +36,8 @@ ollama serve  # only if Ollama is not already running
 In another terminal:
 
 ```bash
-npm run package:vsix -- --out hushavyr-0.0.9.vsix
-code --install-extension hushavyr-0.0.9.vsix
+npm run package:vsix -- --out hushavyr-0.0.10.vsix
+code --install-extension hushavyr-0.0.10.vsix
 ```
 
 Reload VS Code. Open a text file, select some text, open the Command Palette and run **Hushavyr: Ask Local Qwen About Selection**. Enter a short instruction and check that a Markdown answer opens. Also run **Hushavyr: Classify Selection** and **Hushavyr: Review Cloud Override (No Transfer)**.
@@ -57,8 +57,8 @@ After this updater is present, run from the repository:
 npm run update:local
 npm ci --ignore-scripts
 npm test
-npm run package:vsix -- --out hushavyr-0.0.9.vsix
-code --install-extension hushavyr-0.0.9.vsix --force
+npm run package:vsix -- --out hushavyr-0.0.10.vsix
+code --install-extension hushavyr-0.0.10.vsix --force
 ```
 
 The updater fetches `origin/main`, requires a clean tracked working tree on `main`, and only fast-forwards. Colliding untracked files, including ignored files, move into a unique private backup directory under the repository's Git directory before the update. Unrelated untracked files stay in place. The printed backup path is outside the packaged working tree. No reset, clean, forced checkout, stash, commit or push is performed.
@@ -157,7 +157,9 @@ Every finding remains **potential**. Neither model agreement nor a successful ex
 
 ## Local Java regression-proof agent (0.0.5)
 
-On the development branch, choose **JavaScript / Node.js** for projects with an existing `node:test` suite. Preload `node:24-slim` outside the verifier. Select one to six tracked `.js`, `.cjs` or `.mjs` production files. Generated tests use CommonJS and the built-in Node test runner. This profile uses Node's default test discovery and does not install dependencies or run package scripts. Use a project whose suite can run from the committed snapshot in the selected image.
+Choose **JavaScript / Node.js** for projects with an existing `node:test` suite. Preload `node:24-slim` outside the verifier. Select one to six tracked `.js`, `.cjs` or `.mjs` production files. Generated tests use CommonJS and the built-in Node test runner. This profile uses Node's default test discovery and does not install dependencies or run package scripts. Use a project whose suite can run from the committed snapshot in the selected image.
+
+Choose **TypeScript / Node.js** for projects with a tracked `tsconfig.json` and a native Node test suite. Set `aiPrivacyRouter.fixTypeScriptImage` to a preloaded Node.js 24 image with `tsc` and any required dependencies. Each stage first runs `tsc --project tsconfig.json --noEmit --incremental false`. Node then runs tests with its built-in TypeScript support. Use syntax that works with Node's type stripping, explicit import extensions, and a configuration that can type-check without writes. A compiler failure cannot serve as regression evidence.
 
 For Python projects, select **Python / pytest**. Use a committed project with an existing `tests/` directory and select one to six tracked production `.py` files. Set `aiPrivacyRouter.fixPythonImage` to a preloaded local image containing Python, pytest and the project dependencies. The default image name is `hushavyr-pytest:local`. The verifier uses a fixed pytest command, disables plugin autoload, and runs with networking disabled. Projects that require plugins, live services or writing to the checkout need a compatible offline test setup.
 
@@ -276,8 +278,8 @@ The JSON summary reports fixture-level precision, recall, unexpected findings, f
 npm ci --ignore-scripts
 npm run build
 npm test
-npm run package:vsix -- --out hushavyr-0.0.9.vsix
-code --install-extension hushavyr-0.0.9.vsix
+npm run package:vsix -- --out hushavyr-0.0.10.vsix
+code --install-extension hushavyr-0.0.10.vsix
 ```
 
 Reload VS Code, start local Ollama and repeat `/review` on the JSON-concatenating mapper. Evidence should come from actual source lines, with second-pass status. Attach its exception class too to exercise multi-file review. Run `/test` on a disposable project. Cancel a local request and verify it stops. Stop Ollama and verify there is no fallback. Try override cancellation and a synthetic PII sample: no cloud transfer should occur.
