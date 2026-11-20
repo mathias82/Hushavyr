@@ -6,6 +6,14 @@
 - **Verify fixes locally.** Run Java/Maven, Python/pytest or native Node tests for JavaScript and TypeScript. Export a patch once the new regression test and the existing suite pass locally.
 - **Use Copilot for public questions.** In optional hybrid mode, approve the exact message before sending it from an empty VS Code window.
 
+## Screenshots
+
+These **illustrative UI previews** show the Hushavyr local-first chat workflow using synthetic example text. They are not screenshots of company source code or evidence of completed vulnerability detection.
+
+| Local review | Privacy-aware routing |
+| --- | --- |
+| ![Hushavyr local Qwen review UI illustration](docs/images/hushavyr-local-review.svg) | ![Hushavyr local routing UI illustration](docs/images/hushavyr-privacy-routing.svg) |
+
 ## Quick start — install Ollama and Qwen from VS Code
 
 1. Open **Extensions** (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Windows/Linux). Search for **Hushavyr - Private AI Code Review** by **Matthaios Stavrou**, or use the [official Marketplace listing](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr). Click **Install**. Extension ID: `mathias82.hushavyr`.
