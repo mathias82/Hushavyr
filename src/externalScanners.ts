@@ -41,7 +41,7 @@ export async function runScanner(tool:Scanner,root:string,semgrepRules:string,si
   catch(e){
    const err=e as NodeJS.ErrnoException&{stdout?:string;code?:string|number};
    if(err.code==="ENOENT")return {tool,status:"missing",findings:[]};
-   if(typeof err.stdout!=="string"&&err.code!==1)return {tool,status:"failed",findings:[]};
+   if(typeof err.stdout!=="string"&&err.code!=="1")return {tool,status:"failed",findings:[]};
    stdout=err.stdout??"";
   }
   if(tool==="gitleaks"){try{stdout=await readFile(report,"utf8")}catch{return {tool,status:"failed",findings:[]}}}
