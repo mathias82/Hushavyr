@@ -56,5 +56,5 @@ jobs:
           sha256sum "$package" > SHA256SUMS
           gh release create "$tag" "$package" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "AI Privacy Router $version preview" --prerelease \
+            --title "Hushavyr $version preview" --prerelease \
             --notes "Install the VSIX using VS Code's Extensions: Install from VSIX command. Local-only is the default. Live VS Code, Ollama, and Copilot privacy checks are pending. Try this preview with synthetic data."
