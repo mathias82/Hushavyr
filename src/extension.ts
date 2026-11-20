@@ -13,12 +13,16 @@ import { runLocalReview } from "./localReview";
 import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
 import { ReviewSource, sourcePrompt, validateContext } from "./context";
+import { publishFindings } from "./diagnostics";
 import { runSetup, lowMemoryWarning } from "./setup";
 import { runWorkspaceScan, isScanCommand } from "./workspaceScan";
 import { runRegressionTests, testProfiles, TestProfile, formatTestReceipt } from "./regression";
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
+  const reviewDiagnostics = vscode.languages.createDiagnosticCollection("hushavyr");
+  context.subscriptions.push(reviewDiagnostics,
+    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => reviewDiagnostics.clear()));
   // One-time, non-blocking invitation; the user can dismiss it permanently.
   if (!context.globalState.get<boolean>("hushavyr.setupOffered")) {
     void context.globalState.update("hushavyr.setupOffered", true);
@@ -327,7 +331,10 @@ export function activate(context: vscode.ExtensionContext): void {
         // Each pass has a fresh prompt; the same model may serve both passes.
         const validated = await runLocalReview(withSignal(client), instruction, sources,
           () => token.isCancellationRequested, withSignal(verifier));
-        if (validated && !token.isCancellationRequested) stream.markdown(formatReview(validated) + modelHint(model, validated));
+        if (validated && !token.isCancellationRequested) {
+          stream.markdown(formatReview(validated) + modelHint(model, validated));
+          if (!validated.error) publishFindings(reviewDiagnostics, validated.findings);
+        }
       }
     } catch {
       if (!token.isCancellationRequested) stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");
