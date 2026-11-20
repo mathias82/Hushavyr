@@ -144,18 +144,35 @@ export function activate(context: vscode.ExtensionContext): void {
     const attachments: ReviewSource[] = [];
     for (const ref of request.references) {
       const value = ref.value;
-      const uri = value instanceof vscode.Uri ? value : value instanceof vscode.Location ? value.uri : undefined;
-      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled")) {
-        stream.markdown("An attached context item cannot be inspected. Remove it or attach readable local files. Nothing was sent.");
+      // VS Code Chat can supply a Location, URI, or a revived { uri, range }
+      // file reference. Do not assume all context values are class instances.
+      const candidate = value && typeof value === "object" && "uri" in value
+        ? (value as {uri: unknown}).uri : value;
+      const uri = candidate instanceof vscode.Uri ? candidate
+        : candidate && typeof candidate === "object" && "scheme" in candidate
+          && "path" in candidate && typeof (candidate as {scheme: unknown}).scheme === "string"
+          && typeof (candidate as {path: unknown}).path === "string"
+          ? vscode.Uri.from(candidate as vscode.UriComponents) : undefined;
+      const rangeValue = value && typeof value === "object" && "range" in value
+        ? (value as {range: unknown}).range : undefined;
+      const range = rangeValue instanceof vscode.Range ? rangeValue
+        : rangeValue && typeof rangeValue === "object" && "start" in rangeValue && "end" in rangeValue
+          ? new vscode.Range(
+              new vscode.Position((rangeValue as vscode.Range).start.line, (rangeValue as vscode.Range).start.character),
+              new vscode.Position((rangeValue as vscode.Range).end.line, (rangeValue as vscode.Range).end.character))
+          : undefined;
+      if (!uri || (uri.scheme !== "file" && uri.scheme !== "untitled") ||
+          (uri.scheme === "file" && !vscode.workspace.isTrusted)) {
+        stream.markdown("An attached context item cannot be inspected as a trusted local file. Nothing was sent.");
         return;
       }
       try {
         const doc = await vscode.workspace.openTextDocument(uri);
-        const content = value instanceof vscode.Location ? doc.getText(value.range) : doc.getText();
+        const content = range ? doc.getText(range) : doc.getText();
         if (content.trim()) {
           const path = uri.toString();
           if (!attachments.some(s => s.path === path)) attachments.push({path, text: content,
-            startLine: value instanceof vscode.Location ? value.range.start.line + 1 : 1});
+            startLine: range ? range.start.line + 1 : 1});
         }
       } catch {
         stream.markdown("Unable to read an attached file. Nothing was sent.");
