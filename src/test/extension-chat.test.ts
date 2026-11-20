@@ -137,3 +137,10 @@ test("/review asked to explain still answers, and points to /explain", async () 
   assert.match(result.output, /An empty class/);
   assert.match(result.output, /use `@ai-privacy \/explain`/);
 });
+test("instruction files attached by Chat are ignored; the code file is what gets explained", async () => {
+  const result = await chat({"file:///repo/.github/copilot-instructions.md": "Use the .ai-context directory as a knowledge base.", "file:///repo/Processor.java": "class Processor { void load() {} }"},
+    ["Processor loads a resource."], "this class", false, "explain");
+  const prompt = result.requests[2].payload.prompt as string;
+  assert.match(prompt, /class Processor/);
+  assert.doesNotMatch(prompt, /knowledge base/);
+});

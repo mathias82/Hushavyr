@@ -23,7 +23,7 @@ import { uiLanguage } from "./trivyCommands";
 import { ReviewResult } from "./review";
 import { reviewOverride } from "./overrideFlow";
 import { writeRetainedAuditEvent } from "./audit";
-import { ReviewSource, sourcePrompt, validateContext } from "./context";
+import { isInstructionReference, ReviewSource, sourcePrompt, validateContext } from "./context";
 import { publishFindings } from "./diagnostics";
 import { addDismissal, fingerprint, loadDismissals, loadTeamRules, withoutDismissed, withTeamRules } from "./teamMemory";
 import { runSetup, lowMemoryWarning } from "./setup";
@@ -294,6 +294,7 @@ export function activate(context: vscode.ExtensionContext): void {
         stream.markdown("An attached context item cannot be inspected. Open a trusted local code file and retry. Nothing was sent.");
         return;
       }
+      if (isInstructionReference(ref.id, uri.toString())) continue;
       if (uri.scheme === "file" && (!vscode.workspace.isTrusted || vscode.env?.remoteName)) {
         stream.markdown("Open a trusted local VS Code window to review files. Nothing was sent.");
         return;
