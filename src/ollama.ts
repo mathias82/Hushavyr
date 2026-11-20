@@ -47,6 +47,35 @@ export class LocalOllama {
       throw new Error("Configured model is not installed locally. Run npm run ai:serve or install it with Ollama. No cloud fallback.");
     }
   }
+  /** Downloads the configured model from the local Ollama server when it is not installed yet. */
+  async ensureInstalled(signal?: AbortSignal, onPull?: () => void): Promise<void> {
+    try {
+      await this.ensureAvailable(signal);
+      return;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("Configured model is not installed")) throw error;
+    }
+    onPull?.();
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    if (signal?.aborted) abort();
+    signal?.addEventListener("abort", abort, {once: true});
+    const timeout = setTimeout(abort, 60 * 60 * 1000);
+    try {
+      const response = await this.transport(this.base + "/api/pull", {
+        method: "POST", headers: {"Content-Type": "application/json"}, redirect: "error", signal: controller.signal,
+        body: JSON.stringify({model: this.config.model, stream: false})
+      });
+      const data: unknown = response.ok ? await response.json() : undefined;
+      if (!data || typeof data !== "object" || !("status" in data) || data.status !== "success") throw new Error("pull failed");
+    } catch {
+      throw new Error("Could not download the local model. No cloud fallback.");
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+    }
+    await this.ensureAvailable(signal);
+  }
   async assertLocalModel(signal?: AbortSignal): Promise<void> {
     // Model aliases can reference remote inference despite a loopback server URL.
     const metadata = await this.request("/api/show", {
