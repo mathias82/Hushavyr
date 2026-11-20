@@ -18,3 +18,12 @@ test("does not flag GitHub Actions secret references or env placeholders", () =>
  const content = 'password: ${{ secrets.DATABASE_PASSWORD }}\nclient_secret: "${{ vars.CLIENT_SECRET }}"\napi_key: "${API_KEY}"\npassword: literal-example-value';
  assert.deepEqual(scanSecrets(content).map(x => x.line), [4]);
 });
+import { scanSecurity } from "../securityRules";
+test("finds hardcoded credentials in code declarations and SQL built by concatenation", () => {
+  assert.equal(scanSecrets('const password = "hunter2hunter2";').length, 1);
+  assert.equal(scanSecrets('private static final String API_KEY = "abcd1234";').length, 1);
+  assert.equal(scanSecrets('const password = process.env.PASSWORD;').length, 0);
+  assert.equal(scanSecrets('const password = "changeme";').length, 0);
+  assert.equal(scanSecurity("db.js", 'conn.query("SELECT * FROM u WHERE n = \'" + req.query.name + "\'", cb);').length, 1);
+  assert.equal(scanSecurity("db.js", 'conn.query("SELECT * FROM u WHERE n = ?", [name], cb);').length, 0);
+});

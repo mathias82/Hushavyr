@@ -26,3 +26,10 @@ test("review prompt covers language-specific correctness",()=>{
  for(const file of files)assert.ok(prompt.includes(file.path));
  assert.match(prompt,/A clean review is allowed/);
 });
+import { asksForExplanation } from "../review";
+test("explanation requests are not treated as bug reviews", () => {
+  assert.equal(asksForExplanation("explain me the code"), true);
+  assert.equal(asksForExplanation("τι κάνει αυτός ο κώδικας;"), true);
+  assert.equal(asksForExplanation("explain and find bugs"), false);
+  assert.equal(asksForExplanation("can you check code?"), false);
+});

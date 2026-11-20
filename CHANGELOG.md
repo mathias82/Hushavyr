@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.28
+- `/review explain the code` (or "what does this do", Greek "τι κάνει") now answers in prose instead of running the bug-finding review.
+- Chat banner shows the real local model and explains the sensitivity label.
+- Offline rules: hardcoded credentials in code declarations (`const password = "..."`, `private static final String API_KEY = "..."`) and SQL built by string concatenation in JS/TS/Python (`query("SELECT ... " + x)`).
+
 ## 0.0.27
 - `/review-changes`: reviews your uncommitted git changes locally (up to 4 files, 20 KB budget), with inline markers.
 - Quick fix "Hushavyr: propose a local fix" on `/review` markers: the local model rewrites the few marked lines, you see a diff and approve before anything changes.

@@ -127,3 +127,9 @@ export function formatReview(result: ReviewResult): string {
   return lines.join("\n");
 }
 
+
+/** /review is a bug finder; questions about what the code does should get a plain answer instead. */
+export function asksForExplanation(text: string): boolean {
+  return /\b(explain|describe|summari[sz]e|walk me through|what (?:does|is)|how (?:does|do|is)|why (?:does|is)|tell me about)\b|\u03b5\u03be\u03ae\u03b3\u03b7\u03c3|\u03c4\u03b9 \u03ba\u03ac\u03bd\u03b5\u03b9|\u03c0\u03ce\u03c2 \u03b4\u03bf\u03c5\u03bb\u03b5\u03cd\u03b5\u03b9|\b(?:eksigis|exigis|ti kanei|pos douleuei|pws douleuei)/iu.test(text) &&
+    !/\b(bugs?|vulnerabilit\w*|find (?:issues|problems)|security)\b/i.test(text);
+}
