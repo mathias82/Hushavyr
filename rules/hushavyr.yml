@@ -2,10 +2,33 @@ rules:
   - id: hushavyr-js-insecure-tls
     languages: [javascript, typescript]
     severity: ERROR
-    message: TLS verification disabled
+    message: TLS certificate verification is disabled
     pattern: 'rejectUnauthorized: false'
   - id: hushavyr-python-shell
     languages: [python]
     severity: WARNING
-    message: Review shell execution with user-controlled input
+    message: Shell execution requires validation of user-controlled input
     pattern: 'subprocess.run(..., shell=True, ...)'
+  - id: hushavyr-java-sql-concatenation
+    languages: [java]
+    severity: ERROR
+    message: SQL query concatenation may permit SQL injection; use PreparedStatement parameters
+    patterns:
+      - pattern-either:
+          - pattern: '$STMT.executeQuery($QUERY + $VALUE)'
+          - pattern: '$STMT.executeUpdate($QUERY + $VALUE)'
+  - id: hushavyr-java-insecure-trust-manager
+    languages: [java]
+    severity: ERROR
+    message: Insecure Netty trust manager disables certificate verification
+    pattern: 'InsecureTrustManagerFactory.INSTANCE'
+  - id: hushavyr-python-tls-disabled
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate verification disabled
+    pattern: 'requests.$METHOD(..., verify=False, ...)'
+  - id: hushavyr-js-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Dynamic eval may execute untrusted input
+    pattern: 'eval($INPUT)'
