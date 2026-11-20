@@ -113,8 +113,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }));
 
-  // Standalone local commands remain available when built-in Chat/Copilot is disabled.
-  if (!vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false)) {
+  // Always register our declared Chat Participant when the VS Code Chat API exists.
+  // A user Chat setting must not silently leave the declared participant unregistered.
   const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, _context, stream, token) => {
     if (request.command === "auto" && request.references.length === 0) {
       try {
@@ -448,7 +448,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   });
   context.subscriptions.push(participant);
-  }
 
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.classifySelection", async () => {
     const editor = vscode.window.activeTextEditor;
