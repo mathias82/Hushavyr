@@ -227,7 +227,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         const tool = request.command;
         const rules = join(context.extensionPath, "rules", "hushavyr-review.yml");
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
-          const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal);
+          const history = /\bhistory\b/i.test(request.prompt);
+          const result = await runScanner(tool, folder.uri.fsPath, rules, controller.signal, history, history);
           if (result.status !== "ok") {
             if (result.status === "missing") await offerToolInstallation(tool);
             stream.markdown("**" + tool + ": " + result.status + "**. Install the local scanner or inspect its setup. No cloud fallback.\n\n");
@@ -237,9 +238,11 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             // Never display scanner snippets, credential values or arbitrary messages.
             stream.markdown("**" + finding.tool + " · " + finding.severity + "** · rule \`" +
               finding.rule.replace(/[\`\r\n]/g, "") + "\` · \`" +
-              finding.path.replace(/[\`\r\n]/g, "") + ":" + finding.line + "\` (value redacted)\n\n");
+              finding.path.replace(/[\`\r\n]/g, "") + ":" + finding.line + "\`" + (finding.commit ? " · commit \`" + finding.commit + "\`" : "") + " (value redacted)\n\n");
           }
-          stream.markdown("**" + tool + ":** " + result.findings.length + " local findings; no source snippets displayed.\n\n");
+          stream.markdown("**" + tool + ":** " + result.findings.length + " local findings" + (history
+            ? " in the git history (every commit, including deleted files). A secret removed in a later commit is still exposed: rotate it if it is real"
+            : " in the current files. Run `/gitleaks history` to also check every past commit") + "; no source snippets displayed.\n\n");
         }
         return;
       }

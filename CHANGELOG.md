@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+- **Git history secret scan:** `@ai-privacy /gitleaks history` or *Hushavyr: Find Secrets in Git History* scans every commit with Gitleaks, locally. Each finding shows its commit, so secrets that were deleted but are still in history get found. Rotated secrets can be silenced with `.gitleaksignore`.
+- **Redacted always:** Gitleaks runs with `--redact`, so secret values never reach reports or the model.
+
 ## 1.0.3
 - **Without Chat:** every scan and review is also a Command Palette command (and in the editor right-click menu); reports open as Markdown previews and findings go to the Problems panel. Works in Cursor, VSCodium and Windsurf.
 - **Explain a finding (local AI):** after `/security`, `/secrets` or the palette scans, pick a finding (or use the 💡 quick fix) and the local model explains it in the context of that code and suggests a fix. The scanner result stays unchanged.

@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import {findingsFromReport, previewLinks} from "./reportFindings";
 import {EXPLAIN_FINDING} from "./explainFinding";
 
-export const PALETTE_COMMANDS: readonly {id: string; command: string; title: string}[] = [
+export const PALETTE_COMMANDS: readonly {id: string; command: string; title: string; prompt?: string}[] = [
   {id: "aiPrivacyRouter.reviewFile", command: "review", title: "Review"},
   {id: "aiPrivacyRouter.explainFile", command: "explain", title: "Explanation"},
   {id: "aiPrivacyRouter.reviewChanges", command: "review-changes", title: "Review of uncommitted changes"},
@@ -12,7 +12,8 @@ export const PALETTE_COMMANDS: readonly {id: string; command: string; title: str
   {id: "aiPrivacyRouter.scanChanged", command: "scan-changed", title: "Scan of changed files"},
   {id: "aiPrivacyRouter.securityScan", command: "security", title: "Security scan"},
   {id: "aiPrivacyRouter.findSecrets", command: "secrets", title: "Secrets scan"},
-  {id: "aiPrivacyRouter.checkDependencies", command: "dependencies", title: "Dependency audit"}
+  {id: "aiPrivacyRouter.checkDependencies", command: "dependencies", title: "Dependency audit"},
+  {id: "aiPrivacyRouter.secretsHistory", command: "gitleaks", title: "Secrets in git history", prompt: "history"}
 ];
 
 // /review and /review-changes already publish their own markers; the rest are read back from the report links.
@@ -26,14 +27,14 @@ export function registerPaletteCommands(context: vscode.ExtensionContext, handle
   const scanDiagnostics = scanCollection = vscode.languages.createDiagnosticCollection("hushavyr-scan");
   context.subscriptions.push(scanDiagnostics);
   for (const entry of PALETTE_COMMANDS)
-    context.subscriptions.push(vscode.commands.registerCommand(entry.id, () => run(context, handler, scanDiagnostics, entry.command, entry.title)));
+    context.subscriptions.push(vscode.commands.registerCommand(entry.id, () => run(context, handler, scanDiagnostics, entry.command, entry.title, entry.prompt)));
 }
 
 async function run(context: vscode.ExtensionContext, handler: vscode.ChatRequestHandler, scanDiagnostics: vscode.DiagnosticCollection,
-  command: string, title: string): Promise<void> {
+  command: string, title: string, prompt = ""): Promise<void> {
   const folder = vscode.Uri.joinPath(context.globalStorageUri, "reports");
   await vscode.workspace.fs.createDirectory(folder);
-  const report = vscode.Uri.joinPath(folder, command + ".md");
+  const report = vscode.Uri.joinPath(folder, command + (prompt ? "-" + prompt : "") + ".md");
   let text = "# Hushavyr · " + title + "\n\n";
   const write = () => vscode.workspace.fs.writeFile(report, Buffer.from(previewLinks(text, folder.fsPath), "utf8"));
   await write();
@@ -48,7 +49,7 @@ async function run(context: vscode.ExtensionContext, handler: vscode.ChatRequest
       progress: (message: string) => progress.report({message}),
       button: () => undefined, anchor: () => undefined, reference: () => undefined, filetree: () => undefined, push: () => undefined
     } as unknown as vscode.ChatResponseStream;
-    const request = {command, prompt: "", references: [], toolReferences: []} as unknown as vscode.ChatRequest;
+    const request = {command, prompt, references: [], toolReferences: []} as unknown as vscode.ChatRequest;
     await handler(request, {history: []} as unknown as vscode.ChatContext, stream, cancel);
   });
   await write();

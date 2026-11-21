@@ -32,3 +32,8 @@ test("bundled Hushavyr Semgrep rules get a short id and their own advice",()=>{
  const output=JSON.stringify({results:[{check_id:"Users.me..vscode.extensions.mathias82.hushavyr-0.0.30.rules.hushavyr.js-dom-xss",path:"a.js",start:{line:3},extra:{severity:"WARNING",message:"XSS via innerHTML",metadata:{fix:"Use textContent."}}}]});
  assert.deepEqual(parseScannerOutput("semgrep",output,"/repo"),[{tool:"semgrep",rule:"js-dom-xss",severity:"WARNING",path:"a.js",line:3,message:"XSS via innerHTML",fix:"Use textContent."}]);
 });
+test("Gitleaks history findings keep only a short commit id",()=>{
+ const output=JSON.stringify([{File:"src/a.ts",StartLine:3,RuleID:"aws-key",Commit:"0123456789abcdef0123456789abcdef01234567",Secret:"REDACTED"},{File:"src/b.ts",StartLine:1,RuleID:"x",Commit:"not a sha"}]);
+ const [a,b]=parseScannerOutput("gitleaks",output,"/repo");
+ assert.equal(a.commit,"0123456");assert.equal(b.commit,undefined);assert.equal(JSON.stringify([a,b]).includes("REDACTED"),false);
+});

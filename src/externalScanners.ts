@@ -3,7 +3,7 @@ import {mkdtemp,readFile,rm,access} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {exec as run} from "./exec";
 export type Scanner="semgrep"|"gitleaks";
-export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number;message?:string;fix?:string}
+export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number;message?:string;fix?:string;commit?:string}
 export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[];reason?:"rules-missing"|"execution-failed"|"invalid-output"}
 function safePath(root:string,p:string):string|undefined{
  const rel=relative(root,resolve(root,p));
@@ -29,18 +29,19 @@ export function parseScannerOutput(tool:Scanner,output:string,root:string,max=50
   const text=(v:unknown):string|undefined=>own&&typeof v==="string"?v.replace(/[\r\n`\[\]<>]/g," ").slice(0,200):undefined;
   const finding:ScannerFinding={tool,rule:(own?rule.split(".").pop()!:rule).slice(0,120),severity:typeof severity==="string"?severity.slice(0,24):"UNKNOWN",path,line:line as number};
   if(own){const message=text(extra.message),fix=text(meta.fix);if(message)finding.message=message;if(fix)finding.fix=fix;}
+  if(tool==="gitleaks"&&typeof item.Commit==="string"&&/^[0-9a-f]{7,40}$/i.test(item.Commit))finding.commit=item.Commit.slice(0,7);
   findings.push(finding);
  }
  return findings;
 }
-/** `large` is for whole-repo CLI runs: longer timeout, bigger output, more findings. */
-export async function runScanner(tool:Scanner,root:string,semgrepRules:string,signal?:AbortSignal,large=false):Promise<ScannerResult>{
+/** `large` is for whole-repo CLI runs: longer timeout, bigger output, more findings. `history`: Gitleaks scans every git commit, not just the files. */
+export async function runScanner(tool:Scanner,root:string,semgrepRules:string,signal?:AbortSignal,large=false,history=false):Promise<ScannerResult>{
  if(tool==="semgrep"){try{await access(semgrepRules)}catch{return {tool,status:"failed",findings:[],reason:"rules-missing"}}}
  const temp=await mkdtemp(join(tmpdir(),"hushavyr-scan-"));
  const report=join(temp,"gitleaks.json");
  const args=tool==="semgrep"
   ?["scan","--config",semgrepRules,"--json","--metrics=off","--disable-version-check","."]
-  :["detect","--source",".","--report-format","json","--report-path",report,"--no-banner","--no-git"];
+  :["detect","--source",".","--report-format","json","--report-path",report,"--no-banner","--redact",...(history?[]:["--no-git"])];
  try{
   let stdout="";
   try{({stdout}=await run(tool,args,{cwd:root,timeout:large?600000:120000,maxBuffer:(large?64:8)*1024*1024,windowsHide:true,signal,env:{...process.env,SEMGREP_SEND_METRICS:"off",SEMGREP_ENABLE_VERSION_CHECK:"0"}}));}
