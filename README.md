@@ -16,7 +16,7 @@ Hushavyr is a **free, local AI code reviewer** and **security scanner** for VS C
 
 ## Why Hushavyr?
 
-**Hushavyr** is a coined name built around **“hush”** — the idea of keeping something quiet, confidential, and protected. **“-avyr”** is a distinctive invented ending, not a word with an established dictionary meaning.
+**Hushavyr** is a coined name built around **“hush”** the idea of keeping something quiet, confidential, and protected. **“-avyr”** is a distinctive invented ending, not a word with an established dictionary meaning.
 
 The name expresses the project's privacy-first philosophy: review and improve code locally, keep sensitive information under your control, and require explicit approval before sharing anything externally.
 
