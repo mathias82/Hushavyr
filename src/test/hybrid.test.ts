@@ -332,3 +332,30 @@ test("escalation also pseudonymizes code names used in the question", async () =
   assert.equal(result.outcome, "sent");
   assert.ok(!sent[0].includes("chargeCustomer"), sent[0]);
 });
+
+test("verified fix receipt: only a complete red/green/suite proof with a matching patch becomes a draft PR", async () => {
+  const { checkReceipt, addedLines, prBody } = await import("../pullRequest");
+  const { sha256 } = await import("../fixProof");
+  const patch = Buffer.from("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n");
+  const stages = [{stage: "baseline", exitCode: 0}, {stage: "red", exitCode: 1}, {stage: "green", exitCode: 0, passed: 3}, {stage: "suite", exitCode: 0, passed: 40}];
+  const receipt = (over: object) => JSON.stringify({status: "verified", baseCommit: "a".repeat(40), patchHash: sha256(patch), stages, ...over});
+  const ok = checkReceipt(receipt({}), patch);
+  assert.ok(typeof ok !== "string");
+  assert.match(prBody(ok as never), /suite: exit 0, 40 passed/);
+  assert.match(String(checkReceipt(receipt({status: "not-verified"}), patch)), /not verified/);
+  assert.match(String(checkReceipt(receipt({}), Buffer.from("tampered"))), /hash/);
+  assert.match(String(checkReceipt(receipt({stages: stages.map(s => s.stage === "suite" ? {...s, exitCode: 1} : s)}), patch)), /suite run did not pass/);
+  assert.match(String(checkReceipt(receipt({stages: stages.map(s => s.stage === "red" ? {...s, exitCode: 0} : s)}), patch)), /did not fail/);
+  assert.match(String(checkReceipt(receipt({cleanupRequiresAttention: true}), patch)), /cleanup/);
+  assert.equal(addedLines(patch.toString()), "new");
+});
+
+test("/improve asks for real improvements and keeps a safe change summary", async () => {
+  const { improveInstruction, parseSummary, isEditRequest } = await import("../codeEdit");
+  assert.match(improveInstruction(), /real bugs/);
+  assert.match(improveInstruction("performance"), /Focus on: performance$/);
+  assert.deepEqual(parseSummary(JSON.stringify({content: "x", summary: ["Close the stream in finally", " ", "Use `textContent` <b>"]})), ["Close the stream in finally", "Use textContent b"]);
+  assert.deepEqual(parseSummary("not json"), []);
+  assert.ok(isEditRequest("βελτίωσέ το"));
+  assert.ok(isEditRequest("improve error handling"));
+});

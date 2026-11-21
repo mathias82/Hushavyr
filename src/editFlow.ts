@@ -2,15 +2,15 @@ import * as vscode from "vscode";
 import {randomUUID} from "node:crypto";
 import {configuredModel} from "./model";
 import {LocalOllama} from "./ollama";
-import {codeBlock, editPrompt, editSchema, parseEdit, shortDiff} from "./codeEdit";
+import {codeBlock, editPrompt, editSchema, parseEdit, parseSummary, shortDiff} from "./codeEdit";
 import {escalate, MAX_ESCALATION_CHARS} from "./escalation";
 import {confirmPublicPayload, pickCopilotModel} from "./autoPrompt";
 import {writeRetainedAuditEvent} from "./audit";
 import {loadIgnore} from "./teamMemory";
 
 export const MAX_EDIT_CHARS = 12_000;
-export interface EditTarget {uri: vscode.Uri; languageId: string; path: string; original: string; range?: vscode.Range; instruction: string; previousAnswer: string}
-interface Pending extends EditTarget {updated?: string; model: string}
+export interface EditTarget {uri: vscode.Uri; languageId: string; path: string; original: string; range?: vscode.Range; instruction: string; previousAnswer: string; title?: string}
+interface Pending extends EditTarget {updated?: string; model: string; summary: string[]}
 const pending = new Map<string, Pending>();
 
 function localClient(model?: string): LocalOllama {
@@ -19,12 +19,13 @@ function localClient(model?: string): LocalOllama {
     timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000});
 }
 
-async function generateLocal(target: EditTarget, model: string, signal: AbortSignal): Promise<string | undefined> {
+async function generateLocal(target: EditTarget, model: string, signal: AbortSignal): Promise<{updated?: string; summary: string[]}> {
   const client = localClient(model);
   await client.ensureInstalled(signal);
   const raw = await client.generate(editPrompt(target.path, target.languageId, target.original, target.instruction, target.previousAnswer),
     {schema: editSchema, signal, maxTokens: 12288});
-  return parseEdit(raw, target.original);
+  const updated = parseEdit(raw, target.original);
+  return {updated, summary: updated ? parseSummary(raw) : []};
 }
 
 async function showDiff(item: Pending, title: string): Promise<void> {
@@ -47,7 +48,10 @@ async function apply(id: string): Promise<void> {
   edit.replace(item.uri, range, item.updated);
   if (await vscode.workspace.applyEdit(edit)) {
     pending.delete(id);
-    void vscode.window.showInformationMessage("Hushavyr: change applied (not saved). Use @ai-privacy /pr to open a pull request.");
+    const title = item.title ?? item.instruction.split("\n")[0].slice(0, 72);
+    const body = item.summary.length ? "Changes in `" + item.path + "` (" + item.model + "):\n" + item.summary.map(s => "- " + s).join("\n") : "";
+    const choice = await vscode.window.showInformationMessage("Hushavyr: change applied (not saved yet). Review or test it, then open a pull request.", "Open pull request");
+    if (choice === "Open pull request") await vscode.commands.executeCommand("aiPrivacyRouter.openPullRequest", title, body);
   }
 }
 
@@ -71,8 +75,8 @@ async function retryWithModel(id: string): Promise<void> {
       token.onCancellationRequested(() => controller.abort());
       try { return await generateLocal(item, model, controller.signal); } catch { return undefined; }
     });
-  if (!updated) { void vscode.window.showWarningMessage("Hushavyr: " + model + " did not produce a usable change."); return; }
-  item.updated = updated; item.model = model;
+  if (!updated?.updated) { void vscode.window.showWarningMessage("Hushavyr: " + model + " did not produce a usable change."); return; }
+  item.updated = updated.updated; item.summary = updated.summary; item.model = model;
   await showDiff(item, "Hushavyr (" + model + "): " + item.instruction.slice(0, 50));
   await offer(id, model + " proposed a change.");
 }
@@ -101,7 +105,7 @@ async function escalateEdit(id: string, context: vscode.ExtensionContext): Promi
     const block = codeBlock(result.text ?? "");
     const updated = block === undefined ? undefined : parseEdit(JSON.stringify({content: block}), item.original);
     if (!updated) { void vscode.window.showWarningMessage("Hushavyr: the cloud answer contained no usable code. Nothing changed."); return; }
-    item.updated = updated; item.model = "cloud";
+    item.updated = updated; item.summary = []; item.model = "cloud";
     await showDiff(item, "Hushavyr (escalated, names restored locally): " + item.instruction.slice(0, 40));
     await offer(id, "The escalated model proposed a change (verify it locally).");
   } finally { source.dispose(); }
@@ -124,18 +128,20 @@ export async function runEdit(target: EditTarget, stream: vscode.ChatResponseStr
   const controller = new AbortController();
   const sub = token.onCancellationRequested(() => controller.abort());
   stream.progress("Editing `" + target.path + "` locally with " + model + "…");
-  let updated: string | undefined;
-  try { updated = await generateLocal(target, model, controller.signal); }
+  let updated: string | undefined, summary: string[] = [];
+  try { ({updated, summary} = await generateLocal(target, model, controller.signal)); }
   catch { if (!token.isCancellationRequested) stream.markdown("Local model unavailable. Check Ollama. No cloud fallback."); return; }
   finally { sub.dispose(); }
   if (token.isCancellationRequested) return;
   const id = randomUUID();
-  pending.set(id, {...target, updated, model});
+  pending.set(id, {...target, updated, model, summary});
   if (pending.size > 20) pending.delete(pending.keys().next().value as string);
   if (!updated) {
-    stream.markdown("**" + model + "** did not produce a usable change for `" + target.path + "`. Try another model:\n\n");
+    stream.markdown(target.title ? "**" + model + "** found nothing worth changing in `" + target.path + "` (or its answer was unusable). You can try another model:\n\n"
+      : "**" + model + "** did not produce a usable change for `" + target.path + "`. Try another model:\n\n");
   } else {
-    stream.markdown("**Proposed change** to `" + target.path + "` (" + model + ", local). Nothing is changed until you apply it.\n\n```diff\n" +
+    stream.markdown("**Proposed change** to `" + target.path + "` (" + model + ", local). Nothing is changed until you apply it.\n\n" +
+      (summary.length ? summary.map(s => "- " + s).join("\n") + "\n\n" : "") + "```diff\n" +
       shortDiff(target.original, updated).replace(/```/g, "ˋˋˋ") + "\n```\n");
     stream.button({command: "aiPrivacyRouter.applyEdit", title: "Apply change", arguments: [id]});
     void showDiff(pending.get(id) as Pending, "Hushavyr: " + target.instruction.slice(0, 60));
