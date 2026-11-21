@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -251,6 +251,11 @@
           "type": "boolean",
           "default": true,
           "description": "Add definitions of called functions and callers from other workspace files to /review so the model can follow data across files."
+        },
+        "aiPrivacyRouter.cloudEscalation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow /escalate to send a selected, pseudonymized function to a Copilot model after you preview and approve the exact payload. Off by default; secrets, PII, sensitive and ignored files are always blocked."
         }
       }
     },
@@ -305,6 +310,10 @@
           {
             "name": "dependencies",
             "description": "Offline dependency vulnerability audit using local Trivy database"
+          },
+          {
+            "name": "escalate",
+            "description": "Opt-in: send only the selected function, pseudonymized and approved by you, to a Copilot model"
           }
         ]
       }

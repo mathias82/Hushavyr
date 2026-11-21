@@ -6,6 +6,7 @@ import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {auditDependencies, findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
 import {SarifResult, sarifLevel, toSarif} from "./sarif";
+import {loadIgnore} from "./teamMemory";
 import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
 import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
 
@@ -38,6 +39,7 @@ function semgrep(root: string, rules: string): Promise<SarifResult[]> {
 /** Offline scan of a folder: bundled rules, semgrep (if installed), credentials, Trivy dependencies (if installed). */
 export async function scanFolder(root: string, rules: string, log: (line: string) => void = () => undefined): Promise<SarifResult[]> {
   const results: SarifResult[] = [];
+  const ignored = await loadIgnore(root);
   const taintFiles: TaintFile[] = [];
   const depFiles: {path: string; text: string}[] = [];
   for (const file of await walk(root)) {
@@ -45,6 +47,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
     const text = await readFile(file, "utf8");
     if (text.includes("\0")) continue;
     const path = relative(root, file);
+    if (ignored(path)) continue;
     if (SOURCE.test(file)) taintFiles.push({path, text});
     if (SOURCE.test(file) && collectImports(path, text).length) depFiles.push({path, text});
     if (SOURCE.test(file)) for (const issue of scanSecurity(path, text))
@@ -71,7 +74,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
       (call ? " [vulnerable function " + call.symbol + " called at " + call.path + ":" + call.line + "]" : ""),
       path: target, line, level: sarifLevel(v.severity)});
   }
-  return results;
+  return results.filter(r => !ignored(r.path));
 }
 
 async function main(args: string[]): Promise<void> {

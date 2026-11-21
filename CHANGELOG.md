@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.30
+- `/scan` now runs every check: built-in rules, cross-file data flow and Trivy CVEs with function reachability, in addition to the AI review, Semgrep and Gitleaks.
+- `.hushavyr/ignore`: gitignore-style paths that `/scan`, `/security` and the CLI never scan (for intentional test fixtures).
+- Secrets scan no longer reports file globs such as `"**/*.{env,yml}"` as credentials.
+- `/escalate` (opt-in, `aiPrivacyRouter.cloudEscalation`): sends only the selected function to a Copilot model. Names, strings and comments are pseudonymized and restored locally. It is blocked for secrets, personal data, sensitive or ignored files and local-only workspaces. You preview and approve the exact payload, and every send is audited.
+- Simpler README.
+
 ## 0.0.29
 - Function-level CVE reachability: `/dependencies` and the CLI show when the vulnerable function itself (from the advisory title or a curated list: lodash, jackson-databind, snakeyaml, PyYAML...) is called, with a link to the call. Those CVEs are listed first.
 - Project-wide taint: `/security`, `/review` and the CLI follow request input (`req.query`, `@RequestParam`, Flask/FastAPI routes...) through functions and files to SQL, shell, eval, file, outbound-URL and innerHTML sinks. No model, no Semgrep Pro.

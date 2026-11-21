@@ -10,7 +10,9 @@ import {homedir} from "node:os";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
 import { classifyInput } from "./classifier";
-import { createAutoPrompt, formatRouted } from "./autoPrompt";
+import { confirmPublicPayload, createAutoPrompt, formatRouted, pickCopilotModel } from "./autoPrompt";
+import { escalate } from "./escalation";
+import { loadIgnore } from "./teamMemory";
 import { LocalOllama } from "./ollama";
 import { asksForExplanation, formatReview, modelHint } from "./review";
 import { runLocalReview, ReviewDepth } from "./localReview";
@@ -212,6 +214,32 @@ export function activate(context: vscode.ExtensionContext): void {
     if (request.command === "test") {
       const receipt = await runWorkspaceTests(token);
       if (receipt && !token.isCancellationRequested) stream.markdown(formatTestReceipt(receipt));
+      return;
+    }
+    if (request.command === "escalate") {
+      const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+      const editor = vscode.window.activeTextEditor;
+      const code = editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : lastSelection?.text ?? "";
+      const uri = editor && !editor.selection.isEmpty ? editor.document.uri : lastSelection ? vscode.Uri.parse(lastSelection.uri) : undefined;
+      const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
+      const relativePath = uri ? (folder ? vscode.workspace.asRelativePath(uri, false) : uri.path) : "selection";
+      const localOnly = !config.get<boolean>("cloudEscalation", false) || config.get<boolean>("mandatoryLocalOnly", false) ||
+        vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false) || !vscode.workspace.isTrusted || Boolean(vscode.env?.remoteName);
+      const ignored = folder ? (await loadIgnore(folder.uri.fsPath))(relativePath) : false;
+      try {
+        const result = await escalate({path: relativePath, code, question: request.prompt, localOnly, ignored}, {
+          pickModel: () => pickCopilotModel(token, "Choose the Copilot model for this pseudonymized fragment"),
+          confirm: (payload, label) => confirmPublicPayload(payload, label, token),
+          audit: event => writeRetainedAuditEvent(context.globalStorageUri.fsPath + "/audit", event),
+          cancelled: () => token.isCancellationRequested
+        });
+        if (token.isCancellationRequested) return;
+        stream.markdown(result.outcome === "sent"
+          ? "**Cloud answer (pseudonymized fragment, names restored locally). Not verified — run `/review` or the proof test locally before applying.**\n\n" + result.text
+          : "Nothing was sent: " + (result.reason ?? result.outcome) + "." + (result.reason === "this workspace is local-only" ? " Enable `aiPrivacyRouter.cloudEscalation` to allow approved, pseudonymized escalation." : ""));
+      } catch {
+        if (!token.isCancellationRequested) stream.markdown("Escalation stopped. Nothing else is retried.");
+      }
       return;
     }
     // /review-changes is /review over the uncommitted files of this workspace.

@@ -1,0 +1,4 @@
+# Intentionally vulnerable fixtures used by Hushavyr tests and benchmarks.
+src/test/
+src/benchmark.ts
+fixtures/

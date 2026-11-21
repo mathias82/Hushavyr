@@ -239,3 +239,59 @@ test("function-level reachability finds a call of the vulnerable function, not j
   const java = [{path: "M.java", text: "import com.fasterxml.jackson.databind.ObjectMapper;\nclass M { void f(ObjectMapper m) { m.enableDefaultTyping(); } }"}];
   assert.equal(findVulnerableCall("com.fasterxml.jackson.core:jackson-databind", "pom.xml", vulnerableSymbols("com.fasterxml.jackson.core:jackson-databind", "Deserialization"), java)?.line, 2);
 });
+
+test("secrets scan ignores file globs but still flags real credentials", async () => {
+  const { scanSecrets } = await import("../secretsScan");
+  assert.equal(scanSecrets('const secretInclude = "**/*.{env,properties,yml}";').length, 0);
+  assert.equal(scanSecrets('const apiSecret = "Zq8xK2mP9vL4nR7tY1wE";').length, 1);
+});
+
+test("ignore file matches dirs, files and globs; the CLI skips them", async () => {
+  const { ignoreMatcher } = await import("../teamMemory");
+  const match = ignoreMatcher("# fixtures\nsrc/test/\nsrc/benchmark.ts\n**/*.gen.ts\n");
+  assert.ok(match("src/test/a.test.ts"));
+  assert.ok(match("src/benchmark.ts"));
+  assert.ok(match("lib/x/y.gen.ts"));
+  assert.ok(!match("src/benchmark.tsx"));
+  assert.ok(!match("src/cli.ts"));
+  const root = await mkdtemp(join(tmpdir(), "hush-ignore-"));
+  try {
+    await mkdir(join(root, ".hushavyr"));
+    await mkdir(join(root, "fixtures"));
+    await writeFile(join(root, ".hushavyr", "ignore"), "fixtures/\n");
+    await writeFile(join(root, "fixtures", "bad.js"), "eval(req.query.code);\n");
+    await writeFile(join(root, "app.js"), "eval(req.query.code);\n");
+    const paths = (await scanFolder(root, join(__dirname, "..", "..", "rules", "hushavyr-review.yml"))).map(r => r.path);
+    assert.ok(paths.includes("app.js"));
+    assert.ok(!paths.some(p => p.startsWith("fixtures")));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("escalation pseudonymizes, restores locally and blocks secrets, PII and local-only", async () => {
+  const { pseudonymize, restore, escalationBlock, escalate } = await import("../escalation");
+  const code = "// PaymentService owner: acme\nfunction chargeCustomer(customerId) {\n  return db.query(\"SELECT * FROM payments WHERE id=\" + customerId);\n}";
+  const p = pseudonymize(code);
+  assert.ok(!/chargeCustomer|customerId|payments|acme|PaymentService/.test(p.text), p.text);
+  assert.ok(p.text.includes("query"));
+  assert.equal(restore(p.text, p.map).replace(/\s+/g, " ").trim(), code.split("\n").slice(1).join("\n").replace(/\s+/g, " ").trim());
+  const base = { path: "src/pay.js", code, question: "", localOnly: false, ignored: false };
+  assert.equal(escalationBlock(base), undefined);
+  assert.match(escalationBlock({ ...base, localOnly: true }) ?? "", /local-only/);
+  assert.match(escalationBlock({ ...base, ignored: true }) ?? "", /ignore/);
+  assert.match(escalationBlock({ ...base, code: 'const password = "Zq8xK2mP9vL4nR7tY1wE";' }) ?? "", /secret|sensitive/);
+  assert.match(escalationBlock({ ...base, code: "send('maria@example.com')" }) ?? "", /sensitive/);
+  assert.match(escalationBlock({ ...base, path: ".env" }) ?? "", /sensitive/);
+  const sent: string[] = [], audit: string[] = [];
+  const deps = (approve: boolean) => ({
+    pickModel: async () => ({ id: "m", label: "M", send: async (t: string) => { sent.push(t); return "Bug in id1: concatenates id2 into s1"; } }),
+    confirm: async () => approve, audit: async (e: { action: string }) => { audit.push(e.action); }, cancelled: () => false
+  });
+  assert.equal((await escalate(base, deps(false))).outcome, "cancelled");
+  assert.equal(sent.length, 0);
+  const ok = await escalate(base, deps(true));
+  assert.equal(ok.outcome, "sent");
+  assert.equal(sent.length, 1);
+  assert.ok(!sent[0].includes("chargeCustomer"));
+  assert.match(ok.text ?? "", /chargeCustomer/);
+  assert.ok(audit.includes("cloud-dispatch"));
+});
