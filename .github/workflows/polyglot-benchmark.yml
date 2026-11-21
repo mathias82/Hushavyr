@@ -1,24 +1,46 @@
-name: Polyglot benchmark evaluator
+name: Polyglot benchmark - real scanner
 on:
   pull_request:
     paths:
+      - 'src/**'
+      - 'rules/**'
       - 'benchmarks/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/polyglot-benchmark.yml'
   push:
     branches: [main]
     paths:
+      - 'src/**'
+      - 'rules/**'
       - 'benchmarks/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/polyglot-benchmark.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  evaluator:
+  polyglot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate multilingual benchmark evaluator
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile production CLI (without changing scanner)
+        run: npm run compile
+      - name: Verify benchmark evaluator
         run: node --test benchmarks/evaluate.test.mjs
+      - name: Run actual CLI on isolated multilingual fixtures
+        run: node benchmarks/run.mjs --out benchmarks/results.json
+      - name: Score real scanner results
+        run: node benchmarks/evaluate.mjs --results benchmarks/results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: polyglot-benchmark-results
+          path: benchmarks/results.json
+          if-no-files-found: warn
