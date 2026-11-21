@@ -31,7 +31,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Compile production CLI (without changing scanner)
-        run: npm run compile
+        run: npm run build
       - name: Verify benchmark evaluator
         run: node --test benchmarks/evaluate.test.mjs
       - name: Run actual CLI on isolated multilingual fixtures
