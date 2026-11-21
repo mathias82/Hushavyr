@@ -25,7 +25,7 @@ const fake = {
     showWarningMessage: async () => undefined, showErrorMessage: async () => undefined,
     showInformationMessage: async () => undefined
   },
-  commands: {registerCommand: (id: string) => {registeredCommands.add(id); return disposable;}},
+  commands: {registerCommand: (id: string) => {registeredCommands.add(id); return disposable;}, executeCommand: async () => undefined},
   lm: {selectChatModels: async () => {copilotLookups++; throw new Error("Unexpected cloud discovery");}},
   workspace: {
     isTrusted: true,
@@ -33,6 +33,7 @@ const fake = {
     textDocuments: [] as any[],
     getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback}),
     findFiles: async () => [],
+    asRelativePath: (uri: Uri) => uri.toString().replace("file:///", ""),
     openTextDocument: async (uri: Uri) => ({getText: () => docs.get(uri.toString()) ?? ""})
   },
   chat: {createChatParticipant: (_id: string, callback: typeof handler) => {participantRegistrations++; handler = callback; return disposable;}}
@@ -64,7 +65,7 @@ async function chat(files: Record<string, string>, responses: string[], prompt =
     activate({subscriptions: [], asAbsolutePath: (p: string) => p, globalStorageUri: {fsPath: "/unused"}, globalState: {get: () => true, update: async () => undefined}} as unknown as vscode.ExtensionContext);
     await handler({command: commandOverride ?? (prompt === "Explain" ? undefined : "review"), prompt,
       references: unknown ? [{value: "unreadable"}] : Object.keys(files).map(path => ({value: new Uri(path)}))}, {},
-    {markdown: (text: string) => output.push(text), progress: () => undefined}, {isCancellationRequested: false, onCancellationRequested: () => disposable});
+    {markdown: (text: string) => output.push(text), progress: () => undefined, button: (b: {title: string}) => output.push("[button] " + b.title)}, {isCancellationRequested: false, onCancellationRequested: () => disposable});
     return {requests, output: output.join('\n')};
   } finally {globalThis.fetch = priorFetch;}
 }
@@ -143,4 +144,17 @@ test("instruction files attached by Chat are ignored; the code file is what gets
   const prompt = result.requests[2].payload.prompt as string;
   assert.match(prompt, /class Processor/);
   assert.doesNotMatch(prompt, /knowledge base/);
+});
+
+test("edit follow-up changes the open file locally and shows a diff with apply, other-model and escalate buttons", async () => {
+  const code = "class Svc {\n  void run() {}\n}\n";
+  const result = await chat({"file:///Svc.java": code}, [JSON.stringify({content: "class Svc {\n  void run() {}\n  void stop() {}\n}\n"})], "can you add them", false, "explain");
+  assert.ok(result.requests.every(r => r.url.startsWith("http://127.0.0.1:11434/")));
+  const generate = result.requests.find(r => r.url.endsWith("/api/generate"));
+  assert.match(generate?.payload.prompt, /USER REQUEST: can you add them/);
+  assert.match(generate?.payload.prompt, /void run/);
+  assert.match(result.output, /\+   void stop\(\) \{\}/);
+  assert.match(result.output, /\[button\] Apply change/);
+  assert.match(result.output, /\[button\] Try another local model/);
+  assert.match(result.output, /\[button\] Escalate/);
 });

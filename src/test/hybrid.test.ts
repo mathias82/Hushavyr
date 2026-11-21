@@ -295,3 +295,40 @@ test("escalation pseudonymizes, restores locally and blocks secrets, PII and loc
   assert.match(ok.text ?? "", /chargeCustomer/);
   assert.ok(audit.includes("cloud-dispatch"));
 });
+
+test("edit intent, safe edit parsing and short diff", async () => {
+  const { isEditRequest, parseEdit, shortDiff } = await import("../codeEdit");
+  for (const p of ["can you add them", "add logging to this method", "πρόσθεσέ τα", "μπορείς να αλλάξεις το όνομα;", "rename run to start"]) assert.ok(isEditRequest(p), p);
+  for (const p of ["explain the code", "what does add do here?", "this class", "check code for bugs"]) assert.ok(!isEditRequest(p), p);
+  const original = "a\nb\nc\nd\ne\n";
+  assert.equal(parseEdit(JSON.stringify({ content: "a\n" }), original), undefined); // truncated
+  assert.equal(parseEdit(JSON.stringify({ content: original }), original), undefined); // unchanged
+  assert.equal(parseEdit(JSON.stringify({ content: "a\nb\nX\nd\ne" }), original), "a\nb\nX\nd\ne\n");
+  assert.equal(shortDiff(original, "a\nb\nX\nd\ne\n"), "@@ line 3 @@\n- c\n+ X");
+});
+
+test("pull request: new branch from main, commit, push, gh fallback to compare URL", async () => {
+  const { branchName, compareUrl, statusPaths, createPullRequest } = await import("../pullRequest");
+  assert.equal(branchName("Add MDC checks!", new Date("2026-11-21T09:05:00Z")), "hushavyr/add-mdc-checks-202611210905");
+  assert.equal(compareUrl("git@github.com:mathias82/Hushavyr.git", "main", "hushavyr/x"), "https://github.com/mathias82/Hushavyr/compare/main...hushavyr%2Fx?expand=1");
+  assert.equal(compareUrl("https://dev.azure.com/org/p/_git/r", "main", "x"), undefined);
+  assert.deepEqual(statusPaths(" M src/a.ts\n?? new.ts\nR  old.ts -> moved.ts\n"), ["src/a.ts", "new.ts", "moved.ts"]);
+  const calls: string[] = [];
+  const exec = async (cmd: string, args: string[]) => { calls.push(cmd + " " + args.join(" ")); if (cmd === "gh") throw new Error("gh missing"); return ""; };
+  const result = await createPullRequest({ root: "/r", current: "main", base: "main", files: ["a.ts"], stat: "", remote: "https://github.com/o/r.git" }, "Fix bug", exec);
+  assert.equal(result.created, false);
+  assert.match(result.url ?? "", /^https:\/\/github.com\/o\/r\/compare\/main\.\.\.hushavyr%2Ffix-bug-/);
+  assert.match(calls[0], /^git switch -c hushavyr\/fix-bug-/);
+  assert.deepEqual(calls.slice(1, 3), ["git add -A", "git commit -m Fix bug"]);
+  assert.match(calls[3], /^git push -u origin hushavyr\/fix-bug-/);
+});
+
+test("escalation also pseudonymizes code names used in the question", async () => {
+  const { escalate } = await import("../escalation");
+  const sent: string[] = [];
+  const result = await escalate({ path: "a.js", code: "function chargeCustomer(amount) { return amount * 2; }", question: "rename chargeCustomer", localOnly: false, ignored: false }, {
+    pickModel: async () => ({ id: "m", label: "M", send: async (t: string) => { sent.push(t); return "ok"; } }),
+    confirm: async () => true, audit: async () => undefined, cancelled: () => false });
+  assert.equal(result.outcome, "sent");
+  assert.ok(!sent[0].includes("chargeCustomer"), sent[0]);
+});
