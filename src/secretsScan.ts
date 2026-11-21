@@ -7,23 +7,36 @@ const PLACEHOLDER = /^(?:["']?)(?:|\$\{[^}]+\}|\$[A-Za-z_][\w]*|<[^>]+>|\{\{.*\}
 const CODE_ASSIGNMENT = /^\s*(?:(?:export|const|let|var|final|private|public|protected|static|readonly|val)\s+)+(?:[A-Za-z_][\w<>\[\],.?]*\s+)?([A-Za-z_]\w*)\s*(?::\s*[\w<>\[\]]+\s*)?=\s*(["'])([^"']{4,})\2\s*;?\s*$/;
 // File globs such as "**/*.{env,yml}" name files that may hold secrets; they are not secrets.
 const GLOB = /\*\*?\/|\*\.|\{[\w.-]*(?:,[\w.-]*)+\}/;
+// Keys that only mention a secret (hashAlgorithm, secretProviderClass, passwordExpirationPolicy, apiKeyRef...) hold settings, labels or references.
+const NOT_SECRET_KEY = /(?:algorithm|provider_?class|last_?changed|changed_?at|length|min|max|ref|type|policy|expir\w*|name|time|subject|body|label|title|hint|message|text|placeholder|field|count|enabled|required|regex|pattern|rule|url|uri|path|file|header|param|mode|version|format|strength|validation|error|tooltip|description|prompt|colou?r|image|icon|id)$|^(?:change|reset|forgot|show|hide|toggle|validate|is|has|use)|secretar(?:y|ies)/i;
+function literalValue(raw: string): string | undefined {
+  const value = raw.trim();
+  // Structures, resource references (@string/x), env/config lookups and calls are not literal credentials.
+  if (/^[\[{@?]|^%\w+%$|\$\(|\$\{|\(|\b(?:process\.env|getenv|environ|GetEnvironmentVariable|Configuration|config|settings)\b/.test(value)) return;
+  const text = value.replace(/^(["'`])(.*)\1$/, "$2");
+  if (text.length < 4) return;
+  // UI text and translations ("Κωδικός πρόσβασης", "Password") are labels, not secrets.
+  if (/\s/.test(text.trim()) || /^\p{Lu}\p{Ll}+$/u.test(text) || /[\u0370-\u03ff]/.test(text)) return;
+  return text;
+}
+function keyName(key: string): string { return key.split(/[.[\]]/).filter(Boolean).pop() ?? key; }
 export function scanSecrets(content: string): SecretFinding[] {
   const findings: SecretFinding[] = [];
   for (const [index, line] of content.split(/\r?\n/).entries()) {
     if (index >= 10000 || findings.length >= 100) break;
     if (/^\s*(?:#|\/\/|\*)/.test(line)) continue;
     const code = CODE_ASSIGNMENT.exec(line);
-    if (code && KEY.test(code[1]) && !PLACEHOLDER.test(code[2] + code[3] + code[2]) && !/^\$\{|^\{\{|^<.*>$/.test(code[3]) && !GLOB.test(code[3])) {
+    if (code && KEY.test(code[1]) && !NOT_SECRET_KEY.test(code[1]) && !PLACEHOLDER.test(code[2] + code[3] + code[2]) && !/^\$\{|^\{\{|^<.*>$/.test(code[3]) && !GLOB.test(code[3]) && literalValue(code[3]) !== undefined) {
       findings.push({line: index + 1, rule: "Potential hardcoded credential", severity: "HIGH"});
       continue;
     }
     const match = ASSIGNMENT.exec(line);
-    if (!match || !KEY.test(match[1])) continue;
+    if (!match || !KEY.test(keyName(match[1])) || NOT_SECRET_KEY.test(keyName(match[1]))) continue;
     const value = match[2].trim().replace(/[,;]\s*$/, "").trim();
     // GitHub Actions expressions and template variable references are not literal credentials.
     if (/^["\x27]?\s*\$\{\{\s*(?:secrets|vars|env|github|inputs|steps|needs)\.[^}]+\}\}\s*["\x27]?$/.test(value)) continue;
     if (/^["\x27]?\s*\$\{[A-Za-z_][\w.:-]*\}\s*["\x27]?$/.test(value)) continue;
-    if (PLACEHOLDER.test(value) || /^["']\s*["']$/.test(value) || GLOB.test(value)) continue;
+    if (PLACEHOLDER.test(value) || /^["']\s*["']$/.test(value) || GLOB.test(value) || literalValue(value) === undefined) continue;
     findings.push({line: index + 1, rule: "Potential hardcoded credential", severity: "HIGH"});
   }
   return findings;
