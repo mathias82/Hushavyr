@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+- **README:** link to the HD demo video.
+- **Marketplace:** clearer name and description, more precise search keywords.
+- **`/dependencies`:** the lockfile hint also shows when Trivy is missing.
+
 ## 1.0.1
 - **Live answers:** `/explain` and plain questions stream as they are written; `/review` shows each pass and adds findings one by one.
 - **`/review`:** flows proven by taint tracking and SQL sinks built with `SELECT *` are kept; locations are relative to the workspace; `<` and `>` in model text stay visible.
