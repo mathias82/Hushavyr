@@ -14,8 +14,8 @@ import { classifyInput } from "./classifier";
 import { confirmPublicPayload, createAutoPrompt, formatRouted, pickCopilotModel } from "./autoPrompt";
 import { escalate } from "./escalation";
 import { EditTarget, registerEditCommands, runEdit } from "./editFlow";
-import { isEditRequest } from "./codeEdit";
-import { createPullRequest, planPullRequest, secretsInChanges } from "./pullRequest";
+import { improveInstruction, isEditRequest } from "./codeEdit";
+import {openPullRequest, registerPullRequestCommand} from "./prFlow";
 import { loadIgnore } from "./teamMemory";
 import { LocalOllama } from "./ollama";
 import { asksForExplanation, formatReview, modelHint } from "./review";
@@ -124,6 +124,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerDependencyQuickFix(context);
   registerApplyFix(context);
   registerEditCommands(context);
+  registerPullRequestCommand(context);
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.installOllama", async () => {
     if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
       await vscode.window.showInformationMessage("Open a trusted local VS Code window to install Ollama.");
@@ -233,34 +234,6 @@ export function activate(context: vscode.ExtensionContext): void {
       range, instruction: request.prompt, previousAnswer};
   }
 
-  async function openPullRequest(prompt: string, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder || !vscode.workspace.isTrusted || vscode.env?.remoteName) {
-      stream.markdown("Open a trusted local repository folder first. Nothing was pushed.");
-      return;
-    }
-    await vscode.workspace.saveAll(false);
-    const plan = await planPullRequest(folder.uri.fsPath);
-    if (typeof plan === "string") { stream.markdown(plan); return; }
-    stream.markdown("**Changes** (" + plan.files.length + " files, branch `" + plan.current + "`):\n\n```\n" + (plan.stat || plan.files.join("\n")).slice(0, 4000).replace(/```/g, "ˋˋˋ") + "\n```\n");
-    const secrets = await secretsInChanges(plan);
-    if (secrets.length) {
-      stream.markdown("Stopped: possible credentials in " + secrets.map(f => "`" + f + "`").join(", ") + ". Remove them first. Nothing was committed or pushed.");
-      return;
-    }
-    const title = prompt.trim().slice(0, 72) || "Changes prepared with Hushavyr";
-    const answer = await vscode.window.showWarningMessage("Commit all " + plan.files.length + " changed files, push to origin and open a pull request?", {modal: true,
-      detail: "Title: " + title + "\nThe code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."}, "Create pull request");
-    if (answer !== "Create pull request" || token.isCancellationRequested) { stream.markdown("Cancelled. Nothing was committed or pushed."); return; }
-    try {
-      const result = await createPullRequest(plan, title);
-      stream.markdown(result.created && result.url ? "Pull request opened: " + result.url
-        : "Pushed branch `" + result.branch + "`." + (result.url ? " Open the pull request: " + result.url : " Open a pull request on your git host.") + (result.created ? "" : " (Install and log in to the `gh` CLI to open it automatically.)"));
-    } catch (error) {
-      stream.markdown("Git failed: " + String((error as Error).message ?? error).split("\n")[0].slice(0, 300).replace(/[`\[\]]/g, "") + ". Check `git status`.");
-    }
-  }
-
   // Always register our declared Chat Participant when the VS Code Chat API exists.
   // A user Chat setting must not silently leave the declared participant unregistered.
   const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, chatContext, stream, token) => {
@@ -280,15 +253,16 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     if (request.command === "pr") {
-      await openPullRequest(request.prompt, stream, token);
+      await openPullRequest(request.prompt, "", text => stream.markdown(text), () => token.isCancellationRequested);
       return;
     }
-    if (request.command === "edit" || ((!request.command || request.command === "explain" || request.command === "review") && isEditRequest(request.prompt))) {
+    const improving = request.command === "improve";
+    if (improving || request.command === "edit" || ((!request.command || request.command === "explain" || request.command === "review") && isEditRequest(request.prompt))) {
       if (!vscode.workspace.isTrusted || vscode.env?.remoteName) {
         stream.markdown("Open a trusted local VS Code window to edit code. Nothing was sent.");
         return;
       }
-      if (!request.prompt.trim()) {
+      if (!improving && !request.prompt.trim()) {
         stream.markdown("Say what to change, e.g. `@ai-privacy /edit add null checks to this method`.");
         return;
       }
@@ -296,6 +270,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!target) {
         stream.markdown("Open or attach the code file to change, then ask again. Nothing was sent.");
         return;
+      }
+      if (improving) {
+        target.instruction = improveInstruction(request.prompt);
+        target.title = "Improve " + target.path.split("/").pop();
       }
       await runEdit(target, stream, token);
       return;

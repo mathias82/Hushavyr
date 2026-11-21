@@ -3,8 +3,8 @@
   "displayName": "Hushavyr - Private AI Code Review",
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
-  "description": "Privacy-aware local AI routing",
-  "version": "0.0.31",
+  "description": "Free private AI code review, security scan and secret detection that runs locally with Ollama. Copilot-style chat that never sends your code to the cloud: review, explain, edit, improve, open PRs.",
+  "version": "0.0.32",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -285,6 +285,10 @@
             "description": "Change the open or selected code locally (e.g. \"add them\" after /explain); shows a diff, nothing changes until you apply"
           },
           {
+            "name": "improve",
+            "description": "The local model suggests improvements to the open file (bugs, edge cases, clarity); shows a diff, then Apply and Open pull request"
+          },
+          {
             "name": "review-changes",
             "description": "Review your uncommitted changes (git) locally; no prompt or selection needed"
           },
@@ -357,5 +361,38 @@
   "bin": {
     "hushavyr-scan": "dist/cli.js",
     "hushavyr-review": "dist/prReview.js"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Linters",
+    "Testing",
+    "Other"
+  ],
+  "keywords": [
+    "ai code review",
+    "code review",
+    "local ai",
+    "ollama",
+    "privacy",
+    "offline",
+    "security",
+    "sast",
+    "secret scanning",
+    "secrets",
+    "gitleaks",
+    "semgrep",
+    "trivy",
+    "cve",
+    "vulnerability",
+    "copilot alternative",
+    "llm",
+    "qwen",
+    "pull request",
+    "refactor"
+  ],
+  "galleryBanner": {
+    "color": "#0B1020",
+    "theme": "dark"
   }
 }
