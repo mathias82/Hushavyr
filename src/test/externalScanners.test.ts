@@ -28,3 +28,7 @@ test("bundled rules cover Java JavaScript TypeScript and Python",()=>{
  assert.match(yaml,/hushavyr.java-sql-concatenation/);
  assert.match(yaml,/InsecureTrustManagerFactory/);
 });
+test("bundled Hushavyr Semgrep rules get a short id and their own advice",()=>{
+ const output=JSON.stringify({results:[{check_id:"Users.me..vscode.extensions.mathias82.hushavyr-0.0.30.rules.hushavyr.js-dom-xss",path:"a.js",start:{line:3},extra:{severity:"WARNING",message:"XSS via innerHTML",metadata:{fix:"Use textContent."}}}]});
+ assert.deepEqual(parseScannerOutput("semgrep",output,"/repo"),[{tool:"semgrep",rule:"js-dom-xss",severity:"WARNING",path:"a.js",line:3,message:"XSS via innerHTML",fix:"Use textContent."}]);
+});

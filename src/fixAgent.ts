@@ -144,7 +144,9 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
         ". The active checkout was not changed.";
       if (receipt.status !== "verified" && bugReproduced(receipt)) void vscode.window.showWarningMessage("Bug confirmed: an approved test fails on the unchanged code. " + message);
       else if (receipt.status === "verified") void vscode.window.showInformationMessage(message +
-        " verified.patch is bound to base " + receipt.baseCommit + ". Review it before applying; this is not a proof of all behavior.");
+        " verified.patch is bound to base " + receipt.baseCommit + ". Review it before applying; this is not a proof of all behavior.", "Create draft PR").then(choice => {
+        if (choice === "Create draft PR") void vscode.commands.executeCommand("aiPrivacyRouter.createVerifiedFixPr", result.directory);
+      });
       else void vscode.window.showWarningMessage(message);
     } catch {
       void vscode.window.showErrorMessage("Local verification stopped. Check: clean committed sources, the selected project layout, non-root macOS/Linux, local Docker and a preloaded runner image. Maven also needs a populated dependency cache. No cloud fallback or active-checkout patch was attempted.");
