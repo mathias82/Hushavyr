@@ -1,18 +1,19 @@
 import {existsSync} from "node:fs";
 import {dirname, join, extname} from "node:path";
 
-export type ProofRunner = "Java / Maven" | "Python / pytest" | "JavaScript / Node.js" | "TypeScript / Node.js";
+export type ProofRunner = "Java / Maven" | "Python / pytest" | "JavaScript / Node.js" | "TypeScript / Node.js" | "Go / go test";
 
 const RUNNERS: Record<string, ProofRunner> = {
   ".java": "Java / Maven", ".py": "Python / pytest",
   ".js": "JavaScript / Node.js", ".cjs": "JavaScript / Node.js", ".mjs": "JavaScript / Node.js",
-  ".ts": "TypeScript / Node.js", ".cts": "TypeScript / Node.js", ".mts": "TypeScript / Node.js"
+  ".ts": "TypeScript / Node.js", ".cts": "TypeScript / Node.js", ".mts": "TypeScript / Node.js", ".go": "Go / go test"
 };
 const PROJECT_FILES: Record<ProofRunner, string[]> = {
   "Java / Maven": ["pom.xml"],
   "Python / pytest": ["pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tests"],
   "JavaScript / Node.js": ["package.json"],
-  "TypeScript / Node.js": ["package.json"]
+  "TypeScript / Node.js": ["package.json"],
+  "Go / go test": ["go.mod"]
 };
 
 /** Which offline test runner can prove a finding in this file, if any. */

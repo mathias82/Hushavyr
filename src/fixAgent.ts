@@ -49,15 +49,16 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
     const workspaceRoot = findingFile && vscode.workspace.getWorkspaceFolder(findingFile)?.uri.fsPath;
     const knownRunner = findingFile?.scheme === "file" ? runnerFor(findingFile.fsPath) : undefined;
     const knownRoot = knownRunner && workspaceRoot ? projectRootFor(findingFile!.fsPath, knownRunner, workspaceRoot) : undefined;
-    const runner = knownRoot ? knownRunner : await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js", "TypeScript / Node.js"],
+    const runner = knownRoot ? knownRunner : await vscode.window.showQuickPick(["Java / Maven", "Python / pytest", "JavaScript / Node.js", "TypeScript / Node.js", "Go / go test"],
       {placeHolder: "Choose an offline test runner"});
     if (!runner) return;
+    const go = runner === "Go / go test";
     const python = runner === "Python / pytest";
     const typescript = runner === "TypeScript / Node.js";
     const node = runner === "JavaScript / Node.js" || typescript;
-    const language = typescript ? "TypeScript" : node ? "JavaScript" : python ? "Python" : "Java";
+    const language = go ? "Go" : typescript ? "TypeScript" : node ? "JavaScript" : python ? "Python" : "Java";
     const folder = knownRoot ? [vscode.Uri.file(knownRoot)] : await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
-      canSelectMany: false, openLabel: node ? "Choose a project with Node.js native tests" : python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
+      canSelectMany: false, openLabel: go ? "Choose a Go module (folder with go.mod)" : node ? "Choose a project with Node.js native tests" : python ? "Choose a Python project with a tests folder" : "Choose a leaf Maven project",
       defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri});
     const project = folder?.[0];
     if (!project || project.scheme !== "file") return;
@@ -66,8 +67,8 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage("Save and commit project edits before verifying a committed snapshot."); return;
     }
     const selected = knownRoot ? [findingFile!] : await vscode.window.showOpenDialog({canSelectMany: true, canSelectFiles: true, canSelectFolders: false,
-      defaultUri: python || node ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
-      filters: {[language]: typescript ? ["ts", "cts", "mts"] : node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
+      defaultUri: python || node || go ? project : vscode.Uri.joinPath(project, "src", "main", "java"),
+      filters: {[language]: go ? ["go"] : typescript ? ["ts", "cts", "mts"] : node ? ["js", "cjs", "mjs"] : [python ? "py" : "java"]},
       openLabel: "Choose 1–6 production " + language + " files for local analysis"});
     if (!selected?.length || selected.some(uri => uri.scheme !== "file")) return;
     const goal = await vscode.window.showInputBox({prompt: "Describe one observable bug and the expected behavior (local Ollama only)", ignoreFocusOut: true,
@@ -90,10 +91,11 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
           const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
           sandbox = await FixSandbox.create({project: project.fsPath, selected: selected.map(uri => uri.fsPath),
             storage: join(context.globalStorageUri.fsPath, "verified-fixes"),
-            profile: typescript ? "typescript" : node ? "node" : python ? "python" : undefined,
-            image: typescript ? config.get<string>("fixTypeScriptImage", "hushavyr-typescript:local") : node ? config.get<string>("fixNodeImage", "node:24-slim") : python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
+            profile: go ? "go" : typescript ? "typescript" : node ? "node" : python ? "python" : undefined,
+            image: go ? config.get<string>("fixGoImage", "golang:1.24") : typescript ? config.get<string>("fixTypeScriptImage", "hushavyr-typescript:local") : node ? config.get<string>("fixNodeImage", "node:24-slim") : python ? config.get<string>("fixPythonImage", "hushavyr-pytest:local")
               : config.get<string>("fixMavenImage", "maven:3.9-eclipse-temurin-21"),
-            cache: config.get<string>("fixMavenCache", "").trim() || undefined, signal: controller.signal});
+            cache: config.get<string>("fixMavenCache", "").trim() || undefined, goModCache: config.get<string>("fixGoModCache", "").trim() || undefined,
+            signal: controller.signal});
           const box = sandbox;
           const client = configuredClient(config);
           const input = JSON.stringify({goal, sources: box.sources});
@@ -107,7 +109,9 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
               await client.ensureAvailable(controller.signal);
               return parseTestProposal(await client.generate(instructions +
                 "\nCreate a behavioral regression test for the reported bug. Use a real assertion. " +
-                (node ? "Write top-level node:test cases in a CommonJS file using node:assert/strict in " + box.context.testPath
+                (go ? "Write one Go test function exactly named " + box.context.testClass + "(t *testing.T) in the same package as the code, file " +
+                  box.context.testPath + ", using only the standard testing package and t.Errorf/t.Fatalf for assertions"
+                  : node ? "Write top-level node:test cases in a CommonJS file using node:assert/strict in " + box.context.testPath
                   : python ? "Define top-level pytest test functions in " + box.context.testPath
                   : "The exact public class is " + box.context.testClass + " in " + box.context.testPath) +
                 ". Return JSON {source: complete " + language + " file}. Never alter production code or build files in the test. " +
@@ -147,7 +151,7 @@ export function registerVerifiedFix(context: vscode.ExtensionContext): void {
       });
       else void vscode.window.showWarningMessage(message);
     } catch {
-      void vscode.window.showErrorMessage("Local verification stopped. Check: clean committed sources, the selected project layout, non-root macOS/Linux, local Docker and a preloaded runner image. Maven also needs a populated dependency cache. No cloud fallback or active-checkout patch was attempted.");
+      void vscode.window.showErrorMessage("Local verification stopped. Check: clean committed sources, the selected project layout, non-root macOS/Linux, local Docker and a preloaded runner image. Maven needs a populated dependency cache; Go modules need vendor/ or the local module cache. No cloud fallback or active-checkout patch was attempted.");
     }
   }));
 }
