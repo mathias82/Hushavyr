@@ -1,5 +1,7 @@
 # Hushavyr multilingual benchmark (v1)
 
+> For an external, reproducible measure see the [OWASP Benchmark for Java results](../docs/owasp-benchmark.md) (`npm run benchmark:owasp`).
+
 This benchmark defines **12 source-level fixtures across 8 languages**: Java, Python, JavaScript, TypeScript, Go, PHP, Ruby and C#. It includes vulnerable examples and clean negative controls. These are *synthetic fixtures*, not evidence of real-world precision.
 
 ## Scoring contract

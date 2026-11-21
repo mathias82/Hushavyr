@@ -23,16 +23,20 @@ function literalValue(raw: string): string | undefined {
   if (/\s/.test(text.trim()) || /^\p{Lu}\p{Ll}+$/u.test(text) || /[\u0370-\u03ff]/.test(text)) return;
   return text;
 }
+// Tests, fixtures, docs, examples and local/dev profiles usually hold throwaway values: still reported, but MEDIUM so real config stands out.
+const LOW_RISK_PATH = /(?:^|[\\/])(?:tests?|__tests__|spec|e2e|testdata|fixtures?|mocks?|examples?|samples?|docs?)[\\/]|\.(?:test|spec)\.\w+$|_test\.\w+$|\.(?:md|example|sample|template|dist)$|(?:^|[\\/.-])(?:local|dev|example|sample|template|demo)[\w-]*\.(?:env|ya?ml|json|properties|toml|ini)$/i;
+const TEST_CLASS = /[a-z0-9]Tests?\.(?:java|kt|cs|scala|groovy)$/;
 function keyName(key: string): string { return key.split(/[.[\]]/).filter(Boolean).pop() ?? key; }
 export function scanSecrets(content: string, path = ""): SecretFinding[] {
   const code = CODE_FILE.test(path);
+  const severity = LOW_RISK_PATH.test(path) || TEST_CLASS.test(path) ? "MEDIUM" : "HIGH";
   const findings: SecretFinding[] = [];
   for (const [index, line] of content.split(/\r?\n/).entries()) {
     if (index >= 10000 || findings.length >= 100) break;
     if (/^\s*(?:#|\/\/|\*)/.test(line)) continue;
     const decl = CODE_ASSIGNMENT.exec(line);
     if (decl && KEY.test(decl[1]) && !NOT_SECRET_KEY.test(decl[1]) && !PLACEHOLDER.test(decl[2] + decl[3] + decl[2]) && !/^\$\{|^\{\{|^<.*>$/.test(decl[3]) && !GLOB.test(decl[3]) && literalValue(decl[3]) !== undefined) {
-      findings.push({line: index + 1, rule: "Potential hardcoded credential", severity: "HIGH"});
+      findings.push({line: index + 1, rule: "Potential hardcoded credential", severity});
       continue;
     }
     const match = ASSIGNMENT.exec(line);
@@ -44,7 +48,7 @@ export function scanSecrets(content: string, path = ""): SecretFinding[] {
     // Unquoted SCREAMING_SNAKE names (API_KEY_VALUE) in docs and samples name a constant or placeholder.
     if (REFERENCE.test(value) || (code && !/^["'`]/.test(value)) || /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(value)) continue;
     if (PLACEHOLDER.test(value) || /^["']\s*["']$/.test(value) || GLOB.test(value) || literalValue(value) === undefined) continue;
-    findings.push({line: index + 1, rule: "Potential hardcoded credential", severity: "HIGH"});
+    findings.push({line: index + 1, rule: "Potential hardcoded credential", severity});
   }
   return findings;
 }
