@@ -3,7 +3,7 @@
 ## 0.0.31
 - `/edit` and follow-ups like "can you add them": the local model changes the open or selected file. You see a diff, nothing changes until **Apply**, and Apply refuses if the file changed meanwhile. **Try another local model** reruns it with any installed Ollama model. **Escalate** sends it to Copilot pseudonymized (opt-in).
 - `/pr`: commits to a new `hushavyr/...` branch, pushes it and opens a pull request with `gh`, or gives a GitHub compare link. Asks first and blocks credentials.
-- Fewer false credential findings: key names like `hashAlgorithm` and `secretProviderClass`, env and config lookups, resource refs and UI text are no longer reported. Across 6 real repos, credential findings dropped from 783 to 222.
+- Fewer false credential findings: key names like `hashAlgorithm` and `secretProviderClass`, env and config lookups, resource refs and UI text are no longer reported. Across 21 real repos, credential findings dropped from 1405 to 420.
 - The CLI maps Semgrep rule IDs to Hushavyr IDs and removes duplicates. On the synthetic benchmark, precision went from 0.43 to 0.96 and recall from 0.45 to 1.00.
 
 ## 0.0.30
