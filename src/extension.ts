@@ -9,6 +9,7 @@ import {execFile} from "node:child_process";
 import {homedir} from "node:os";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
+import {registerVerifiedFixPr} from "./fixPrAgent";
 import { classifyInput } from "./classifier";
 import { confirmPublicPayload, createAutoPrompt, formatRouted, pickCopilotModel } from "./autoPrompt";
 import { escalate } from "./escalation";
@@ -73,6 +74,7 @@ async function exportSarif(context: vscode.ExtensionContext): Promise<void> {
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
+  registerVerifiedFixPr(context);
   const reviewDiagnostics = vscode.languages.createDiagnosticCollection("hushavyr");
   context.subscriptions.push(reviewDiagnostics,
     vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); }),
