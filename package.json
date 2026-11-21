@@ -28,7 +28,8 @@
     "onCommand:aiPrivacyRouter.updateTrivyDb",
     "onCommand:aiPrivacyRouter.exportSbom",
     "onCommand:aiPrivacyRouter.applyReviewFix",
-    "onCommand:aiPrivacyRouter.exportSarif"
+    "onCommand:aiPrivacyRouter.exportSarif",
+    "onCommand:aiPrivacyRouter.createVerifiedFixPr"
   ],
   "contributes": {
     "walkthroughs": [
@@ -127,6 +128,10 @@
       {
         "command": "aiPrivacyRouter.exportSarif",
         "title": "Hushavyr: Export Findings as SARIF"
+      },
+      {
+        "command": "aiPrivacyRouter.createVerifiedFixPr",
+        "title": "Hushavyr: Create Draft PR from Verified Local Fix"
       }
     ],
     "configuration": {
