@@ -36,3 +36,11 @@ test('scores only findings whose category matches the test case', () => {
   assert.equal(overall.tpr, 0.25);
   assert.match(markdown({categories, overall}), /\| sqli \| 4 \| 1 \| 1 \| 1 \| 1 \| 50\.0% \| 50\.0% \| 0\.0% \|/);
 });
+
+test('maps the Python categories and reads .py test names', () => {
+  assert.deepEqual(['taint-code', 'taint-redirect', 'taint-xxe', 'taint-deserialization', 'insecure-cookie', 'insecure-random-number-generator'].map(categoryOf),
+    ['codeinj', 'redirect', 'xxe', 'deserialization', 'securecookie', 'weakrand']);
+  const py = {runs: [{results: [finding('taint-redirect', 'testcode/BenchmarkTest00007.py'), finding('taint-redirect', 'testcode/BenchmarkTest00008.java')]}]};
+  const {flagged, outside} = flaggedTests(py, 'py');
+  assert.deepEqual([[...flagged.keys()], outside], [['BenchmarkTest00007'], 1]);
+});

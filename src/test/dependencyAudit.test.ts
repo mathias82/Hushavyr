@@ -112,3 +112,18 @@ test("manifests in direct subfolders are detected and a bare package.json gets a
   assert.equal(nested.manager, "pip");
   assert.match(nested.note, /package-lock-only/);
 });
+
+import {dbAgeHours, dbIsStale, formatDbAge} from "../dependencyAudit";
+import {osvDbAgeHours} from "../codeScanners";
+test("CVE database age uses the download time and flags anything over a day as stale", async () => {
+  const now = Date.parse("2026-11-21T12:00:00Z");
+  assert.equal(dbAgeHours(JSON.stringify({UpdatedAt: "2026-11-01T00:00:00Z", DownloadedAt: "2026-11-21T09:30:00Z"}), now), 2);
+  assert.equal(dbAgeHours("{}", now), undefined);
+  assert.deepEqual([formatDbAge(5), formatDbAge(72), formatDbAge(undefined)], ["5 h ago", "3 days ago", "not downloaded"]);
+  assert.deepEqual([dbIsStale(24), dbIsStale(25), dbIsStale(undefined)], [false, true, true]);
+  const dir = await mkdtemp(join(tmpdir(), "osvdb-"));
+  assert.equal(await osvDbAgeHours([dir]), undefined);
+  await mkdir(join(dir, "npm"));
+  await writeFile(join(dir, "npm", "all.zip"), "x");
+  assert.equal(await osvDbAgeHours([dir], Date.now() + 3.5 * 3_600_000), 3);
+});

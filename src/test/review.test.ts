@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { validateReview, formatReview, reviewPrompt, inlineText} from "../review";
+import { validateReview, formatReview, reviewPrompt, inlineText, fenceLanguage} from "../review";
 const source = 'return Response.status(404).entity("{\\"error\\":\\"" + e.getTenantId() + "\\"}").build();';
 function finding(title:string,evidence:string) { return {title,severity:"high",evidence,fix:"Use a JSON DTO",regressionTest:"Test tenant ID with a quote"}; }
 test("rejects SQL injection claim without SQL sink", () => {
@@ -48,4 +48,7 @@ test("review location is shown relative to the workspace, not as a file URI", ()
 
 test("model text keeps comparison operators visible in Markdown", () => {
   assert.equal(inlineText("change i <= n to i < n, not <b>"), "change i &lt;= n to i &lt; n, not &lt;b&gt;");
+});
+test("evidence fence follows the file language", () => {
+  assert.deepEqual([fenceLanguage("src/books.js"), fenceLanguage("app.PY"), fenceLanguage("A.java"), fenceLanguage(undefined), fenceLanguage("x.unknown")], ["javascript", "python", "java", "", ""]);
 });

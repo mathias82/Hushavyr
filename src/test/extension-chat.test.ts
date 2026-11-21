@@ -166,3 +166,23 @@ test("edit follow-up changes the open file locally and shows a diff with apply, 
   assert.match(result.output, /\[button\] Try another local model/);
   assert.match(result.output, /\[button\] Escalate/);
 });
+
+test("Command Palette commands register without the Chat API and run the same local handler", () => {
+  const chatApi = (fake as any).chat;
+  const before = participantRegistrations;
+  (fake as any).chat = undefined;
+  try {
+    activate({subscriptions: [], asAbsolutePath: (p: string) => p, globalStorageUri: {fsPath: "/unused"}, globalState: {get: () => true, update: async () => undefined}} as unknown as vscode.ExtensionContext);
+    assert.equal(participantRegistrations, before);
+    for (const id of ["reviewFile", "explainFile", "reviewChanges", "scanProject", "scanChanged", "securityScan", "findSecrets", "checkDependencies"])
+      assert.ok(registeredCommands.has("aiPrivacyRouter." + id), id);
+  } finally {(fake as any).chat = chatApi;}
+});
+test("every registered palette command is declared in package.json with an activation event", () => {
+  const pkg = require("../../package.json");
+  const declared = new Set(pkg.contributes.commands.map((c: {command: string}) => c.command));
+  for (const {id} of require("../paletteCommands").PALETTE_COMMANDS) {
+    assert.ok(declared.has(id), id);
+    assert.ok(pkg.activationEvents.includes("onCommand:" + id), id);
+  }
+});

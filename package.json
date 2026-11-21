@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, proves fixes with tests and opens PRs. Your code never leaves your machine.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -27,10 +27,20 @@
     "onCommand:aiPrivacyRouter.startOllama",
     "onCommand:aiPrivacyRouter.downloadOllamaModel",
     "onCommand:aiPrivacyRouter.updateTrivyDb",
+    "onCommand:aiPrivacyRouter.updateVulnDbs",
     "onCommand:aiPrivacyRouter.exportSbom",
     "onCommand:aiPrivacyRouter.applyReviewFix",
     "onCommand:aiPrivacyRouter.exportSarif",
-    "onCommand:aiPrivacyRouter.createVerifiedFixPr"
+    "onCommand:aiPrivacyRouter.createVerifiedFixPr",
+    "onCommand:aiPrivacyRouter.reviewFile",
+    "onCommand:aiPrivacyRouter.explainFile",
+    "onCommand:aiPrivacyRouter.explainFinding",
+    "onCommand:aiPrivacyRouter.reviewChanges",
+    "onCommand:aiPrivacyRouter.scanProject",
+    "onCommand:aiPrivacyRouter.scanChanged",
+    "onCommand:aiPrivacyRouter.securityScan",
+    "onCommand:aiPrivacyRouter.findSecrets",
+    "onCommand:aiPrivacyRouter.checkDependencies"
   ],
   "contributes": {
     "walkthroughs": [
@@ -123,6 +133,10 @@
         "title": "Hushavyr: Update Trivy Vulnerability Database"
       },
       {
+        "command": "aiPrivacyRouter.updateVulnDbs",
+        "title": "Hushavyr: Update Vulnerability Databases (Trivy + OSV)"
+      },
+      {
         "command": "aiPrivacyRouter.exportSbom",
         "title": "Hushavyr: Export SBOM (CycloneDX)"
       },
@@ -137,6 +151,42 @@
       {
         "command": "aiPrivacyRouter.createVerifiedFixPr",
         "title": "Hushavyr: Create Draft PR from Verified Local Fix"
+      },
+      {
+        "command": "aiPrivacyRouter.reviewFile",
+        "title": "Hushavyr: Review Current File (Local AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.explainFile",
+        "title": "Hushavyr: Explain Current File (Local AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.explainFinding",
+        "title": "Hushavyr: Explain a Security Finding (Local AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.reviewChanges",
+        "title": "Hushavyr: Review Uncommitted Changes (Local AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.scanProject",
+        "title": "Hushavyr: Scan Project (Local AI + Security Rules)"
+      },
+      {
+        "command": "aiPrivacyRouter.scanChanged",
+        "title": "Hushavyr: Scan Changed Files (Local AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.securityScan",
+        "title": "Hushavyr: Security Scan (No AI)"
+      },
+      {
+        "command": "aiPrivacyRouter.findSecrets",
+        "title": "Hushavyr: Find Hardcoded Secrets"
+      },
+      {
+        "command": "aiPrivacyRouter.checkDependencies",
+        "title": "Hushavyr: Check Dependencies for CVEs"
       }
     ],
     "configuration": {
@@ -238,6 +288,11 @@
           "default": "",
           "scope": "application",
           "description": "Optional prepopulated local Maven repository. Empty uses ~/.m2/repository. Each run privately copies and hashes at most 4 GB/100,000 files, then mounts that snapshot read-only."
+        },
+        "aiPrivacyRouter.autoUpdateVulnDb": {
+          "type": "boolean",
+          "default": false,
+          "description": "Before a dependency audit, download the latest public CVE databases (Trivy, OSV.dev) when they are over a day old. Only public vulnerability data is downloaded; no code or dependency list leaves this machine."
         },
         "aiPrivacyRouter.language": {
           "type": "string",
@@ -362,7 +417,19 @@
           }
         ]
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aiPrivacyRouter.reviewFile",
+          "group": "hushavyr@1"
+        },
+        {
+          "command": "aiPrivacyRouter.explainFile",
+          "group": "hushavyr@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "tsc -p . && node scripts/vendor-tree-sitter.cjs",
@@ -375,7 +442,8 @@
     "update:local": "node scripts/update-local.cjs",
     "scan": "npm run build && node dist/cli.js",
     "benchmark:static": "npm run build && node dist/benchmark.js --static --gate",
-    "benchmark:owasp": "npm run build && node benchmarks/owasp.mjs"
+    "benchmark:owasp": "npm run build && node benchmarks/owasp.mjs",
+    "benchmark:owasp-python": "npm run build && node benchmarks/owasp.mjs --lang python"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

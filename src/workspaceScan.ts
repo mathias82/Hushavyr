@@ -3,6 +3,7 @@ import {configuredClient} from "./model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
 import {trivyDbAgeDays, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
+import {autoUpdateIfStale, offerUpdateIfStale, vulnDbAges, vulnDbStatus} from "./vulnDb";
 import {runScanner} from "./externalScanners";
 import {auditDependenciesWithOsv, CodeFinding, runCodeScanners, scannerLabel, statusLine} from "./codeScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
@@ -173,6 +174,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         }
       }
       if (request.command === "dependencies") {
+        await autoUpdateIfStale();
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
           const {audit, osv, vulnerabilities} = await auditDependenciesWithOsv(folder.uri.fsPath, controller.signal);
           const lang = uiLanguage();
@@ -180,9 +182,15 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             (audit.manager ?? "unknown") + " · " + tr(lang, "reported") + ": " + audit.findings +
             ". " + audit.note + ". " + tr(lang, "noCloud") + "\n\n");
           if (osv.status === "ok") stream.markdown("**OSV-Scanner (offline database):** " + (vulnerabilities.length - (audit.vulnerabilities ?? []).length) + " additional vulnerabilities not reported by Trivy.\n\n");
-          else if (osv.reason === "db-missing") stream.markdown("**OSV-Scanner:** no offline vulnerability database yet; run **Hushavyr: Setup** to download one. Skipped.\n\n");
+          else if (osv.reason === "db-missing") stream.markdown("**OSV-Scanner:** no offline database for this project's ecosystems yet; run **Hushavyr: Update Vulnerability Databases** to download it. Skipped.\n\n");
           const age = audit.status === "ok" ? await trivyDbAgeDays() : undefined;
           if (age !== undefined && age > 7) stream.markdown("**" + age + " " + tr(lang, "dbDays") + ".** " + tr(lang, "dbStale") + "\n\n");
+          const ages = await vulnDbAges();
+          // The OSV database is per ecosystem: one for another project does not cover this one.
+          if (osv.reason === "db-missing") ages.osv = undefined;
+          const tools = {trivy: audit.status !== "missing", osv: osv.status !== "missing" || osv.reason === "db-missing"};
+          stream.markdown(vulnDbStatus(ages, tools));
+          offerUpdateIfStale(ages, tools);
           // Packages the project source actually imports come first; the rest are usually transitive or unused.
           const reach = (v: GroupedVulnerability) => reachability(v.pkg, v.targets.join(" ") + " " + (audit.manager ?? ""), imports);
           const eco = (v: GroupedVulnerability) => v.targets.join(" ") + " " + (audit.manager ?? "");

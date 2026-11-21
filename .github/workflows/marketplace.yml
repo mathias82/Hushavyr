@@ -82,4 +82,7 @@ jobs:
         run: vsce publish --oidc --packagePath hushavyr.vsix
       - name: Publish to Open VSX (Cursor, VSCodium, Windsurf)
         if: ${{ env.OVSX_PAT != '' }}
-        run: npx --yes ovsx@1.4.0 publish hushavyr.vsix --pat "$OVSX_PAT"
+        run: |
+          # The namespace exists after the first release; "already exists" is not an error.
+          npx --yes ovsx@1.4.0 create-namespace mathias82 --pat "$OVSX_PAT" || true
+          npx --yes ovsx@1.4.0 publish hushavyr.vsix --pat "$OVSX_PAT"

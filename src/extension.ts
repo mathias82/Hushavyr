@@ -13,13 +13,16 @@ import {registerOllamaCommands} from "./ollamaCommands";
 import {registerLocalCommands} from "./localCommands";
 import {registerChatParticipant} from "./chatParticipant";
 import {registerReportIssue} from "./reportIssue";
+import {clearScanFindings, registerPaletteCommands} from "./paletteCommands";
+import {registerExplainFinding} from "./explainFinding";
+import {UPDATE_VULN_DBS, updateVulnerabilityDatabases} from "./vulnDb";
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);
   registerVerifiedFixPr(context);
   const reviewDiagnostics = vscode.languages.createDiagnosticCollection("hushavyr");
   context.subscriptions.push(reviewDiagnostics,
-    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); }),
+    vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); clearScanFindings(); }),
     // Team memory: the dismissal is written to the repository so it applies to everyone after commit.
     vscode.commands.registerCommand("aiPrivacyRouter.dismissFinding", async (uriText: string, line: number) => {
       const uri = vscode.Uri.parse(uriText);
@@ -41,6 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.setup", () => runSetup()));
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.updateTrivyDb", () => updateTrivyDatabase()));
+  context.subscriptions.push(vscode.commands.registerCommand(UPDATE_VULN_DBS, () => updateVulnerabilityDatabases()));
   context.subscriptions.push(vscode.commands.registerCommand("aiPrivacyRouter.exportSbom", () => exportWorkspaceSbom()));
   registerDependencyQuickFix(context);
   registerApplyFix(context);
@@ -50,7 +54,8 @@ export function activate(context: vscode.ExtensionContext): void {
   registerReportIssue(context);
   const autoPrompt = createAutoPrompt(context);
   registerLocalCommands(context, autoPrompt);
-  registerChatParticipant(context, reviewDiagnostics, autoPrompt);
+  registerPaletteCommands(context, registerChatParticipant(context, reviewDiagnostics, autoPrompt));
+  registerExplainFinding(context);
 }
 
 export function deactivate(): void {}

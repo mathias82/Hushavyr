@@ -1,12 +1,15 @@
 # Hushavyr — Private AI Code Review & Security Scanner for VS Code
 
 [![VS Marketplace](https://vsmarketplacebadges.dev/version-short/mathias82.hushavyr.svg)](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr)
+[![Open VSX](https://img.shields.io/open-vsx/v/mathias82/hushavyr?label=Open%20VSX)](https://open-vsx.org/extension/mathias82/hushavyr)
 [![Installs](https://vsmarketplacebadges.dev/installs-short/mathias82.hushavyr.svg)](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr)
 [![Rating](https://vsmarketplacebadges.dev/rating-star/mathias82.hushavyr.svg)](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr&ssr=false#review-details)
 [![CI](https://github.com/mathias82/Hushavyr/actions/workflows/ci.yml/badge.svg)](https://github.com/mathias82/Hushavyr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Hushavyr is a **free, local AI code reviewer** and **security scanner** for VS Code. It runs **on your machine** with Ollama. It finds bugs, security vulnerabilities (OWASP Top 10, SQL injection, XSS, command injection), hardcoded secrets and vulnerable dependencies (CVEs). It can prove a fix with a failing test and open the pull request. Your code never goes to a cloud model.
+Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)** for VS Code, Cursor, VSCodium and Windsurf. It runs **on your machine** with Ollama, so it is a private alternative to cloud AI code review. It finds bugs, security vulnerabilities (OWASP Top 10, SQL injection, XSS, command injection, path traversal), hardcoded secrets and vulnerable dependencies (CVEs), then explains each finding in the context of your code and suggests a fix. It can prove a fix with a failing test and open the pull request. Your code never goes to a cloud model.
+
+**Accuracy:** 97.2% on the [OWASP Benchmark for Java](docs/owasp-benchmark.md) and 100% on the [OWASP Benchmark for Python](docs/owasp-benchmark-python.md), both with 0% false positives.
 
 **Works with:** Java, Kotlin, Python, JavaScript, TypeScript, Go, Rust, C#, PHP and Ruby.
 
@@ -27,9 +30,9 @@ This is a brand interpretation, not a literal translation of an existing word.
 
 ## Install
 
-1. Install **Hushavyr** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr).
+1. Install **Hushavyr** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr), or from [Open VSX](https://open-vsx.org/extension/mathias82/hushavyr) for VSCodium, Cursor, Windsurf and Gitpod.
 2. Run **Hushavyr: Setup** from the Command Palette. It installs or downloads Ollama, a local model and, if you agree, Semgrep, Gitleaks, Trivy, OSV-Scanner and, for the languages in your project, FindSecBugs, Bandit and gosec. Nothing is installed without asking you.
-3. Open a project and type `@ai-privacy /review` in Chat.
+3. Open a project and type `@ai-privacy /review` in Chat, or run **Hushavyr: Review Current File** from the Command Palette.
 
 ## What it uses
 
@@ -55,7 +58,7 @@ Output is SARIF 2.1.0, so GitHub code scanning and any other SARIF viewer can re
 
 ## Models and memory
 
-Setup picks the model for your machine; you can change it in the `aiPrivacyRouter.ollamaModel` setting. `aiPrivacyRouter.reviewDepth` (default `auto`) picks how many review passes run for the same memory sizes.
+Setup picks the model for your machine and also lists the models you already have in Ollama. Choose **Other…** to use any local Ollama model (for example `codestral`), or change `aiPrivacyRouter.ollamaModel` later. The list never comes from the internet. `aiPrivacyRouter.reviewDepth` (default `auto`) picks how many review passes run for the same memory sizes.
 
 | Memory | Default model | Notes |
 | --- | --- | --- |
@@ -87,7 +90,14 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/auto` | Sends a typed question that contains no code to the right model |
 | `/escalate` | *Opt-in.* Sends only the selected function to a Copilot model, with names removed and after you approve it (see below) |
 
+**Without Chat** (Cursor, Windsurf, VSCodium, or Chat turned off): the main commands are also in the Command Palette, for example **Hushavyr: Review Current File**, **Scan Project**, **Security Scan (No AI)**, **Find Hardcoded Secrets** and **Check Dependencies for CVEs**. The report opens as a Markdown preview with links to each line, and the findings appear in the **Problems** panel. *Review* and *Explain* are also in the editor's right-click menu.
+
+**Explain a finding with local AI:** after `/security` or `/secrets` (or their palette commands), click **Explain a finding**, or use the 💡 quick fix on any Hushavyr finding. The scanner result stays unchanged; the local model explains what it means in that exact code, whether it looks real, and suggests a minimal fix.
+
+**Fresh CVE data:** every dependency report shows how old the Trivy and OSV databases are. If one is over a day old, Hushavyr offers **Update now**; **Hushavyr: Update Vulnerability Databases** updates both. Turn on `aiPrivacyRouter.autoUpdateVulnDb` to update daily before audits. Only the public CVE database is downloaded; your code and dependency list never leave the machine.
+
 Quick fixes on findings:
+- **Explain this finding (local AI):** context-aware explanation and a suggested fix, next to the original scanner result.
 - **Propose a local fix:** shows a diff, and nothing changes until you approve it.
 - **Prove with a failing test:** runs a generated test in an offline Docker container (Java/Maven, Python/pytest, JavaScript/TypeScript, Go). The bug counts as confirmed only if that test fails.
 - **Not a real issue:** hides the finding for the whole team.
@@ -103,7 +113,7 @@ Quick fixes on findings:
 ## CI
 
 - **Project scan:** run `node dist/cli.js . --sarif hushavyr.sarif --fail-on high` and upload the SARIF to GitHub code scanning. See `.github/workflows/hushavyr-scan.yml`.
-- **Benchmark:** results of the CLI scan on the public OWASP Benchmark for Java are in [docs/owasp-benchmark.md](docs/owasp-benchmark.md).
+- **Benchmark:** results of the CLI scan on the public OWASP Benchmark for Java are in [docs/owasp-benchmark.md](docs/owasp-benchmark.md), and for Python in [docs/owasp-benchmark-python.md](docs/owasp-benchmark-python.md).
 - **PR review:** copy `examples/hushavyr-pr-review.yml` into your workflows. It runs on a self-hosted runner with Ollama, reviews only the changed lines and comments on the PR.
 
 ## Hushavyr compared with cloud AI review
@@ -128,14 +138,17 @@ No. Review, scanning and fixes run locally, and there is no telemetry. Only the 
 **Which model should I use?**
 Setup picks one for your RAM: `qwen2.5-coder:7b` under 20 GB, `14b` for 20–30 GB, and `qwen3-coder:30b` from 30 GB up. See [Models and memory](#models-and-memory).
 
+**Will it detect a CVE published today?**
+Yes, once the local CVE database is updated. Scans run offline against a downloaded copy of the public Trivy and OSV.dev databases, which are refreshed every few hours. Each report shows the database age, offers **Update now** when it is over a day old, and `aiPrivacyRouter.autoUpdateVulnDb` keeps it fresh automatically.
+
 **Can I use it without AI?**
 Yes. `/security`, `/secrets` and `/dependencies` are deterministic and need no model. The `hushavyr-scan` CLI runs the same checks in CI and writes SARIF for GitHub code scanning.
 
 **How accurate is it?**
-On our synthetic benchmark the built-in rules find every planted issue with no false alarms. On the external [OWASP Benchmark for Java](docs/owasp-benchmark.md) the scanner scores **97.2% with 0% false positives** (every category 100% except weak hashing, 69%). Real projects are messier than any benchmark, so no tool is perfect. Findings are potential issues; check them before acting.
+On our synthetic benchmark the built-in rules find every planted issue with no false alarms. On the external [OWASP Benchmark for Java](docs/owasp-benchmark.md) the scanner scores **97.2% with 0% false positives** (every category 100% except weak hashing, 69%). On the [OWASP Benchmark for Python](docs/owasp-benchmark-python.md) it scores **100% with 0% false positives**. That suite is small and formulaic, and its patterns were studied while the rules were written. Real projects are messier than any benchmark, so no tool is perfect. Findings are potential issues; check them before acting.
 
 **Does it work in Cursor, VSCodium or Windsurf?**
-The `@ai-privacy` chat commands need the VS Code Chat API (VS Code 1.90 or later), which other editors may not support. The Command Palette commands and the `hushavyr-scan` CLI work everywhere.
+Yes. Install it from [Open VSX](https://open-vsx.org/extension/mathias82/hushavyr). The `@ai-privacy` chat commands need the VS Code Chat API (VS Code 1.90 or later), which other editors may not support, but every main feature is also a Command Palette command, and the `hushavyr-scan` CLI works everywhere.
 
 ## Privacy
 

@@ -1,32 +1,42 @@
 #!/usr/bin/env node
-// External benchmark: scores the Hushavyr CLI against the OWASP Benchmark for Java (v1.2).
-// The OWASP project is GPL-2 and is cloned outside this repository; nothing from it is vendored.
+// External benchmark: scores the Hushavyr CLI against the OWASP Benchmark for Java (v1.2) or, with --lang python, for Python (v0.1).
+// The OWASP projects are GPL and are cloned outside this repository; nothing from them is vendored.
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-export const CATEGORIES = ['cmdi', 'crypto', 'hash', 'ldapi', 'pathtraver', 'securecookie', 'sqli', 'trustbound', 'weakrand', 'xpathi', 'xss'];
+export const CATEGORIES = ['cmdi', 'codeinj', 'crypto', 'deserialization', 'hash', 'ldapi', 'pathtraver', 'redirect', 'securecookie', 'sqli', 'trustbound', 'weakrand', 'xpathi', 'xss', 'xxe'];
+/** Where each Benchmark lives, which folder is scanned and which file extension names a test case. */
+export const BENCHMARKS = {
+  java: {name: 'OWASP Benchmark for Java 1.2', repo: 'BenchmarkJava', csv: 'expectedresults-1.2.csv', scan: 'src/main/java/org/owasp/benchmark/testcode', ext: 'java'},
+  // The whole checkout is scanned, as a user would scan a Flask project: the shared helpers are analysed with the test cases.
+  python: {name: 'OWASP Benchmark for Python 0.1', repo: 'BenchmarkPython', csv: 'expectedresults-0.1.csv', scan: '.', ext: 'py'}
+};
 // Rule ids as they appear in our SARIF (built-in, taint-*, canonical Semgrep ids); CWE ids are accepted too.
 const RULES = [
   ['cmdi', /command-execution|runtime-exec|shell-execution|child-process-exec|^taint-command$|cwe-0*78$/],
+  ['codeinj', /dynamic-code|code-injection|-eval$|^taint-code$|cwe-0*9[45]$/],
+  ['deserialization', /deserializ|cwe-0*502$/],
   ['crypto', /weak-cipher|weak-encryption|cwe-0*327$/],
   ['hash', /weak-(?:cryptographic-)?hash|cwe-0*328$/],
   ['ldapi', /ldap|cwe-0*90$/],
   ['pathtraver', /path-traversal|^taint-path$|cwe-0*22$/],
+  ['redirect', /open-redirect|^taint-redirect$|cwe-0*601$/],
   ['securecookie', /cookie-insecure|insecure-cookie|cwe-0*614$/],
   ['sqli', /sql|cwe-0*89$/],
   ['trustbound', /trust-boundary|cwe-0*501$/],
   ['weakrand', /(?:weak|insecure)-random|cwe-0*330$/],
   ['xpathi', /xpath|cwe-0*643$/],
-  ['xss', /xss|cwe-0*79$/]
+  ['xss', /xss|cwe-0*79$/],
+  ['xxe', /xxe|xml-external-entit|cwe-0*611$/]
 ];
 
 /** OWASP category for one of our rule ids, or undefined when it has no Benchmark counterpart. */
 export const categoryOf = ruleId => RULES.find(([, rx]) => rx.test(String(ruleId).toLowerCase()))?.[0];
 
-/** Parses expectedresults-1.2.csv: "test name, category, real vulnerability, cwe". */
+/** Parses expectedresults-*.csv: "test name, category, real vulnerability, cwe". */
 export function parseExpected(csv) {
   return csv.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('#')).map(l => {
     const [test, category, real, cwe] = l.split(',').map(s => s.trim());
@@ -35,12 +45,13 @@ export function parseExpected(csv) {
 }
 
 /** Maps SARIF results to test name -> set of OWASP categories flagged in that file. */
-export function flaggedTests(sarif) {
+export function flaggedTests(sarif, ext = 'java') {
+  const name = new RegExp(`(BenchmarkTest\\d{5})\\.${ext}$`);
   const flagged = new Map();
   let unmapped = 0, outside = 0;
   for (const run of sarif.runs ?? []) for (const r of run.results ?? []) {
     const uri = r.locations?.[0]?.physicalLocation?.artifactLocation?.uri ?? '';
-    const test = /(BenchmarkTest\d{5})\.java$/.exec(uri)?.[1];
+    const test = name.exec(uri)?.[1];
     const category = categoryOf(r.ruleId);
     if (!category) { unmapped++; continue; }
     if (!test) { outside++; continue; }
@@ -80,12 +91,12 @@ export function markdown({categories, overall}) {
 
 function option(name) { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; }
 
-function checkout(source) {
+function checkout(source, repo) {
   if (source) return resolve(source);
-  const dir = join(homedir(), '.cache', 'hushavyr', 'BenchmarkJava');
+  const dir = join(homedir(), '.cache', 'hushavyr', repo);
   if (!existsSync(dir)) {
     mkdirSync(join(dir, '..'), {recursive: true});
-    const git = spawnSync('git', ['clone', '--depth', '1', 'https://github.com/OWASP-Benchmark/BenchmarkJava.git', dir], {stdio: 'inherit'});
+    const git = spawnSync('git', ['clone', '--depth', '1', `https://github.com/OWASP-Benchmark/${repo}.git`, dir], {stdio: 'inherit'});
     if (git.status !== 0) throw new Error('git clone failed');
   }
   return dir;
@@ -93,20 +104,22 @@ function checkout(source) {
 
 function main() {
   const repo = fileURLToPath(new URL('..', import.meta.url));
-  const source = checkout(option('--source'));
-  const testcode = join(source, 'src/main/java/org/owasp/benchmark/testcode');
-  const sarifPath = join(homedir(), '.cache', 'hushavyr', 'owasp-benchmark.sarif');
+  const lang = option('--lang') ?? 'java', bench = BENCHMARKS[lang];
+  if (!bench) throw new Error(`unknown --lang ${lang}; use ${Object.keys(BENCHMARKS).join(' or ')}`);
+  const source = checkout(option('--source'), bench.repo);
+  const testcode = join(source, bench.scan);
+  const sarifPath = join(homedir(), '.cache', 'hushavyr', lang === 'java' ? 'owasp-benchmark.sarif' : `owasp-benchmark-${lang}.sarif`);
   mkdirSync(join(sarifPath, '..'), {recursive: true});
   const scan = spawnSync(process.execPath, [join(repo, 'dist/cli.js'), testcode, '--sarif', sarifPath, '--fail-on', 'none'], {encoding: 'utf8', maxBuffer: 1 << 28});
   if (scan.status !== 0) throw new Error('scan failed: ' + scan.stderr);
-  const csv = readFileSync(join(source, 'expectedresults-1.2.csv'), 'utf8');
-  const {flagged, unmapped, outside} = flaggedTests(JSON.parse(readFileSync(sarifPath, 'utf8')));
+  const csv = readFileSync(join(source, bench.csv), 'utf8');
+  const {flagged, unmapped, outside} = flaggedTests(JSON.parse(readFileSync(sarifPath, 'utf8')), bench.ext);
   const result = score(parseExpected(csv), flagged);
   const commit = spawnSync('git', ['-C', source, 'rev-parse', 'HEAD'], {encoding: 'utf8'}).stdout?.trim();
   const version = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).version;
-  const report = {benchmark: 'OWASP Benchmark for Java 1.2', commit, hushavyr: version, date: new Date().toISOString().slice(0, 10), unmappedFindings: unmapped, findingsOutsideTests: outside, ...result};
+  const report = {benchmark: bench.name, commit, hushavyr: version, date: new Date().toISOString().slice(0, 10), unmappedFindings: unmapped, findingsOutsideTests: outside, ...result};
   if (option('--out')) writeFileSync(resolve(option('--out')), JSON.stringify(report, null, 2) + '\n');
-  console.log(`OWASP Benchmark 1.2 (${commit?.slice(0, 7)}), Hushavyr ${version}, ${report.date}\n\n${markdown(result)}\n\nUnmapped findings ignored: ${unmapped}`);
+  console.log(`${bench.name} (${commit?.slice(0, 7)}), Hushavyr ${version}, ${report.date}\n\n${markdown(result)}\n\nUnmapped findings ignored: ${unmapped}; mapped findings outside test cases: ${outside}`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

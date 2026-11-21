@@ -5,7 +5,7 @@ import {totalmem} from "node:os";
 import {defaultFindSecBugsPlugin, hasOsvDatabase} from "./codeScanners";
 import {LocalOllama} from "./ollama";
 import {tr} from "./i18n";
-import {configuredModel, recommendedModel} from "./model";
+import {configuredModel, isLocalModelName, modelChoices, recommendedModel} from "./model";
 export {recommendedModel};
 
 
@@ -117,13 +117,17 @@ export async function runSetup(): Promise<void> {
   }
   summary.push("Ollama: running");
   const best = recommendedModel(totalmem());
-  const options = [...new Set([model, best, "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"])];
-  const pick = await vscode.window.showQuickPick(options.map(label => ({
-    label, description: label === best ? tr(language, "setupRecommended") : label === model ? tr(language, "setupCurrent") : undefined
-  })), {placeHolder: tr(language, "setupPick")});
+  const installed = await probe.listModels().catch(() => [] as string[]);
+  const tagText = (tag: string) => tag === "recommended" ? tr(language, "setupRecommended") : tag === "current" ? tr(language, "setupCurrent") : tag;
+  const other = "$(edit) Other…";
+  const pick = await vscode.window.showQuickPick([...modelChoices(model, best, installed).map(choice => ({label: choice.label, description: choice.tags.map(tagText).join(" · ") || undefined})),
+    {label: other, description: "any Ollama model name, e.g. codestral"}], {placeHolder: tr(language, "setupPick")});
   if (!pick) return;
-  if (pick.label !== model) {
-    model = pick.label;
+  const chosen = pick.label === other ? (await vscode.window.showInputBox({prompt: "Ollama model name (downloaded locally if missing)", placeHolder: "codestral:22b",
+    validateInput: value => isLocalModelName(value.trim()) ? undefined : "Enter a local Ollama model name such as codestral or qwen2.5-coder:14b"}))?.trim() : pick.label;
+  if (!chosen) return;
+  if (chosen !== model) {
+    model = chosen;
     await config.update("ollamaModel", model, vscode.ConfigurationTarget.Global);
   }
   try {

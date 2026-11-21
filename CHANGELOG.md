@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3
+- **Without Chat:** every scan and review is also a Command Palette command (and in the editor right-click menu); reports open as Markdown previews and findings go to the Problems panel. Works in Cursor, VSCodium and Windsurf.
+- **Explain a finding (local AI):** after `/security`, `/secrets` or the palette scans, pick a finding (or use the 💡 quick fix) and the local model explains it in the context of that code and suggests a fix. The scanner result stays unchanged.
+- **Fresh CVE data:** reports show when the Trivy and OSV databases were last updated; one command, *Hushavyr: Update Vulnerability Databases*, refreshes both; an offer appears when they are older than a day; optional `aiPrivacyRouter.autoUpdateVulnDb`.
+- **Model choice:** Setup lists the models already installed in Ollama, the recommended ones, and *Other…* for any Ollama model name. The list never comes from the internet.
+- **Python rules:** taint tracking and rules for Python; OWASP Benchmark for Python 100% (0% false positives), Java 97.2%.
+- **Open VSX:** published there as well.
+- **Fixes:** links in Markdown reports open at the right line; review evidence uses the file's language for highlighting; the chat Explain button works with VS Code's frozen response stream.
+
 ## 1.0.2
 - **README:** link to the HD demo video.
 - **Marketplace:** clearer name and description, more precise search keywords.

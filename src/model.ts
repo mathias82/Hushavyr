@@ -37,3 +37,14 @@ export function configuredClient(config: ModelConfig, model = configuredModel(co
     // A 16k context alone needs gigabytes of KV cache; 8k still fits the 20 KB review limit.
     contextTokens: memoryBytes / 1024 ** 3 < 12 ? 8192 : undefined});
 }
+
+export const CURATED_MODELS = ["qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"];
+/** Setup choices: current and recommended first, then the curated code models, then whatever is already installed locally. */
+export function modelChoices(current: string, best: string, installed: readonly string[]): {label: string; tags: string[]}[] {
+  const has = new Set(installed);
+  return [...new Set([current, best, ...CURATED_MODELS, ...installed])].map(label => ({label,
+    tags: [label === best ? "recommended" : "", label === current ? "current" : "", has.has(label) ? "installed" : ""].filter(Boolean)}));
+}
+/** Ollama model names such as "codestral", "qwen2.5-coder:14b" or "user/model:tag"; cloud models are rejected. */
+export const isLocalModelName = (name: string): boolean =>
+  /^[a-z0-9][\w.-]*(\/[\w.-]+)?(:[\w.-]+)?$/i.test(name) && !/(?:^|[:/-])cloud(?:$|[:/-])/i.test(name);

@@ -1,6 +1,6 @@
 // Optional offline analyzers: FindSecBugs (SpotBugs), Bandit, gosec and OSV-Scanner. A missing tool is skipped, never an error.
 import {join, relative, resolve, isAbsolute, dirname, basename} from "node:path";
-import {mkdtemp, readFile, rm, readdir, access} from "node:fs/promises";
+import {mkdtemp, readFile, rm, readdir, access, stat} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {tmpdir, homedir} from "node:os";
 import {exec} from "./exec";
@@ -278,6 +278,26 @@ export function osvDatabaseDirs(env: NodeJS.ProcessEnv = process.env, platform =
 export async function hasOsvDatabase(dirs = osvDatabaseDirs()): Promise<boolean> {
   for (const dir of dirs) if ((await find(dir, (rel, isDir) => !isDir && rel.endsWith("all.zip"), 1, 3)).length) return true;
   return false;
+}
+
+/** Hours since the newest OSV offline database was downloaded, or undefined when there is none. */
+export async function osvDbAgeHours(dirs = osvDatabaseDirs(), now = Date.now()): Promise<number | undefined> {
+  let newest = 0;
+  for (const dir of dirs) for (const file of await find(dir, (r, isDir) => !isDir && r.endsWith("all.zip"), 50, 3)) {
+    try { newest = Math.max(newest, (await stat(file)).mtimeMs); } catch { /* removed meanwhile */ }
+  }
+  return newest ? Math.max(0, Math.floor((now - newest) / 3_600_000)) : undefined;
+}
+/** Downloads the public OSV.dev data for the ecosystems in `root`; no code or dependency list is uploaded. */
+export async function downloadOsvDatabase(root: string, signal?: AbortSignal): Promise<void> {
+  try {
+    await exec("osv-scanner", ["scan", "source", "--offline-vulnerabilities", "--download-offline-databases", "--no-resolve", "--format", "json", "-r", "."],
+      {cwd: root, timeout: 600000, maxBuffer: 64 * 1024 * 1024, windowsHide: true, signal});
+  } catch (e) {
+    // 1: vulnerabilities found, 128: no packages; the database was still downloaded.
+    const code = (e as {code?: string | number}).code;
+    if (code !== 1 && code !== 128) throw e;
+  }
 }
 
 export interface CombinedAudit {audit: DependencyAudit; osv: OsvScan; vulnerabilities: DependencyVulnerability[]; totals: string[]}

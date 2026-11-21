@@ -24,3 +24,8 @@ test("flags weak Java ciphers, key generators and insecure random but not AES/GC
  const java=["Cipher c = Cipher.getInstance(\"DES/CBC/PKCS5Padding\");","Cipher e = Cipher.getInstance(\"AES/ECB/PKCS5Padding\");","SecretKey k = KeyGenerator.getInstance(\"DES\").generateKey();","MessageDigest md = MessageDigest.getInstance(\"SHA1\", \"SUN\");","double r = new java.util.Random().nextDouble();","Cipher g = Cipher.getInstance(\"AES/GCM/NoPadding\");","SecureRandom s = new SecureRandom();"].join("\n");
  assert.deepEqual(scanSecurity("Crypto.java",java).map(x=>x.line),[1,2,3,4,5]);
 });
+test("flags weak Python hashes, insecure random for tokens and cookies without secure",()=>{
+ const py=["h = hashlib.new('md5')","h = hashlib.new('sha256')","h = hashlib.new('sha1', usedforsecurity=False)","token = random.getrandbits(64)","token = random.SystemRandom().random()","token = secrets.token_hex()",
+  "resp.set_cookie('session', token,","    httponly=True,","    secure=False)","resp.set_cookie('session', token,","    secure=True)"].join("\n");
+ assert.deepEqual(scanSecurity("app.py",py).map(x=>[x.line,x.rule]),[[1,"Weak cryptographic hash"],[4,"Insecure random number generator"],[7,"Insecure cookie"]]);
+});

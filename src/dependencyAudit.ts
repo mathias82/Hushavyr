@@ -120,3 +120,27 @@ export async function trivyDbAgeDays():Promise<number|undefined>{
  }
  return undefined;
 }
+
+/** Hours since the Trivy database was downloaded (falls back to its publish time). */
+export function dbAgeHours(metadata:string,now=Date.now()):number|undefined{
+ try{
+  const m=JSON.parse(metadata) as {DownloadedAt?:string;UpdatedAt?:string};
+  const at=Date.parse(m.DownloadedAt??m.UpdatedAt??"");
+  return Number.isFinite(at)?Math.max(0,Math.floor((now-at)/3_600_000)):undefined;
+ }catch{return undefined}
+}
+export async function trivyDbAgeHours():Promise<number|undefined>{
+ const dirs=[process.env.TRIVY_CACHE_DIR,join(homedir(),"Library","Caches","trivy"),join(homedir(),".cache","trivy"),process.env.LOCALAPPDATA&&join(process.env.LOCALAPPDATA,"trivy")];
+ for(const dir of dirs){
+  if(!dir)continue;
+  try{return dbAgeHours(await readFile(join(dir,"db","metadata.json"),"utf8"))}catch{/* try next location */}
+ }
+ return undefined;
+}
+/** "3 h ago" / "2 days ago" / "not downloaded". */
+export function formatDbAge(hours:number|undefined):string{
+ if(hours===undefined)return "not downloaded";
+ return hours<1?"less than 1 h ago":hours<48?hours+" h ago":Math.floor(hours/24)+" days ago";
+}
+/** A database older than a day (or missing) may lack CVEs published today. */
+export const dbIsStale=(hours:number|undefined):boolean=>hours===undefined||hours>24;

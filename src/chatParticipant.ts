@@ -22,6 +22,7 @@ import {publishFindings} from "./diagnostics";
 import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./teamMemory";
 import {lowMemoryWarning} from "./setup";
 import {runWorkspaceScan, isScanCommand} from "./workspaceScan";
+import {EXPLAIN_FINDING, rememberReport} from "./explainFinding";
 import {formatTestReceipt} from "./regression";
 import {runWorkspaceTests} from "./localCommands";
 
@@ -53,7 +54,7 @@ function relativeLocation(path: string): string {
 }
 
 export function registerChatParticipant(context: vscode.ExtensionContext, reviewDiagnostics: vscode.DiagnosticCollection,
-  autoPrompt: ReturnType<typeof createAutoPrompt>): void {
+  autoPrompt: ReturnType<typeof createAutoPrompt>): vscode.ChatRequestHandler {
   // Remember the last non-empty editor selection when focus moves into Chat.
   let lastSelection: {uri: string; text: string; startLine: number} | undefined;
   let lastCodeEditor: vscode.TextEditor | undefined;
@@ -101,7 +102,8 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
 
   // Always register our declared Chat Participant when the VS Code Chat API exists.
   // A user Chat setting must not silently leave the declared participant unregistered.
-  const participant = vscode.chat.createChatParticipant("ai-privacy-router.privacy", async (request, chatContext, stream, token) => {
+  // The same handler also serves the Command Palette commands (paletteCommands.ts).
+  const handler: vscode.ChatRequestHandler = async (request, chatContext, stream, token) => {
     // VS Code adds its own instruction/skill indexes as references; they are not user context.
     const userReferences = request.references.filter(ref => !isInstructionReference(ref.id, ""));
     if (request.command === "auto" && userReferences.length === 0) {
@@ -185,7 +187,19 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
     const workspaceReview = isScanCommand(request.command) || (command === "review" && !explains &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
-      await runWorkspaceScan(context, request, stream, token);
+      if (!["security", "secrets", "dependencies"].includes(request.command ?? "")) {
+        await runWorkspaceScan(context, request, stream, token);
+        return;
+      }
+      // Keep the scanner report as is; afterwards offer a local AI explanation of one finding.
+      let report = "";
+      // The chat stream is frozen, so proxy an empty object (proxy invariants) and forward to the stream.
+      const recording = new Proxy({} as vscode.ChatResponseStream, {get: (_, key) => key === "markdown"
+        ? (value: string | vscode.MarkdownString) => { report += typeof value === "string" ? value : value.value; return stream.markdown(value); }
+        : (v => typeof v === "function" ? v.bind(stream) : v)(Reflect.get(stream, key))});
+      await runWorkspaceScan(context, request, recording, token);
+      if (!token.isCancellationRequested && rememberReport(report))
+        stream.button({command: EXPLAIN_FINDING, title: "Explain a finding (local AI)"});
       return;
     }
     // VS Code may change editor focus when Chat opens. Use the last non-empty selection.
@@ -450,6 +464,9 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       if (!token.isCancellationRequested) stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");
     } finally { subscription.dispose(); }
 
-  });
-  context.subscriptions.push(participant);
+  };
+  // Editors without the Chat API (or with Chat turned off) still get the same commands from the Command Palette.
+  if (typeof vscode.chat?.createChatParticipant === "function")
+    context.subscriptions.push(vscode.chat.createChatParticipant("ai-privacy-router.privacy", handler));
+  return handler;
 }

@@ -239,6 +239,26 @@ test("servlet taint covers Java sinks, constant branches, collection slots and k
   ]);
 });
 
+test("Python taint follows Flask views through branches, slots, guards and safe responses", async () => {
+  const { taintFlows } = await import("../taint");
+  const view = (name: string, body: string[]) => [`@app.route("/${name}", methods=["POST"])`, `def ${name}():`, ...body.map(l => "    " + l)];
+  const text = ["import os, subprocess, html, urllib.parse", "from flask import request, redirect, session, make_response, abort", "",
+    ...view("sql", ["p = request.args.get('p')", "cur.execute(f\"SELECT * FROM u WHERE id='{p}'\")", "cur.execute('SELECT * FROM u WHERE id=?', (p,))", "return 'ok'"]),
+    ...view("branch", ["p = request.form.get('p')", "possible = 'ABC'", "g = possible[1]", "match g:", "    case 'A':", "        bar = p", "    case 'B' | 'C':", "        bar = 'safe'",
+      "    case _:", "        bar = p", "os.system('echo ' + bar)", "d = {}", "d['a'] = p", "d['b'] = 'x'", "subprocess.run(d['b'], shell=True)", "subprocess.run(d['a'], shell=True)", "return 'ok'"]),
+    ...view("guarded", ["p = request.args.get('next')", "u = urllib.parse.urlparse(p)", "if u.netloc not in ['example.com']:", "    return 'no'", "return redirect(p)"]),
+    ...view("open", ["return redirect(request.args.get('n'))"]),
+    ...view("page", ["p = request.args.get('p')", "session['user'] = p", "if '../' in p:", "    abort(400)", "open('/data/' + p)", "if p == 'x':",
+      "    return make_response(('ok', {'X-Value': p}))", "if p == 'y':", "    return f'<b>{html.escape(p)}</b>'", "return '<b>' + p"])
+  ].join("\n");
+  const flows = taintFlows([{path: "app.py", text}]);
+  const at = (needle: string) => text.split("\n").findIndex(l => l.includes(needle)) + 1;
+  assert.deepEqual(flows.map(f => [f.kind, f.sink.line]), [
+    ["sql", at("f\"SELECT")], ["command", at("d['a'], shell")], ["redirect", at("request.args.get('n')")],
+    ["trust-boundary", at("session['user']")], ["xss", at("'<b>' + p")]
+  ]);
+});
+
 test("function-level reachability finds a call of the vulnerable function, not just the import", () => {
   assert.deepEqual(vulnerableSymbols("left-pad", "Prototype pollution in zipObjectDeep via yaml.load()"), ["zipObjectDeep", "load"]);
   assert.deepEqual(vulnerableSymbols("lodash", "nodejs-lodash: command injection via template"), ["template"]);

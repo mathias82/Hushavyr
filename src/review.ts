@@ -122,6 +122,12 @@ export function inlineText(text: string): string {
   return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+const FENCE_LANGUAGES: Record<string, string> = {js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", tsx: "typescript", py: "python", java: "java", kt: "kotlin", go: "go", rb: "ruby", php: "php", cs: "csharp", rs: "rust", c: "c", h: "c", cpp: "cpp", swift: "swift", scala: "scala", sh: "bash", sql: "sql"};
+/** Code-fence language for syntax highlighting; empty (plain) when unknown or a selection. */
+export function fenceLanguage(path?: string): string {
+  return FENCE_LANGUAGES[path?.split(".").pop()?.toLowerCase() ?? ""] ?? "";
+}
+
 export function formatReview(result: ReviewResult, displayPath: (path: string) => string = p => p): string {
   if (result.error) return "**Review not verified:** " + result.error + ". No findings promoted." +
     (result.retryFailed ? " The local repair attempt also failed." : "") + " Try again with a smaller selection.";
@@ -136,7 +142,7 @@ export function formatReview(result: ReviewResult, displayPath: (path: string) =
     "**Status:** Potential · **Severity:** " + f.severity,
     "**Location:** \x60" + (f.path ? displayPath(f.path) : "selection").replace(/\x60/g, "") + ":" + (f.line ?? "?") + "\x60",
     "**Second local pass:** " + (f.verification === "supported" ? "Source support agreed; no runtime proof." : "Not verified."),
-    "**Source evidence:**", "\x60\x60\x60java\n" + f.evidence + "\n\x60\x60\x60",
+    "**Source evidence:**", "\x60\x60\x60" + fenceLanguage(f.path) + "\n" + f.evidence + "\n\x60\x60\x60",
     "**Proposed fix:** " + inlineText(f.fix),
     "**Regression test to implement:** " + inlineText(f.regressionTest), ""
   );

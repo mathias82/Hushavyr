@@ -122,3 +122,12 @@ test("review depth follows memory unless set", () => {
   assert.equal(configuredDepth(config("auto"), 32 * gb), "thorough");
   assert.equal(configuredDepth(config("thorough"), 8 * gb), "thorough");
 });
+
+test("setup offers curated, recommended and locally installed models, and accepts any local model name", () => {
+  const {modelChoices, isLocalModelName} = require("../model") as typeof import("../model");
+  const choices = modelChoices("qwen2.5-coder:7b", "qwen2.5-coder:14b", ["codestral:22b", "qwen2.5-coder:7b"]);
+  assert.deepEqual(choices.slice(0, 2), [{label: "qwen2.5-coder:7b", tags: ["current", "installed"]}, {label: "qwen2.5-coder:14b", tags: ["recommended"]}]);
+  assert.deepEqual(choices.at(-1), {label: "codestral:22b", tags: ["installed"]});
+  assert.equal(new Set(choices.map(c => c.label)).size, choices.length);
+  assert.deepEqual(["codestral", "user/model:q4_K_M", "gpt-oss:120b-cloud", "bad name", "x; rm -rf"].map(isLocalModelName), [true, true, false, false, false]);
+});
