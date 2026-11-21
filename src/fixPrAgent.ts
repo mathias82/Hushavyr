@@ -116,3 +116,4 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       }
     }
   }));
+}
