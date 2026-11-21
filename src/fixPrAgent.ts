@@ -3,7 +3,7 @@ import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {mkdtemp, readFile, rm, lstat} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join, resolve, relative, isAbsolute} from "node:path";
+import {join, resolve} from "node:path";
 import {sha256} from "./fixProof";
 
 const execute = promisify(execFile);
@@ -60,6 +60,7 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       await command("git", ["worktree","add","--detach",temp,head], root);
       await command("git", ["-c","core.safecrlf=false","apply","--check","--",patchPath],temp);
       await command("git", ["-c","core.safecrlf=false","apply","--",patchPath],temp);
+      await command("git", ["add","--intent-to-add","--all"],temp); // Include new regression test in diff preview
       const changes = await command("git", ["status","--porcelain"],temp);
       if (!changes) throw new Error("Verified patch made no changes");
       const diff = await command("git", ["diff","--stat"],temp);
@@ -87,8 +88,9 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       void vscode.window.showErrorMessage("Hushavyr PR creation stopped: "+(error instanceof Error ? error.message : "unknown error"));
     } finally {
       if (worktree) {
-        try {await command("git",["worktree","remove","--force",worktree],root);} catch {/* leave artifacts for manual recovery */}
-        try {await rm(worktree,{recursive:true,force:true});} catch {/* best effort */}
+        try {await command("git",["worktree","remove","--force",worktree],root);
+          await rm(worktree,{recursive:true,force:true});
+        } catch {void vscode.window.showWarningMessage("Isolated worktree cleanup needs manual attention: "+worktree);}
       }
     }
   }));
