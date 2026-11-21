@@ -1,5 +1,6 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
+import {loadIgnore} from "./teamMemory";
 import {configuredModel} from "./model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
@@ -7,7 +8,7 @@ import {auditDependencies, trivyDbAgeDays, findDependencyLine, groupVulnerabilit
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
-import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
+import {flowSeverity, flowTitle, taintFlows, TaintFile, TaintFlow} from "./taint";
 import {collectImports, findVulnerableCall, reachability, SymbolCall, vulnerableSymbols} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
@@ -28,6 +29,71 @@ function findingLink(uri: vscode.Uri, line: number, label: string): string {
   return "[" + safeLabel + "](" + target + ")";
 }
 
+function streamFlows(flows: readonly TaintFlow[], uriOf: ReadonlyMap<string, vscode.Uri>, stream: vscode.ChatResponseStream): void {
+  if (flows.length) stream.markdown("**Data flow (request input to dangerous call, across files):**\n\n");
+  for (const flow of flows.slice(0, 50)) {
+    const sink = uriOf.get(flow.sink.path), source = uriOf.get(flow.source.path);
+    if (!sink || !source) continue;
+    stream.markdown("**" + flowSeverity(flow).toUpperCase() + " · " + flowTitle(flow).replace(/[\r\n`\[\]]/g, " ") + "** · sink " + findingLink(sink, flow.sink.line, flow.sink.path + ":" + flow.sink.line) +
+      " · input " + findingLink(source, flow.source.line, flow.source.path + ":" + flow.source.line) + "\n\n");
+  }
+}
+
+/** /scan runs everything that is deterministic too: built-in rules, cross-file data flow and dependency CVEs (Trivy). */
+async function deterministicForScan(context: vscode.ExtensionContext, files: readonly vscode.Uri[], seen: ReadonlySet<string>,
+  stream: vscode.ChatResponseStream, token: vscode.CancellationToken, signal: AbortSignal): Promise<string[]> {
+  const taintFiles: TaintFile[] = [];
+  const depFiles: {path: string; text: string}[] = [];
+  const uriOf = new Map<string, vscode.Uri>();
+  const imports = new Set<string>();
+  let rules = 0;
+  for (const uri of files) {
+    if (token.isCancellationRequested) break;
+    let bytes: Uint8Array;
+    try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
+    if (bytes.length > 60_000 || bytes.includes(0)) continue;
+    const rel = vscode.workspace.asRelativePath(uri);
+    const text = Buffer.from(bytes).toString("utf8");
+    taintFiles.push({path: rel, text});
+    uriOf.set(rel, uri);
+    const found = collectImports(uri.path, text);
+    for (const name of found) imports.add(name);
+    if (found.length) depFiles.push({path: rel, text});
+    for (const finding of scanSecurity(rel, text)) {
+      if (seen.has(uri.fsPath + ":" + finding.line)) continue;
+      if (!rules++) stream.markdown("**Built-in security rules:**\n\n");
+      stream.markdown("- **" + finding.severity + " · " + finding.rule + "** · " + findingLink(uri, finding.line, rel + ":" + finding.line) + " · " + finding.advice + "\n");
+    }
+  }
+  if (rules) stream.markdown("\n");
+  const flows = token.isCancellationRequested ? [] : taintFlows(taintFiles);
+  streamFlows(flows, uriOf, stream);
+  const totals = ["built-in rules: " + rules, "data flows: " + flows.length];
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    if (token.isCancellationRequested) break;
+    const audit = await auditDependencies(folder.uri.fsPath, signal);
+    totals.push("trivy: " + audit.status + " (" + audit.findings + " vulnerabilities)");
+    if (audit.status === "missing") { await offerToolInstallation("trivy"); continue; }
+    const groups = groupVulnerabilities(audit.vulnerabilities ?? []);
+    if (!groups.length) continue;
+    const eco = (v: GroupedVulnerability) => v.targets.join(" ") + " " + (audit.manager ?? "");
+    const rows = groups.map(v => {
+      const reach = reachability(v.pkg, eco(v), imports);
+      const call = reach === "imported" ? findVulnerableCall(v.pkg, eco(v), vulnerableSymbols(v.pkg, v.title ?? ""), depFiles) : undefined;
+      return {v, call, rank: call ? 0 : reach === "imported" ? 1 : reach === "unknown" ? 2 : 3};
+    }).sort((a, b) => a.rank - b.rank);
+    stream.markdown("**Dependency vulnerabilities (Trivy, offline):** " + groups.length + " · " + rows.filter(r => r.rank === 0).length + " with the vulnerable function called · " +
+      rows.filter(r => r.rank === 1).length + " imported by your code\n\n");
+    for (const {v, call, rank} of rows.slice(0, 20)) {
+      stream.markdown("- **" + v.severity + "** · `" + (v.id + " " + v.pkg + " " + v.installed).replace(/`/g, "") + "` · " + (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix") +
+        (call ? " · **vulnerable function `" + call.symbol + "` called at " + findingLink(uriOf.get(call.path)!, call.line, call.path + ":" + call.line) + "**" : rank === 1 ? " · used in code" : rank === 3 ? " · _not imported directly_" : "") + "\n");
+    }
+    stream.markdown(rows.length > 20 ? "\n_" + (rows.length - 20) + " more: run `/dependencies` for the full list._\n\n" : "\n");
+    await markDependencies(context, folder.uri, rows.map(r => r.v));
+  }
+  return totals;
+}
+
 export async function runWorkspaceScan(context: vscode.ExtensionContext, request: vscode.ChatRequest, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> {
   if (!vscode.workspace.isTrusted || vscode.env?.remoteName || !vscode.workspace.workspaceFolders?.length) {
     stream.markdown("Open a trusted local project folder before starting a workspace review. Nothing was sent.");
@@ -37,7 +103,17 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
   const include = "**/*.{java,kt,py,js,jsx,ts,tsx,go,rs,cs,rb,php}";
   const secretInclude = "**/*.{env,properties,yml,yaml,json,xml,toml,ini,conf}";
   const dotenvInclude = "**/.env{,.*}";
-  const files = (await vscode.workspace.findFiles(include, excludes, 5001)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
+  // .hushavyr/ignore lets the team exclude intentional fixtures from every scan.
+  const ignoreRules = new Map<string, (path: string) => boolean>();
+  for (const folder of vscode.workspace.workspaceFolders) ignoreRules.set(folder.uri.fsPath, await loadIgnore(folder.uri.fsPath));
+  const ignored = (uri: vscode.Uri): boolean => {
+    for (const [root, match] of ignoreRules) {
+      const inside = relative(root, uri.fsPath);
+      if (inside && !inside.startsWith("..") && !isAbsolute(inside) && match(inside)) return true;
+    }
+    return false;
+  };
+  const files = (await vscode.workspace.findFiles(include, excludes, 5001)).filter(uri => !ignored(uri)).sort((a, b) => a.fsPath.localeCompare(b.fsPath));
   if (files.length > 5000) {
     stream.markdown("Workspace contains over 5000 candidate files. Narrow the workspace or use a smaller project; no partial scan was started.");
     return;
@@ -73,7 +149,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       vscode.workspace.findFiles(secretInclude, excludes, 5001),
       vscode.workspace.findFiles(dotenvInclude, excludes, 5001)
     ]);
-    const secretFiles = [...new Map([...configFiles, ...dotenvFiles].map(uri => [uri.toString(), uri])).values()];
+    const secretFiles = [...new Map([...configFiles, ...dotenvFiles].filter(uri => !ignored(uri)).map(uri => [uri.toString(), uri])).values()];
     if (secretFiles.length > 5000) {
       stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\n\n");
     } else {
@@ -94,7 +170,9 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
     }
     }
     if (request.command === "scan" || request.command === "scan-changed") {
-      stream.markdown("**Coverage:** local credential heuristics and per-file Ollama review. This is not a cross-file call-graph analysis or a Semgrep/Gitleaks scan. Run `/security` (bundled rules + Semgrep) and `/gitleaks` separately for additional checks.\n\n");
+      stream.markdown(request.command === "scan"
+        ? "**Coverage:** Semgrep, Gitleaks, built-in rules, cross-file data flow, dependency CVEs (Trivy) and a per-file Ollama review. All local.\n\n"
+        : "**Coverage:** local credential heuristics and per-file Ollama review of changed files. Run `/scan` for every check.\n\n");
     }
     // /security = Semgrep with the bundled rule pack + built-in rules + credentials; one finding per line.
     const semgrepLines = new Set<string>();
@@ -113,6 +191,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           for (const issue of semgrep.findings) {
             if (token.isCancellationRequested) break;
             const target = vscode.Uri.file(resolve(folder.uri.fsPath, issue.path));
+            if (ignored(target)) continue;
             semgrepLines.add(target.fsPath + ":" + issue.line);
             semgrepCount++;
             const severity = ({ERROR: "HIGH", WARNING: "MEDIUM", INFO: "LOW"} as Record<string, string>)[issue.severity.toUpperCase()] ?? "MEDIUM";
@@ -222,13 +301,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       if (request.command === "security" && !token.isCancellationRequested) {
         const flows = taintFlows(taintFiles);
         flowCount = flows.length;
-        if (flows.length) stream.markdown("**Data flow (request input to dangerous call, across files):**\n\n");
-        for (const flow of flows.slice(0, 50)) {
-          const sink = uriOf.get(flow.sink.path), source = uriOf.get(flow.source.path);
-          if (!sink || !source) continue;
-          stream.markdown("**" + flowSeverity(flow).toUpperCase() + " · " + flowTitle(flow).replace(/[\r\n`\[\]]/g, " ") + "** · sink " + findingLink(sink, flow.sink.line, flow.sink.path + ":" + flow.sink.line) +
-            " · input " + findingLink(source, flow.source.line, flow.source.path + ":" + flow.source.line) + "\n\n");
-        }
+        streamFlows(flows, uriOf, stream);
       }
       stream.markdown("**Local security summary:** " + files.length + " source files checked; " + sourceFindings + " potential credentials, " + securityFindings + " security indicators" + (request.command === "security" ? ", " + semgrepCount + " Semgrep findings, " + flowCount + " cross-file data flows" : "") + ". No Ollama or cloud requests. These findings require manual verification.\n\n");
       return;
@@ -238,22 +311,25 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       return;
     }
     if (request.command === "scan") {
+      const scannerLines = new Set<string>();
       stream.markdown("**Offline scanner status**\n\n");
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
         for (const tool of ["semgrep", "gitleaks"] as const) {
           if (token.isCancellationRequested) { completed = false; break; }
           const scan = await runScanner(tool, folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr-review.yml"), controller.signal);
-          scannerTotals.push(tool + ": " + scan.status + " (" + scan.findings.length + " findings)");
-          scannerFindingCount += scan.findings.length;
-          stream.markdown("- **" + tool + "**: " + scan.status + " · " + scan.findings.length + " findings\n");
-          for (const finding of scan.findings) {
+          const kept = scan.findings.filter(f => !ignored(vscode.Uri.file(resolve(folder.uri.fsPath, f.path))));
+          scannerTotals.push(tool + ": " + scan.status + " (" + kept.length + " findings)");
+          scannerFindingCount += kept.length;
+          stream.markdown("- **" + tool + "**: " + scan.status + " · " + kept.length + " findings\n");
+          for (const finding of kept) {
             // Scanner metadata is untrusted: never render secret values or arbitrary messages.
             const absolute = resolve(folder.uri.fsPath, finding.path);
             const inside = relative(folder.uri.fsPath, absolute);
-            if (!inside || inside.startsWith("..") || isAbsolute(inside)) continue;
+            if (!inside || inside.startsWith("..") || isAbsolute(inside) || ignored(vscode.Uri.file(absolute))) continue;
             const safeRule = finding.rule.replace(/[\r\n\`\[\]]/g, "").slice(0, 120);
             const safeSeverity = finding.severity.replace(/[^A-Za-z]/g, "");
             const target = vscode.Uri.file(absolute);
+            scannerLines.add(target.fsPath + ":" + finding.line);
             const location = findingLink(target, finding.line, inside + ":" + finding.line);
             const advice = tool === "gitleaks"
               ? "Check whether this is a real credential; if active, revoke/rotate it and move it to a secret manager."
@@ -264,6 +340,10 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         }
       }
       stream.markdown("\n");
+      for (const total of await deterministicForScan(context, files, scannerLines, stream, token, controller.signal)) {
+        scannerTotals.push(total);
+        scannerFindingCount += Number(/(\d+)\D*$/.exec(total)?.[1] ?? 0);
+      }
     }
     await client.ensureAvailable(controller.signal);
     stream.markdown("**Local workspace security review** · " + files.length + " candidate files · Ollama only · No cloud fallback\n\n");
