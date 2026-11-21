@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.0.32
+- **Go verified fixes:** choose **Go / go test** to reproduce a bug with a generated failing Go test and verify the fix in offline Docker:
+  - Uses `aiPrivacyRouter.fixGoImage`, default `golang:1.24`.
+  - Uses the module cache in read-only mode, or the cache set in `aiPrivacyRouter.fixGoModCache`.
+  - Sets `GOPROXY=off` and runs with no network.
+- **Report an Issue:** a new opt-in command. It shows a redacted report (versions, OS, settings without endpoints, paths or private registries). It opens a prefilled GitHub issue only when you click it. There is no telemetry.
+- **OWASP Benchmark for Java:** `npm run benchmark:owasp` scores the CLI scanner on an external benchmark. Results are in `docs/owasp-benchmark.md`.
+- **VS Code end-to-end tests:** `npm run test:e2e` runs activation, commands, settings, privacy preview and SARIF export in a real VS Code. CI runs them too.
+- **Credential severity:** hardcoded credentials in tests, fixtures, docs, examples and local/dev config files are now MEDIUM. Credentials in production code and config stay HIGH.
+- **Models and memory:** setup recommends `qwen3-coder:30b` with 30 GB or more RAM; it is a MoE model, so it runs faster than a dense 30B model. **Start Ollama** turns on flash attention and an 8-bit KV cache, which use less memory. The README has a RAM table.
+- **Stability policy:** `docs/stability.md` lists the API that becomes stable at 1.0 (chat commands, command ids, settings, CLI, SARIF, team files, proof receipts) and the deprecation rules.
+- **Internal:** `extension.ts` and `workspaceScan.ts` are split into smaller modules; behavior is unchanged.
+- **Rust rules:** new built-in rules for Rust code.
+- **Fewer false credential findings.**
+- **Pull requests:** the PR receipt check now runs the same strict proof validation that verified fixes use.
+
 ## 0.0.31
 - `/edit` and follow-ups like "can you add them": the local model changes the open or selected file. You see a diff, nothing changes until **Apply**, and Apply refuses if the file changed meanwhile. **Try another local model** reruns it with any installed Ollama model. **Escalate** sends it to Copilot pseudonymized (opt-in).
 - `/pr`: commits to a new `hushavyr/...` branch, pushes it and opens a pull request with `gh`, or gives a GitHub compare link. Asks first and blocks credentials.
