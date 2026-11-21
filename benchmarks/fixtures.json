@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "description": "Deterministic multilingual security fixtures. Expected rule IDs are calibrated against actual CLI output before release gating.",
+  "cases": [
+    {
+      "id": "js-eval",
+      "language": "javascript",
+      "path": "javascript/eval.js",
+      "code": "function execute(input) {\n  return eval(input);\n}\n",
+      "expected": [
+        "eval"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ts-eval",
+      "language": "typescript",
+      "path": "typescript/eval.ts",
+      "code": "export function execute(input: string): unknown {\n  return eval(input);\n}\n",
+      "expected": [
+        "eval"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "py-eval",
+      "language": "python",
+      "path": "python/eval.py",
+      "code": "def execute(user_input):\n    return eval(user_input)\n",
+      "expected": [
+        "eval"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-exec",
+      "language": "java",
+      "path": "java/Exec.java",
+      "code": "class Exec {\n  void run(String input) throws Exception {\n    Runtime.getRuntime().exec(input);\n  }\n}\n",
+      "expected": [
+        "exec"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-exec",
+      "language": "go",
+      "path": "go/exec.go",
+      "code": "package main\nimport \"os/exec\"\nfunc run(input string) error {\n  return exec.Command(\"sh\", \"-c\", input).Run()\n}\n",
+      "expected": [
+        "exec"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "php-eval",
+      "language": "php",
+      "path": "php/eval.php",
+      "code": "<?php\nfunction run($input) {\n  eval($input);\n}\n",
+      "expected": [
+        "eval"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ruby-eval",
+      "language": "ruby",
+      "path": "ruby/eval.rb",
+      "code": "def run(input)\n  eval(input)\nend\n",
+      "expected": [
+        "eval"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "cs-exec",
+      "language": "csharp",
+      "path": "csharp/Exec.cs",
+      "code": "using System.Diagnostics;\nclass Exec {\n  void Run(string input) {\n    Process.Start(input);\n  }\n}\n",
+      "expected": [
+        "exec"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "js-clean",
+      "language": "javascript",
+      "path": "javascript/clean.js",
+      "code": "export function add(a, b) {\n  return a + b;\n}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "py-clean",
+      "language": "python",
+      "path": "python/clean.py",
+      "code": "def add(a, b):\n    return a + b\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "java-clean",
+      "language": "java",
+      "path": "java/Clean.java",
+      "code": "class Clean {\n  int add(int a, int b) { return a + b; }\n}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "go-clean",
+      "language": "go",
+      "path": "go/clean.go",
+      "code": "package main\nfunc add(a, b int) int { return a + b }\n",
+      "expected": [],
+      "category": "clean"
+    }
+  ]
+}
