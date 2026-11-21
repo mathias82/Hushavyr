@@ -333,6 +333,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             const location = findingLink(target, finding.line, inside + ":" + finding.line);
             const advice = tool === "gitleaks"
               ? "Check whether this is a real credential; if active, revoke/rotate it and move it to a secret manager."
+              : finding.message ? finding.message + "." + (finding.fix ? " Fix: " + finding.fix : "")
               : "Inspect the flagged code and rule; verify the risk and apply the rule-specific remediation.";
             stream.markdown("  - **" + safeSeverity + " · " + tool + " · " + safeRule +
               "** · " + location + " · " + advice + " (sensitive values hidden)\n");

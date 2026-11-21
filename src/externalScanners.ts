@@ -5,7 +5,7 @@ import {mkdtemp,readFile,rm,access} from "node:fs/promises";
 import {tmpdir} from "node:os";
 const run=promisify(execFile);
 export type Scanner="semgrep"|"gitleaks";
-export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number}
+export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number;message?:string;fix?:string}
 export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[];reason?:"rules-missing"|"execution-failed"|"invalid-output"}
 function safePath(root:string,p:string):string|undefined{
  const rel=relative(root,resolve(root,p));
@@ -25,7 +25,13 @@ export function parseScannerOutput(tool:Scanner,output:string,root:string):Scann
   const rule=tool==="semgrep"?item.check_id:item.RuleID;
   if(!path||!Number.isInteger(line)||(line as number)<1||typeof rule!=="string")continue;
   const severity=tool==="semgrep"?extra.severity:"HIGH";
-  findings.push({tool,rule:rule.slice(0,120),severity:typeof severity==="string"?severity.slice(0,24):"UNKNOWN",path,line:line as number});
+  // Semgrep prefixes rule ids with the config path; only bundled Hushavyr rules (no metavariables) may show their text.
+  const own=tool==="semgrep"&&/(?:^|\.)hushavyr\.[\w-]+$/.test(rule);
+  const meta=(extra.metadata??{}) as Record<string,unknown>;
+  const text=(v:unknown):string|undefined=>own&&typeof v==="string"?v.replace(/[\r\n`\[\]<>]/g," ").slice(0,200):undefined;
+  const finding:ScannerFinding={tool,rule:(own?rule.split(".").pop()!:rule).slice(0,120),severity:typeof severity==="string"?severity.slice(0,24):"UNKNOWN",path,line:line as number};
+  if(own){const message=text(extra.message),fix=text(meta.fix);if(message)finding.message=message;if(fix)finding.fix=fix;}
+  findings.push(finding);
  }
  return findings;
 }
