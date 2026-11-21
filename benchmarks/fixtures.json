@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Deterministic multilingual security fixtures. Expected rule IDs are calibrated against actual CLI output before release gating.",
+  "description": "Synthetic polyglot cases calibrated to built-in Hushavyr security rule IDs. Run the actual CLI with benchmarks/run.mjs; optional Semgrep findings may change precision.",
   "cases": [
     {
       "id": "js-eval",
@@ -8,7 +8,7 @@
       "path": "javascript/eval.js",
       "code": "function execute(input) {\n  return eval(input);\n}\n",
       "expected": [
-        "eval"
+        "unsafe-dynamic-code-evaluation"
       ],
       "category": "security"
     },
@@ -18,7 +18,7 @@
       "path": "typescript/eval.ts",
       "code": "export function execute(input: string): unknown {\n  return eval(input);\n}\n",
       "expected": [
-        "eval"
+        "unsafe-dynamic-code-evaluation"
       ],
       "category": "security"
     },
@@ -26,9 +26,9 @@
       "id": "py-eval",
       "language": "python",
       "path": "python/eval.py",
-      "code": "def execute(user_input):\n    return eval(user_input)\n",
+      "code": "import pickle\ndef execute(user_input):\n    return pickle.loads(user_input)\n",
       "expected": [
-        "eval"
+        "unsafe-python-deserialization"
       ],
       "category": "security"
     },
@@ -38,7 +38,7 @@
       "path": "java/Exec.java",
       "code": "class Exec {\n  void run(String input) throws Exception {\n    Runtime.getRuntime().exec(input);\n  }\n}\n",
       "expected": [
-        "exec"
+        "potential-command-execution"
       ],
       "category": "security"
     },
@@ -48,7 +48,7 @@
       "path": "go/exec.go",
       "code": "package main\nimport \"os/exec\"\nfunc run(input string) error {\n  return exec.Command(\"sh\", \"-c\", input).Run()\n}\n",
       "expected": [
-        "exec"
+        "potential-command-execution"
       ],
       "category": "security"
     },
@@ -58,7 +58,7 @@
       "path": "php/eval.php",
       "code": "<?php\nfunction run($input) {\n  eval($input);\n}\n",
       "expected": [
-        "eval"
+        "unsafe-dynamic-code-evaluation"
       ],
       "category": "security"
     },
@@ -66,9 +66,9 @@
       "id": "ruby-eval",
       "language": "ruby",
       "path": "ruby/eval.rb",
-      "code": "def run(input)\n  eval(input)\nend\n",
+      "code": "require 'openssl'\ndef run\n  OpenSSL::SSL::VERIFY_NONE\n  verify_mode = OpenSSL::SSL::VERIFY_NONE\nend\n",
       "expected": [
-        "eval"
+        "tls-certificate-validation-disabled"
       ],
       "category": "security"
     },
@@ -78,7 +78,7 @@
       "path": "csharp/Exec.cs",
       "code": "using System.Diagnostics;\nclass Exec {\n  void Run(string input) {\n    Process.Start(input);\n  }\n}\n",
       "expected": [
-        "exec"
+        "potential-command-execution"
       ],
       "category": "security"
     },
