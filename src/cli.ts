@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import {execFile} from "node:child_process";
 import {readdir, readFile, stat, writeFile} from "node:fs/promises";
 import {join, relative, resolve} from "node:path";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {auditDependencies, findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
 import {SarifResult, canonicalRule, sarifLevel, toSarif} from "./sarif";
+import {runScanner} from "./externalScanners";
 import {loadIgnore} from "./teamMemory";
 import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
 import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
@@ -25,15 +25,9 @@ async function walk(dir: string, found: string[] = []): Promise<string[]> {
 }
 
 /** Semgrep with the bundled rule pack; returns [] when semgrep is not installed. */
-function semgrep(root: string, rules: string): Promise<SarifResult[]> {
-  return new Promise(done => execFile("semgrep", ["scan", "--config", rules, "--json", "--metrics=off", "--disable-version-check", "--quiet", "."],
-    {cwd: root, timeout: 600000, maxBuffer: 64 * 1024 * 1024, env: {...process.env, SEMGREP_SEND_METRICS: "off"}}, (_error, stdout) => {
-      try {
-        const data = JSON.parse(stdout) as {results?: {path: string; start: {line: number}; check_id: string; extra?: {message?: string; severity?: string}}[]};
-        done((data.results ?? []).map(r => ({ruleId: canonicalRule(r.check_id.split(".").slice(-1)[0]), message: r.extra?.message ?? r.check_id,
-          path: r.path, line: r.start.line, level: sarifLevel(r.extra?.severity ?? "WARNING")})));
-      } catch { done([]); }
-    }));
+async function semgrep(root: string, rules: string): Promise<SarifResult[]> {
+  const result = await runScanner("semgrep", root, rules, undefined, true);
+  return result.findings.map(f => ({ruleId: canonicalRule(f.rule), message: f.message ?? f.rule, path: f.path, line: f.line, level: sarifLevel(f.severity)}));
 }
 
 /** Offline scan of a folder: bundled rules, semgrep (if installed), credentials, Trivy dependencies (if installed). */
@@ -53,7 +47,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
     if (SOURCE.test(file)) for (const issue of scanSecurity(path, text))
       results.push({ruleId: issue.rule.replace(/\W+/g, "-").toLowerCase(), message: issue.rule + ": " + issue.advice, path, line: issue.line, level: sarifLevel(issue.severity)});
     // Lockfiles hold package names and integrity hashes, never credentials.
-    if (!LOCKFILE.test(file)) for (const secret of scanSecrets(text))
+    if (!LOCKFILE.test(file)) for (const secret of scanSecrets(text, path))
       results.push({ruleId: "hardcoded-credential", message: "Potential hardcoded credential (" + secret.rule + "); value redacted", path, line: secret.line, level: "error"});
   }
   for (const flow of taintFlows(taintFiles))

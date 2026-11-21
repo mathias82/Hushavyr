@@ -1,7 +1,5 @@
-import {execFile} from "node:child_process";
-import {promisify} from "node:util";
 import {isAbsolute, normalize} from "node:path";
-const exec = promisify(execFile);
+import {exec} from "./exec";
 const CODE = /\.(?:java|kt|[cm]?[jt]sx?|py|go|rs|cs|php|rb|c|cc|cpp|h|hpp|swift|sql|ya?ml|json|xml|gradle|sh)$/i;
 
 /** Safe, bounded list of changed code files from `git` output (relative paths only, no traversal). */

@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
-import {execFile} from "node:child_process";
-import {promisify} from "node:util";
 import {join} from "node:path";
 import {bumpVersion, exportSbom, firstFixedVersion, parseMarkerMessage} from "./dependencyAudit";
 import {tr} from "./i18n";
-const exec = promisify(execFile);
+import {exec} from "./exec";
 
 export const uiLanguage = (): string => vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("language", "en");
 

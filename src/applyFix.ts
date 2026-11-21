@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import {runnerFor} from "./proofTarget";
-import {configuredModel} from "./model";
-import {LocalOllama} from "./ollama";
+import {configuredClient} from "./model";
 import {fixPrompt, fixWindow, isPlausibleFix, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
 
 /** Local model rewrites a few lines for a /review marker; the user sees a diff and must approve. */
@@ -12,11 +11,7 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
   const window = fixWindow(doc.lineCount, markedLine);
   const original = Array.from({length: window.end - window.start + 1}, (_, i) => doc.lineAt(window.start + i).text);
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
-  const client = new LocalOllama({
-    model: configuredModel(config),
-    endpoint: config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434"),
-    timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000
-  });
+  const client = configuredClient(config);
   let replacement: string | undefined;
   try {
     replacement = await vscode.window.withProgress({location: vscode.ProgressLocation.Notification, title: "Hushavyr: preparing fix locally", cancellable: true}, async (_p, token) => {

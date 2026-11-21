@@ -122,17 +122,6 @@ test("review summary names the most serious issue to fix first", () => {
   assert.match(reviewSummary({findings: [], rejected: 0}), /nothing to fix/);
 });
 
-test("/security Semgrep uses the full bundled rule pack and short rule ids", async () => {
-  const { runSemgrep } = await import("../semgrep");
-  let config = "";
-  const result = await runSemgrep("/repo", (_file, args, _options, callback) => {
-    config = args[args.indexOf("--config") + 1];
-    callback(null, JSON.stringify({results: [{path: "src/A.java", start: {line: 4}, check_id: "Users.me.rules.hushavyr.java-sql-concatenation", extra: {severity: "ERROR", message: "SQL"}}]}), "");
-  });
-  assert.match(config, /hushavyr-review\.yml$/);
-  assert.equal(result.findings[0].rule, "java-sql-concatenation");
-});
-
 test("a /review marker maps to the right offline runner and nearest project", async () => {
   const { runnerFor, projectRootFor } = await import("../proofTarget");
   assert.equal(runnerFor("/w/app/src/main/java/A.java"), "Java / Maven");
@@ -337,8 +326,10 @@ test("verified fix receipt: only a complete red/green/suite proof with a matchin
   const { checkReceipt, addedLines, prBody } = await import("../pullRequest");
   const { sha256 } = await import("../fixProof");
   const patch = Buffer.from("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n");
-  const stages = [{stage: "baseline", exitCode: 0}, {stage: "red", exitCode: 1}, {stage: "green", exitCode: 0, passed: 3}, {stage: "suite", exitCode: 0, passed: 40}];
-  const receipt = (over: object) => JSON.stringify({status: "verified", baseCommit: "a".repeat(40), patchHash: sha256(patch), stages, ...over});
+  const run = (stage: string, exitCode: number, passed: number) => ({stage, exitCode, passed, failures: exitCode, errors: 0, skipped: 0});
+  const stages = [run("baseline", 0, 3), run("red", 1, 2), run("green", 0, 3), run("suite", 0, 40)];
+  const receipt = (over: object) => JSON.stringify({status: "verified", reason: "red-green-and-suite-passed", baseCommit: "a".repeat(40),
+    patchHash: sha256(patch), testHash: "c".repeat(64), stages, ...over});
   const ok = checkReceipt(receipt({}), patch);
   assert.ok(typeof ok !== "string");
   assert.match(prBody(ok as never), /suite: exit 0, 40 passed/);
@@ -347,6 +338,7 @@ test("verified fix receipt: only a complete red/green/suite proof with a matchin
   assert.match(String(checkReceipt(receipt({stages: stages.map(s => s.stage === "suite" ? {...s, exitCode: 1} : s)}), patch)), /suite run did not pass/);
   assert.match(String(checkReceipt(receipt({stages: stages.map(s => s.stage === "red" ? {...s, exitCode: 0} : s)}), patch)), /did not fail/);
   assert.match(String(checkReceipt(receipt({cleanupRequiresAttention: true}), patch)), /cleanup/);
+  assert.match(String(checkReceipt(receipt({testHash: undefined}), patch)), /proof is incomplete/);
   assert.equal(addedLines(patch.toString()), "new");
 });
 
@@ -358,4 +350,28 @@ test("/improve asks for real improvements and keeps a safe change summary", asyn
   assert.deepEqual(parseSummary("not json"), []);
   assert.ok(isEditRequest("βελτίωσέ το"));
   assert.ok(isEditRequest("improve error handling"));
+});
+
+test("credentials: code references and UI names are not secrets, literals still are", async () => {
+  const { scanSecrets } = await import("../secretsScan");
+  const none = (text: string, path = "") => assert.equal(scanSecrets(text, path).length, 0, text);
+  none("    apiKey = options.ApiKey,", "A.cs");
+  none("    password = password,", "Login.kt");
+  none("  onPasswordChange = viewModel::onPasswordChange,", "Screen.kt");
+  none("  wasPasswordFocused = true", "Screen.kt");
+  none("  password = var.db_admin_password", "main.tf");
+  none("X-API-Key: MY_API_KEY_VALUE", "README.md");
+  none("let profilePasswordChangeState = .idle", "View.swift");
+  assert.equal(scanSecrets("    password = \"s3cr3tValue\",", "Login.kt").length, 1);
+  assert.equal(scanSecrets("spring.mail.password=s3cr3t9x", "application.properties").length, 1);
+  assert.equal(scanSecrets("password: hunter2abc", "docker-compose.yml").length, 1);
+});
+
+test("Rust: shell commands, format! SQL and MD5 are flagged; a direct program call is not", async () => {
+  const { scanSecurity } = await import("../securityRules");
+  const rules = (code: string) => scanSecurity("a.rs", code).map(i => i.rule);
+  assert.deepEqual(rules("Command::new(\"sh\").arg(\"-c\").arg(x)"), ["Potential command execution"]);
+  assert.deepEqual(rules("c.execute(&format!(\"DELETE FROM t WHERE n = '{}'\", n), [])"), ["SQL string concatenation"]);
+  assert.deepEqual(rules("md5::compute(x)"), ["Weak cryptographic hash"]);
+  assert.deepEqual(rules("Command::new(\"git\").arg(\"log\").arg(x)"), []);
 });

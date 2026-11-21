@@ -1,10 +1,9 @@
-import {execFile} from "node:child_process";
-import {promisify} from "node:util";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {scanSecrets} from "./secretsScan";
 import {sha256} from "./fixProof";
-const run = promisify(execFile);
+import {githubRepo, validateProof} from "./fixPrPolicy";
+import {exec as run} from "./exec";
 export type Exec = (cmd: string, args: string[], cwd: string) => Promise<string>;
 export const defaultExec: Exec = async (cmd, args, cwd) =>
   (await run(cmd, args, {cwd, timeout: 120_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024})).stdout;
@@ -16,8 +15,8 @@ export function branchName(title: string, now = new Date()): string {
 }
 /** github.com compare URL from an https or ssh remote; undefined for other hosts. */
 export function compareUrl(remote: string, base: string, branch: string): string | undefined {
-  const m = /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(remote.trim());
-  return m ? "https://github.com/" + m[1] + "/" + m[2] + "/compare/" + encodeURIComponent(base) + "..." + encodeURIComponent(branch) + "?expand=1" : undefined;
+  const repo = githubRepo(remote);
+  return repo ? "https://github.com/" + repo + "/compare/" + encodeURIComponent(base) + "..." + encodeURIComponent(branch) + "?expand=1" : undefined;
 }
 /** Changed paths from `git status --porcelain` (renames give the new path). */
 export function statusPaths(porcelain: string): string[] {
@@ -43,7 +42,7 @@ export async function planPullRequest(root: string, exec: Exec = defaultExec): P
 export async function secretsInChanges(plan: PrPlan): Promise<string[]> {
   const hits: string[] = [];
   for (const file of plan.files.slice(0, 200)) {
-    try { if (scanSecrets(await readFile(join(plan.root, file), "utf8")).length) hits.push(file); } catch { /* deleted or unreadable */ }
+    try { if (scanSecrets(await readFile(join(plan.root, file), "utf8"), file).length) hits.push(file); } catch { /* deleted or unreadable */ }
   }
   return hits;
 }
@@ -71,7 +70,7 @@ export async function createPullRequest(plan: PrPlan, title: string, exec: Exec 
 export interface Stage {stage: string; exitCode: number; interrupted?: boolean; passed?: number; failures?: number; errors?: number}
 export interface VerifiedReceipt {baseCommit: string; patchHash: string; stages: Stage[]}
 
-/** Accepts only a complete red/green/suite proof whose patch matches its hash; returns why not otherwise. */
+/** The single gate for verified-fix receipts: a complete red/green/suite proof whose patch matches its hash; returns why not otherwise. */
 export function checkReceipt(raw: string, patch: Buffer): VerifiedReceipt | string {
   let r: {status?: string; baseCommit?: string; patchHash?: string; stages?: Stage[]; cleanupRequiresAttention?: boolean};
   try { r = JSON.parse(raw); } catch { return "receipt.json is not valid JSON"; }
@@ -85,6 +84,8 @@ export function checkReceipt(raw: string, patch: Buffer): VerifiedReceipt | stri
   for (const s of ["green", "suite"]) if (stage(s)!.exitCode !== 0 || stage(s)!.interrupted) return "the " + s + " run did not pass";
   if (patch.length === 0 || patch.length > 1024 * 1024) return "the patch is empty or too large";
   if (sha256(patch) !== r.patchHash) return "the patch does not match its hash";
+  // Strict policy last: exact stage order, test counts and test hash.
+  try { validateProof(r as never, patch); } catch (e) { return "the proof is incomplete: " + (e as Error).message; }
   return {baseCommit: r.baseCommit!, patchHash: r.patchHash!, stages: r.stages!};
 }
 

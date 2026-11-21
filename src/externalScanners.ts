@@ -1,9 +1,7 @@
-import {execFile} from "node:child_process";
-import {promisify} from "node:util";
 import {resolve,relative,isAbsolute,join} from "node:path";
 import {mkdtemp,readFile,rm,access} from "node:fs/promises";
 import {tmpdir} from "node:os";
-const run=promisify(execFile);
+import {exec as run} from "./exec";
 export type Scanner="semgrep"|"gitleaks";
 export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number;message?:string;fix?:string}
 export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[];reason?:"rules-missing"|"execution-failed"|"invalid-output"}
@@ -11,12 +9,12 @@ function safePath(root:string,p:string):string|undefined{
  const rel=relative(root,resolve(root,p));
  return rel&&!rel.startsWith("..")&&!isAbsolute(rel)?rel.replace(/\\/g,"/"):undefined;
 }
-export function parseScannerOutput(tool:Scanner,output:string,root:string):ScannerFinding[]{
+export function parseScannerOutput(tool:Scanner,output:string,root:string,max=500):ScannerFinding[]{
  let data:unknown;try{data=JSON.parse(output)}catch{return []}
  const rows=tool==="semgrep"?(data as {results?:unknown[]})?.results:data;
  if(!Array.isArray(rows))return [];
  const findings:ScannerFinding[]=[];
- for(const row of rows.slice(0,500)){
+ for(const row of rows.slice(0,max)){
   if(!row||typeof row!=="object")continue;
   const item=row as Record<string,unknown>,extra=(item.extra??{}) as Record<string,unknown>,start=(item.start??{}) as Record<string,unknown>;
   const rawPath=tool==="semgrep"?item.path:item.File;
@@ -35,7 +33,8 @@ export function parseScannerOutput(tool:Scanner,output:string,root:string):Scann
  }
  return findings;
 }
-export async function runScanner(tool:Scanner,root:string,semgrepRules:string,signal?:AbortSignal):Promise<ScannerResult>{
+/** `large` is for whole-repo CLI runs: longer timeout, bigger output, more findings. */
+export async function runScanner(tool:Scanner,root:string,semgrepRules:string,signal?:AbortSignal,large=false):Promise<ScannerResult>{
  if(tool==="semgrep"){try{await access(semgrepRules)}catch{return {tool,status:"failed",findings:[],reason:"rules-missing"}}}
  const temp=await mkdtemp(join(tmpdir(),"hushavyr-scan-"));
  const report=join(temp,"gitleaks.json");
@@ -44,7 +43,7 @@ export async function runScanner(tool:Scanner,root:string,semgrepRules:string,si
   :["detect","--source",".","--report-format","json","--report-path",report,"--no-banner","--no-git"];
  try{
   let stdout="";
-  try{({stdout}=await run(tool,args,{cwd:root,timeout:120000,maxBuffer:8*1024*1024,windowsHide:true,signal,env:{...process.env,SEMGREP_SEND_METRICS:"off",SEMGREP_ENABLE_VERSION_CHECK:"0"}}));}
+  try{({stdout}=await run(tool,args,{cwd:root,timeout:large?600000:120000,maxBuffer:(large?64:8)*1024*1024,windowsHide:true,signal,env:{...process.env,SEMGREP_SEND_METRICS:"off",SEMGREP_ENABLE_VERSION_CHECK:"0"}}));}
   catch(e){
    const err=e as NodeJS.ErrnoException&{stdout?:string;code?:string|number};
    if(err.code==="ENOENT")return {tool,status:"missing",findings:[]};
@@ -56,6 +55,6 @@ export async function runScanner(tool:Scanner,root:string,semgrepRules:string,si
   let parsed:unknown;try{parsed=JSON.parse(stdout)}catch{return {tool,status:"failed",findings:[]}}
   if(tool==="semgrep"&&(!parsed||!Array.isArray((parsed as {results?:unknown[]}).results)))return {tool,status:"failed",findings:[]};
   if(tool==="gitleaks"&&!Array.isArray(parsed))return {tool,status:"failed",findings:[]};
-  return {tool,status:"ok",findings:parseScannerOutput(tool,stdout,root)};
+  return {tool,status:"ok",findings:parseScannerOutput(tool,stdout,root,large?5000:500)};
  }finally{await rm(temp,{recursive:true,force:true})}
 }

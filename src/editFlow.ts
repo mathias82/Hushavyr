@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import {randomUUID} from "node:crypto";
-import {configuredModel} from "./model";
+import {configuredClient, configuredModel} from "./model";
 import {LocalOllama} from "./ollama";
 import {codeBlock, editPrompt, editSchema, parseEdit, parseSummary, shortDiff} from "./codeEdit";
 import {escalate, MAX_ESCALATION_CHARS} from "./escalation";
@@ -15,8 +15,7 @@ const pending = new Map<string, Pending>();
 
 function localClient(model?: string): LocalOllama {
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
-  return new LocalOllama({model: model ?? configuredModel(config), endpoint: config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434"),
-    timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000});
+  return configuredClient(config, model);
 }
 
 async function generateLocal(target: EditTarget, model: string, signal: AbortSignal): Promise<{updated?: string; summary: string[]}> {
