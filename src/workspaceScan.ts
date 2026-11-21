@@ -1,20 +1,18 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
 import {loadIgnore} from "./teamMemory";
-import {configuredModel} from "./model";
+import {configuredClient} from "./model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
 import {auditDependencies, trivyDbAgeDays, findDependencyLine, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
 import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
-import {runSemgrep} from "./semgrep";
 import {flowSeverity, flowTitle, taintFlows, TaintFile, TaintFlow} from "./taint";
 import {collectImports, findVulnerableCall, reachability, SymbolCall, vulnerableSymbols} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import * as vscode from "vscode";
-import { LocalOllama } from "./ollama";
 import { offerToolInstallation } from "./setup";
 
 const scanCommands = new Set(["scan", "scan-changed", "secrets", "security", "gitleaks", "dependencies"]);
@@ -39,6 +37,14 @@ function streamFlows(flows: readonly TaintFlow[], uriOf: ReadonlyMap<string, vsc
   }
 }
 
+/** Text of a small, non-binary file; undefined when unreadable, over 60 KB or binary (never sent to a model or scanner). */
+async function readSmallText(uri: vscode.Uri): Promise<string | undefined> {
+  try {
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    return bytes.length > 60_000 || bytes.includes(0) ? undefined : Buffer.from(bytes).toString("utf8");
+  } catch { return undefined; }
+}
+
 /** /scan runs everything that is deterministic too: built-in rules, cross-file data flow and dependency CVEs (Trivy). */
 async function deterministicForScan(context: vscode.ExtensionContext, files: readonly vscode.Uri[], seen: ReadonlySet<string>,
   stream: vscode.ChatResponseStream, token: vscode.CancellationToken, signal: AbortSignal): Promise<string[]> {
@@ -49,11 +55,9 @@ async function deterministicForScan(context: vscode.ExtensionContext, files: rea
   let rules = 0;
   for (const uri of files) {
     if (token.isCancellationRequested) break;
-    let bytes: Uint8Array;
-    try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
-    if (bytes.length > 60_000 || bytes.includes(0)) continue;
+    const text = await readSmallText(uri);
+    if (text === undefined) continue;
     const rel = vscode.workspace.asRelativePath(uri);
-    const text = Buffer.from(bytes).toString("utf8");
     taintFiles.push({path: rel, text});
     uriOf.set(rel, uri);
     const found = collectImports(uri.path, text);
@@ -127,11 +131,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
   let unchanged = 0;
   let completed = true;
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
-  const client = new LocalOllama({
-    model: configuredModel(config),
-    endpoint: config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434"),
-    timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000
-  });
+  const client = configuredClient(config);
   const controller = new AbortController();
   const cancellation = token.onCancellationRequested(() => controller.abort());
   let inspected = 0;
@@ -156,11 +156,10 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       let secretFindings = 0;
       for (const uri of secretFiles) {
         if (token.isCancellationRequested) break;
-        let bytes: Uint8Array;
-        try { bytes = await vscode.workspace.fs.readFile(uri); } catch { failedReads++; continue; }
-        if (bytes.length > 60_000 || bytes.includes(0)) { failedReads++; continue; }
+        const text = await readSmallText(uri);
+        if (text === undefined) { failedReads++; continue; }
         const relative = vscode.workspace.asRelativePath(uri);
-        for (const finding of scanSecrets(Buffer.from(bytes).toString("utf8"))) {
+        for (const finding of scanSecrets(text, relative)) {
           secretFindings++;
           deterministicFindings++;
           stream.markdown("**" + finding.severity + "** · " + finding.rule + " · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
@@ -181,7 +180,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       const folders = vscode.workspace.workspaceFolders ?? [];
       for (const folder of folders) {
         if (token.isCancellationRequested) break;
-        const semgrep = await runSemgrep(folder.uri.fsPath);
+        const semgrep = await runScanner("semgrep", folder.uri.fsPath, join(context.extensionPath, "rules", "hushavyr-review.yml"));
         if (semgrep.status === "missing") {
           await offerToolInstallation("semgrep");
           stream.markdown("**Semgrep unavailable:** Install the local Semgrep CLI to enable additional offline rules. Existing security checks continue.\n\n");
@@ -195,7 +194,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             semgrepLines.add(target.fsPath + ":" + issue.line);
             semgrepCount++;
             const severity = ({ERROR: "HIGH", WARNING: "MEDIUM", INFO: "LOW"} as Record<string, string>)[issue.severity.toUpperCase()] ?? "MEDIUM";
-            stream.markdown("**" + severity + " · " + issue.message.replace(/[\r\n`\[\]]/g, " ").slice(0, 160) + "** · " +
+            stream.markdown("**" + severity + " · " + (issue.message ?? issue.rule).replace(/[\r\n`\[\]]/g, " ").slice(0, 160) + "** · " +
               findingLink(target, issue.line, vscode.workspace.asRelativePath(target) + ":" + issue.line) + " · Semgrep `" + issue.rule.replace(/[`\r\n]/g, "") + "`\n\n");
           }
         }
@@ -212,11 +211,9 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       const uriOf = new Map<string, vscode.Uri>();
       for (const uri of files) {
         if (token.isCancellationRequested) break;
-        let bytes: Uint8Array;
-        try { bytes = await vscode.workspace.fs.readFile(uri); } catch { continue; }
-        if (bytes.length > 60_000 || bytes.includes(0)) continue;
+        const localContent = await readSmallText(uri);
+        if (localContent === undefined) continue;
         const relative = vscode.workspace.asRelativePath(uri);
-        const localContent = Buffer.from(bytes).toString("utf8");
         if (request.command === "dependencies") {
           const found = collectImports(uri.path, localContent);
           for (const name of found) imports.add(name);
@@ -231,7 +228,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             stream.markdown("**" + finding.severity + " · " + finding.rule + "** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " · " + finding.advice + "\n\n");
           }
         }
-        if (request.command !== "dependencies") for (const finding of scanSecrets(localContent)) {
+        if (request.command !== "dependencies") for (const finding of scanSecrets(localContent, relative)) {
           sourceFindings++;
           stream.markdown("**HIGH · Potential hardcoded credential** · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
         }
@@ -357,22 +354,17 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       const batchSkippedBefore = skipped;
       for (const uri of batch) {
       if (token.isCancellationRequested) { completed = false; break; }
-      let bytes: Uint8Array;
-      try { bytes = await vscode.workspace.fs.readFile(uri); }
-      catch { skipped++; completed = false; continue; }
-      // Never load large, binary, or generated files into a model prompt.
-      if (bytes.length > 60_000 || bytes.includes(0)) { skipped++; completed = false; continue; }
-      const content = Buffer.from(bytes).toString("utf8");
-      if (!content.trim()) { skipped++; completed = false; continue; }
+      const content = await readSmallText(uri);
+      if (!content?.trim()) { skipped++; completed = false; continue; }
       const relative = vscode.workspace.asRelativePath(uri);
       // Scan source files for credentials independently of Ollama, even when
       // the incremental model review skips unchanged content.
-      for (const finding of scanSecrets(content)) {
+      for (const finding of scanSecrets(content, relative)) {
         stream.markdown("**" + finding.severity + " · " + finding.rule + "** · `" +
           relative.replace(/[`\r\n]/g, "") + ":" + finding.line +
           "` (value redacted; verify and rotate if real)\n\n");
       }
-      const fp = fingerprint(relative, bytes);
+      const fp = fingerprint(relative, Buffer.from(content));
       currentFingerprints.push(fp);
       if (incremental && previous.length > 0 && previousHashes.get(relative) === fp.sha256) { unchanged++; continue; }
       // Keep each request below the existing 20 KB context budget, retaining line numbers.

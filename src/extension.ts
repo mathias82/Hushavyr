@@ -1,6 +1,6 @@
 
 // Only the user can approve installing an external executable. No silent downloads.
-import {configuredModel} from "./model";
+import {configuredClient, configuredModel} from "./model";
 import {relatedSources} from "./relatedJava";
 import {changedFiles} from "./changedFiles";
 import {registerApplyFix} from "./applyFix";
@@ -692,8 +692,7 @@ async function runLocal(prompt: string): Promise<void> {
       title:"Hushavyr: local Qwen"
     }, async () => {
       const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
-      const client = new LocalOllama({model, endpoint: config.get<string>("ollamaEndpoint"),
-        timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000});
+      const client = configuredClient(config, model);
       await client.ensureAvailable();
       return client.generate(prompt);
     });

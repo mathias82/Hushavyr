@@ -15,11 +15,15 @@ export function validateProof(receipt: FixProofReceipt & {patchHash?: string; cl
   }
 }
 
+/** owner/repo of an https or ssh github.com remote (case kept); undefined for any other host. */
+export function githubRepo(remote: string): string | undefined {
+  return remote.trim().match(/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/)?.[1];
+}
+
 export function githubRemote(remote: string): string {
-  const value = remote.trim();
-  const match = value.match(/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/);
-  if (!match) throw new Error("Origin is not an unambiguous github.com repository URL");
-  return match[1].toLowerCase();
+  const repo = githubRepo(remote);
+  if (!repo) throw new Error("Origin is not an unambiguous github.com repository URL");
+  return repo.toLowerCase();
 }
 
 export function assertMatchingRemote(origin: string, cliRepository: string): void {

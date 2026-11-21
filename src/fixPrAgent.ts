@@ -4,19 +4,22 @@ import {tmpdir} from "node:os";
 import {basename, join, resolve} from "node:path";
 import {scanSecrets} from "./secretsScan";
 import {assertMatchingRemote, scanResult} from "./fixPrPolicy";
-import {addedLines, checkReceipt, compareUrl, prBody, type Exec} from "./pullRequest";
-import {execFile} from "node:child_process";
-import {promisify} from "node:util";
+import {addedLines, checkReceipt, compareUrl, prBody, statusPaths, type Exec} from "./pullRequest";
 
-const execute = promisify(execFile);
+import {exec as execute} from "./exec";
 const command: Exec = async (bin, args, cwd) => (await execute(bin, args, {cwd, timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   env: {...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never"}})).stdout.trim();
 
+/** Gitleaks on the files the patch changes only, so old fixtures elsewhere in the repo do not block every PR. */
 async function secretScan(cwd: string): Promise<void> {
   try {
-    const {stdout} = await execute("gitleaks", ["dir", "--no-banner", "--redact", "--exit-code", "1", "."],
-      {cwd, timeout: 120000, maxBuffer: 1024 * 1024});
-    scanResult(0, stdout);
+    const files = statusPaths(await command("git", ["status", "--porcelain", "--untracked-files=all"], cwd));
+    if (!files.length || files.length > 50) throw new Error("unexpected change set");
+    for (const file of files) {
+      const {stdout} = await execute("gitleaks", ["dir", "--no-banner", "--redact", "--exit-code", "1", "--", file],
+        {cwd, timeout: 120000, maxBuffer: 1024 * 1024});
+      scanResult(0, stdout);
+    }
   } catch {
     throw new Error("Gitleaks scan blocked publication. Install gitleaks, resolve any findings and retry.");
   }
@@ -56,7 +59,8 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       const patchPath = join(resolve(receiptPath, ".."), "verified.patch");
       if (!(await lstat(patchPath)).isFile()) throw new Error("verified.patch is not a regular file");
       const patch = await readFile(patchPath);
-      const receipt = checkReceipt(await readFile(receiptPath, "utf8"), patch);
+      const rawReceipt = await readFile(receiptPath, "utf8");
+      const receipt = checkReceipt(rawReceipt, patch);
       if (typeof receipt === "string") throw new Error(receipt);
       if (scanSecrets(addedLines(patch.toString("utf8"))).length) throw new Error("the patch looks like it contains a credential");
       const top = await command("git", ["rev-parse", "--show-toplevel"], root);

@@ -711,8 +711,10 @@
       "language": "php",
       "path": "php/case_2.php",
       "code": "<?php\nfunction f($x){system($x);}\n",
-      "expected": [],
-      "category": "clean"
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "php-extended-3",
@@ -737,8 +739,10 @@
       "language": "php",
       "path": "php/case_5.php",
       "code": "<?php\nfunction f($x){system($x);}\n",
-      "expected": [],
-      "category": "clean"
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "php-extended-6",
@@ -763,8 +767,10 @@
       "language": "php",
       "path": "php/case_8.php",
       "code": "<?php\nfunction f($x){system($x);}\n",
-      "expected": [],
-      "category": "clean"
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "php-extended-9",
@@ -972,17 +978,21 @@
       "id": "rust-extended-2",
       "language": "rust",
       "path": "rust/case_2.rs",
-      "code": "fn twice(a:i32)->i32{a*2}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "use std::process::Command;\nfn run(x:&str){Command::new(\"sh\").arg(\"-c\").arg(x).status().unwrap();}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-3",
       "language": "rust",
       "path": "rust/case_3.rs",
-      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "fn q(c:&rusqlite::Connection,n:&str){c.execute(&format!(\"DELETE FROM t WHERE n = '{}'\",n),[]).unwrap();}\n",
+      "expected": [
+        "sql-string-concatenation"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-4",
@@ -996,17 +1006,21 @@
       "id": "rust-extended-5",
       "language": "rust",
       "path": "rust/case_5.rs",
-      "code": "fn twice(a:i32)->i32{a*2}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "use std::process::Command;\nfn run(x:&str){Command::new(\"sh\").arg(\"-c\").arg(x).status().unwrap();}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-6",
       "language": "rust",
       "path": "rust/case_6.rs",
-      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "fn client()->reqwest::Client{reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap()}\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-7",
@@ -1020,23 +1034,27 @@
       "id": "rust-extended-8",
       "language": "rust",
       "path": "rust/case_8.rs",
-      "code": "fn twice(a:i32)->i32{a*2}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "use std::process::Command;\nfn run(x:&str){Command::new(\"sh\").arg(\"-c\").arg(x).status().unwrap();}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-9",
       "language": "rust",
       "path": "rust/case_9.rs",
-      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
-      "expected": [],
-      "category": "clean"
+      "code": "fn h(x:&[u8])->String{format!(\"{:x}\",md5::compute(x))}\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
     },
     {
       "id": "rust-extended-10",
       "language": "rust",
       "path": "rust/case_10.rs",
-      "code": "fn add(a:i32,b:i32)->i32{a+b}\n",
+      "code": "use std::process::Command;\nfn run(x:&str){Command::new(\"git\").arg(\"log\").arg(x).status().unwrap();}\n",
       "expected": [],
       "category": "clean"
     }

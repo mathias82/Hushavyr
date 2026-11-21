@@ -1,4 +1,5 @@
 import {totalmem} from "node:os";
+import {LocalOllama} from "./ollama";
 
 /** Larger local models review noticeably better, but must fit in memory. */
 export function recommendedModel(memoryBytes: number): string {
@@ -15,4 +16,9 @@ export function configuredModel(config: ModelConfig, memoryBytes = totalmem()): 
   const set = config.inspect?.("ollamaModel");
   const explicit = config.inspect ? set?.workspaceFolderValue ?? set?.workspaceValue ?? set?.globalValue : config.get<string>("ollamaModel", "");
   return typeof explicit === "string" && explicit.trim() ? explicit.trim() : recommendedModel(memoryBytes);
+}
+/** Ollama client from the extension settings (model, loopback endpoint, timeout). */
+export function configuredClient(config: ModelConfig, model = configuredModel(config)): LocalOllama {
+  return new LocalOllama({model, endpoint: config.get<string>("ollamaEndpoint", "http://127.0.0.1:11434"),
+    timeoutMs: config.get<number>("timeoutSeconds", 180) * 1000});
 }
