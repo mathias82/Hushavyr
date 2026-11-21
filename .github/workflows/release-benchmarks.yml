@@ -1,0 +1,72 @@
+name: Release benchmarks - static and optional local Ollama
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      run_ollama:
+        description: 'Run existing AI review benchmark on a self-hosted Ollama runner'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - run: node --test benchmarks/evaluate.test.mjs
+      - run: node benchmarks/run.mjs --out benchmarks/results.json
+      - run: node benchmarks/evaluate.mjs --results benchmarks/results.json
+      - run: if test -f benchmarks/dashboard.mjs; then node benchmarks/dashboard.mjs --results benchmarks/results.json --out benchmarks/dashboard.html; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-static-benchmark
+          path: |
+            benchmarks/results.json
+            benchmarks/dashboard.html
+          if-no-files-found: warn
+
+  ollama:
+    # Enable repository variable HUSHAVYR_OLLAMA_BENCH_ENABLED=true after configuring a trusted local runner.
+    if: ${{ (github.event_name == 'release' && vars.HUSHAVYR_OLLAMA_BENCH_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_ollama == true) }}
+    runs-on: [self-hosted, linux, hushavyr-ollama]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: Check local Ollama and selected model
+        env:
+          OLLAMA_MODEL: ${{ vars.HUSHAVYR_OLLAMA_MODEL || 'qwen2.5-coder:7b' }}
+        run: |
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:11434/api/tags)" = 200
+          curl --fail --silent http://127.0.0.1:11434/api/tags > ollama-inventory.json
+          node -e 'const f=require("./ollama-inventory.json");const m=process.env.OLLAMA_MODEL;if(!f.models?.some(x=>x.name===m))process.exit(1)'
+      - name: Run existing Ollama benchmark and retain measured scores
+        env:
+          OLLAMA_MODEL: ${{ vars.HUSHAVYR_OLLAMA_MODEL || 'qwen2.5-coder:7b' }}
+          OLLAMA_ENDPOINT: http://127.0.0.1:11434
+        run: |
+          set +e
+          node dist/benchmark.js > ollama-benchmark.json
+          status=$?
+          echo "Benchmark exit code: $status" >> "$GITHUB_STEP_SUMMARY"
+          node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("ollama-benchmark.json"));fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"\nModel: "+r.model+" | Precision: "+r.precision+" | Recall: "+r.recall+" | Errors: "+r.errors+"\n")'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-ollama-benchmark
+          path: ollama-benchmark.json
+          if-no-files-found: warn
