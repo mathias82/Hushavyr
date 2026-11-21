@@ -5,7 +5,7 @@ export interface TestCase {className: string; name: string; outcome: CaseOutcome
 export interface TestRun {exitCode: number | null; interrupted: boolean; durationMs: number; cases: TestCase[]}
 export interface SourceChange {path: string; content: string}
 export type ProofStage = "baseline" | "red" | "green" | "suite";
-export interface FixProofContext {profile?: "python" | "node" | "typescript"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
+export interface FixProofContext {profile?: "python" | "node" | "typescript" | "go"; baseCommit: string; imageId: string; testClass: string; testPath: string; localModel?: string; dependencySnapshotHash?: string; dependencySnapshotBytes?: number}
 export interface FixProofDependencies {
   cancelled(): boolean;
   run(stage: ProofStage, target?: string): Promise<TestRun>;
@@ -21,7 +21,7 @@ export interface StageSummary {
   passed: number; failures: number; errors: number; skipped: number; caseSetHash: string;
 }
 export interface FixProofReceipt extends FixProofContext {
-  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1" | "node-red-green-v1" | "typescript-red-green-v1";
+  policyVersion: "maven-red-green-v1" | "pytest-red-green-v1" | "node-red-green-v1" | "typescript-red-green-v1" | "go-red-green-v1";
   runId: string; startedAtUtc: string; finishedAtUtc?: string; totalDurationMs?: number;
   status: "verified" | "not-verified" | "cancelled";
   reason: string; stages: StageSummary[]; testHash?: string;
@@ -52,7 +52,7 @@ export function bugReproduced(receipt: FixProofReceipt): boolean {
 export async function runFixProof(context: FixProofContext, deps: FixProofDependencies): Promise<FixProofReceipt> {
   context = Object.freeze({...context});
   const started = Date.now();
-  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "typescript" ? "typescript-red-green-v1" : context.profile === "node" ? "node-red-green-v1" : context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
+  const receipt: FixProofReceipt = {...context, policyVersion: context.profile === "go" ? "go-red-green-v1" : context.profile === "typescript" ? "typescript-red-green-v1" : context.profile === "node" ? "node-red-green-v1" : context.profile === "python" ? "pytest-red-green-v1" : "maven-red-green-v1", runId: randomUUID(), startedAtUtc: new Date(started).toISOString(), status: "not-verified", reason: "incomplete", stages: []};
   const stop = (reason: string): FixProofReceipt => ({...receipt, reason, finishedAtUtc: new Date().toISOString(), totalDurationMs: Date.now() - started,
     status: deps.cancelled() ? "cancelled" : "not-verified"});
   const run = async (stage: ProofStage, target?: string): Promise<TestRun> => {
@@ -142,6 +142,31 @@ export function parsePytestReport(xml: string): TestCase[] {
     throw new Error("Pytest failure is not an assertion");
   }
   return cases.map(test => ({...test, className: test.className.replace(/^tests\./, "")}));
+}
+
+/** `go test -json` events: one case per top-level test; a panic or build failure is an error, not an assertion. */
+export function parseGoReport(json: string, generated: string): TestCase[] {
+  if (Buffer.byteLength(json) > 1048576) throw new Error("Invalid Go test report");
+  const outcomes = new Map<string, CaseOutcome>();
+  const panicked = new Set<string>();
+  for (const line of json.split("\n")) {
+    if (!line.trim()) continue;
+    const event = JSON.parse(line) as {Action?: string; Package?: string; Test?: string; Output?: string};
+    if (typeof event.Package !== "string" || typeof event.Test !== "string" || !event.Test) continue;
+    const top = event.Test.split("/")[0];
+    const id = event.Package + "\0" + top;
+    if (event.Action === "output" && /^panic: |\[build failed\]/.test(event.Output ?? "")) panicked.add(id);
+    if (event.Test !== top) continue;
+    if (event.Action === "pass") outcomes.set(id, "passed");
+    else if (event.Action === "fail") outcomes.set(id, "failure");
+    else if (event.Action === "skip") outcomes.set(id, "skipped");
+  }
+  const cases = [...outcomes].map(([id, outcome]) => {
+    const [pkg, name] = id.split("\0");
+    return {className: name === generated ? generated : pkg, name, outcome: outcome === "failure" && panicked.has(id) ? "error" as const : outcome};
+  });
+  if (!unique(cases)) throw new Error("Duplicate testcase");
+  return cases;
 }
 
 /** Node 24's JUnit reporter writes file-qualified test cases and summary comments. */

@@ -165,6 +165,17 @@ For Python projects, select **Python / pytest**. Use a committed project with an
 
 The Python verifier checks that the existing suite passes, the approved generated test fails on an assertion, the same test passes after the fix, and the full suite still passes. Import, collection and runtime errors cannot establish a regression. The command writes the same patch and receipt artifacts as the Maven profile.
 
+For Go modules, select **Go / go test**:
+
+- **Project:** choose a folder with a tracked `go.mod`, then one to six tracked production `.go` files. Test files and `vendor/` or `testdata/` paths can't be selected.
+- **Image:** set `aiPrivacyRouter.fixGoImage` (default `golang:1.24`) to a preloaded image with a Go toolchain that matches your module.
+- **Dependencies:**
+  - Vendored dependencies work as they are.
+  - Other dependencies come from the local module cache, `~/go/pkg/mod`, or from `aiPrivacyRouter.fixGoModCache`. The cache is mounted read-only.
+  - `GOPROXY=off`, `GOFLAGS=-mod=readonly`, `GOTOOLCHAIN=local` and `CGO_ENABLED=0` are set, and the network is disabled, so nothing is downloaded.
+- **Generated test:** a single `TestHushavyr…(t *testing.T)` in the same package. It must not import `"C"`.
+- **Evidence:** the proof records only `t.Errorf`/`t.Fatalf` failures of that test. Build failures and panics are treated as errors and can't prove a regression.
+
 Run **Hushavyr: Propose and Verify Local Fix** and choose **Java / Maven** from the Command Palette in a trusted local-only profile with `chat.disableAIFeatures: true`. This is a standalone command, so it remains available when built-in Chat/Copilot is disabled. The workflow never calls Copilot, the hybrid router, an external LLM, or a model-supplied shell command.
 
 ### What it does

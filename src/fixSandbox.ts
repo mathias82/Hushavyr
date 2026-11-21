@@ -4,7 +4,7 @@ import {cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeF
 import {homedir} from "node:os";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {randomUUID} from "node:crypto";
-import {FixProofContext, FixProofReceipt, ProofStage, SourceChange, TestRun, TestCase, parseNodeReport, parsePytestReport, parseSurefire, sha256} from "./fixProof";
+import {FixProofContext, FixProofReceipt, ProofStage, SourceChange, TestRun, TestCase, parseGoReport, parseNodeReport, parsePytestReport, parseSurefire, sha256} from "./fixProof";
 
 export function safeRelative(path: string): string {
   if (!path || isAbsolute(path) || /[\\\x00-\x1f]/.test(path) ||
@@ -27,21 +27,32 @@ async function command(file: string, args: string[], cwd: string): Promise<Buffe
 function git(args: string[], cwd: string): Promise<Buffer> {
   return command("git", ["-c", "core.fsmonitor=false", ...args], cwd);
 }
-interface DockerMounts {profile?: "python" | "node" | "typescript"; snapshot: string; target: string; cache?: string; project: string; image: string; uid: number; gid: number; name: string}
+interface DockerMounts {profile?: "python" | "node" | "typescript" | "go"; snapshot: string; target: string; cache?: string; modules?: string; project: string; image: string; uid: number; gid: number; name: string}
 export function dockerCreateArgs(input: DockerMounts, targetClass?: string): string[] {
-  for (const path of [input.snapshot, input.target, ...(input.cache ? [input.cache] : [])]) {
+  for (const path of [input.snapshot, input.target, ...(input.cache ? [input.cache] : []), ...(input.modules ? [input.modules] : [])]) {
     if (!isAbsolute(path) || /[,\x00-\x1f]/.test(path)) throw new Error("unsupported-mount-path");
   }
   if (!/^sha256:[a-f0-9]{64}$/.test(input.image) || !/^ai-privacy-fix-[a-f0-9-]{36}$/.test(input.name) ||
     !Number.isInteger(input.uid) || input.uid <= 0 || !Number.isInteger(input.gid) || input.gid < 0) throw new Error("invalid-sandbox-config");
   if (input.project) safeRelative(input.project);
-  if (input.profile !== "node" && input.profile !== "typescript" && targetClass && !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(targetClass)) throw new Error("invalid-test-selector");
+  if (input.profile !== "node" && input.profile !== "typescript" && input.profile !== "go" && targetClass && !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(targetClass)) throw new Error("invalid-test-selector");
   const project = "/work" + (input.project ? "/" + input.project : "");
   const isolated = ["create", "--name", input.name, "--pull=never", "--network=none", "--read-only",
     "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256",
     "--memory=4g", "--cpus=2", "--log-driver=none", "--user", input.uid + ":" + input.gid,
     "--tmpfs", "/tmp:rw,nosuid,nodev,size=536870912",
     "--mount", "type=bind,src=" + input.snapshot + ",dst=/work,readonly"];
+  if (input.profile === "go") {
+    if (targetClass && !/^TestHushavyr[a-f0-9]{32}$/.test(targetClass)) throw new Error("invalid-go-test-selector");
+    // Go runs the compiled test binary from its temp dir, so /tmp needs exec; modules come from a read-only host cache or vendor/.
+    isolated[isolated.indexOf("/tmp:rw,nosuid,nodev,size=536870912")] = "/tmp:rw,exec,nosuid,nodev,size=1610612736";
+    return [...isolated, "--mount", "type=bind,src=" + input.target + ",dst=/reports",
+      ...(input.modules ? ["--mount", "type=bind,src=" + input.modules + ",dst=/gomod,readonly"] : []),
+      "--workdir", project, "--env", "HOME=/tmp", "--env", "GOCACHE=/tmp/gocache", "--env", "GOTMPDIR=/tmp",
+      "--env", "GOMODCACHE=" + (input.modules ? "/gomod" : "/tmp/gomod"), "--env", "GOPROXY=off", "--env", "GOFLAGS=-mod=readonly",
+      "--env", "GOTOOLCHAIN=local", "--env", "CGO_ENABLED=0", "--entrypoint", "sh", input.image, "-c",
+      'go test -json -count=1 "$@" > /reports/go.json', "hushavyr", ...(targetClass ? ["-run", "^" + targetClass + "$"] : []), "./..."];
+  }
   if (input.profile === "node" || input.profile === "typescript") {
     if (targetClass && !/^hushavyr-[a-f0-9]{32}\.test\.cjs$/.test(targetClass)) throw new Error("invalid-node-test-selector");
     const runner = input.profile === "typescript"
@@ -97,7 +108,7 @@ async function regularText(path: string, maxBytes: number): Promise<string> {
   return (await regularBytes(path, maxBytes)).toString("utf8");
 }
 export interface FixSandboxOptions {
-  project: string; selected: string[]; storage: string; image: string; cache?: string; profile?: "python" | "node" | "typescript"; signal: AbortSignal;
+  project: string; selected: string[]; storage: string; image: string; cache?: string; goModCache?: string; profile?: "python" | "node" | "typescript" | "go"; signal: AbortSignal;
 }
 export class FixSandbox {
   readonly context: FixProofContext;
@@ -111,7 +122,7 @@ export class FixSandbox {
     readonly directory: string, private readonly snapshot: string, private readonly project: string,
     private readonly targetDirectory: string, private readonly docker: string[],
     private readonly cache: string | undefined, readonly contextSources: {path: string; text: string}[],
-    context: FixProofContext, private readonly signal: AbortSignal
+    context: FixProofContext, private readonly signal: AbortSignal, private readonly modules?: string
   ) {this.context = context; this.sources = contextSources;}
   static async create(options: FixSandboxOptions): Promise<FixSandbox> {
     if (process.platform === "win32" || !process.getuid || process.getuid() === 0) throw new Error("non-root-macos-or-linux-required");
@@ -150,21 +161,25 @@ export class FixSandbox {
         texts.set(path, bytes);
       }
       const prefix = project ? project + "/" : "";
-      const python = options.profile === "python";
+      const go = options.profile === "go";
+      const python = options.profile === "python" || go; // same snapshot-only flow: no Maven cache copy
       const typescript = options.profile === "typescript";
       const node = options.profile === "node" || typescript;
+      if (go && !texts.has(prefix + "go.mod")) throw new Error("tracked-go-mod-required");
       if (typescript && !texts.has(prefix + "tsconfig.json")) throw new Error("tracked-tsconfig-required");
       const pomPath = prefix + "pom.xml", pom = texts.get(pomPath)?.toString("utf8");
       if (!python && !node && (!pom || /<modules\b/i.test(pom.replace(/<!--[\s\S]*?-->/g, "")))) throw new Error("select-a-leaf-maven-project");
       if (!options.selected.length || options.selected.length > 6) throw new Error("select-one-to-six-java-files");
-      if (python && ![...texts.keys()].some(path => path.startsWith(prefix + "tests/") && path.endsWith(".py"))) {
+      if (python && !go && ![...texts.keys()].some(path => path.startsWith(prefix + "tests/") && path.endsWith(".py"))) {
         throw new Error("tracked-pytest-suite-required");
       }
       const sources: {path: string; text: string}[] = python || node ? [] : [{path: pomPath, text: pom!}];
       for (const absolute of options.selected) {
         const path = relative(rootPath, await realpath(absolute)).split(sep).join("/");
         safeRelative(path);
-        const allowed = node
+        const allowed = go
+          ? path.startsWith(prefix) && path.endsWith(".go") && !path.endsWith("_test.go") && !/(?:^|\/)(?:vendor|testdata)\//.test(path)
+          : node
           ? path.startsWith(prefix) && (typescript ? /\.(?:ts|cts|mts)$/.test(path) && !/\.d\.[cm]?ts$/.test(path) : /\.[cm]?js$/.test(path)) &&
             !/(?:^|\/)(?:tests?|__tests__|node_modules)(?:\/|$)|(?:[-_.](?:spec|test)|\.config)\.[cm]?[jt]s$/.test(path)
           : python
@@ -183,6 +198,22 @@ export class FixSandbox {
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/.test(options.image)) throw new Error("invalid-image");
       const imageId = (await command("docker", [...docker, "image", "inspect", options.image, "--format", "{{.Id}}"], directory)).toString("utf8").trim();
       if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error("preload-a-local-maven-image");
+      if (go) {
+        const suffix = randomUUID().replace(/-/g, "");
+        const testClass = "TestHushavyr" + suffix;
+        const testPath = dirname(sources[0].path) + "/hushavyr_" + suffix + "_test.go";
+        const context: FixProofContext = {baseCommit, imageId, testClass, testPath, profile: "go"};
+        if (texts.has(testPath) || !testPath.startsWith(prefix)) throw new Error("test-path-exists");
+        let modules: string | undefined;
+        try {
+          modules = await realpath(options.goModCache || join(homedir(), "go", "pkg", "mod"));
+          if (!(await lstat(modules)).isDirectory()) modules = undefined;
+        } catch {modules = undefined;}
+        const sandbox = new FixSandbox(directory, snapshot, project, targetDirectory, docker, undefined, sources, context, options.signal, modules);
+        for (const [path, bytes] of texts) sandbox.expected.set(path, sha256(bytes));
+        for (const source of sources) sandbox.original.set(source.path, source.text);
+        return sandbox;
+      }
       if (python || node) {
         const suffix = randomUUID().replace(/-/g, "");
         const testClass = node ? "hushavyr-" + suffix + ".test.cjs" : "test_hushavyr_" + suffix;
@@ -234,7 +265,12 @@ export class FixSandbox {
     const name = this.context.testClass.split(".").at(-1)!;
     const expectedPackage = this.context.testClass.split(".").slice(0, -1).join(".");
     const actualPackage = source.replace(/\/\*[\s\S]*?\*\//g, "").match(/^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/m)?.[1] ?? "";
-    const valid = (this.context.profile === "node" || this.context.profile === "typescript") ? Boolean(source.trim()) : this.context.profile === "python"
+    const goPackage = this.context.profile === "go"
+      ? this.sources.find(s => dirname(s.path) === dirname(this.context.testPath))?.text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "").match(/^\s*package\s+(\w+)/m)?.[1] : undefined;
+    const valid = this.context.profile === "go"
+      ? Boolean(goPackage) && new RegExp("^\\s*package\\s+" + goPackage + "\\s*$", "m").test(source) &&
+        new RegExp("^func\\s+" + this.context.testClass + "\\s*\\(\\s*t\\s+\\*testing\\.T\\s*\\)", "m").test(source) && !/\bimport\s+"C"/.test(source)
+      : (this.context.profile === "node" || this.context.profile === "typescript") ? Boolean(source.trim()) : this.context.profile === "python"
       ? /^def test_[A-Za-z0-9_]+\s*\(/m.test(source)
       : actualPackage === expectedPackage && new RegExp("\\bpublic\\s+(?:final\\s+)?class\\s+" + name + "\\b").test(source);
     if (!valid || Buffer.byteLength(source, "utf8") > 8000) throw new Error("invalid-regression-source");
@@ -267,7 +303,7 @@ export class FixSandbox {
     if (this.cache) await mkdir(targetMount, {recursive: true});
     const name = "ai-privacy-fix-" + randomUUID();
     const args = dockerCreateArgs({profile: this.context.profile, snapshot: this.snapshot, target: this.targetDirectory, cache: this.cache,
-      project: this.project, image: this.context.imageId, uid: process.getuid!(), gid: process.getgid!(), name}, targetClass);
+      project: this.project, image: this.context.imageId, uid: process.getuid!(), gid: process.getgid!(), name, modules: this.modules}, targetClass);
     let created = false, interrupted = true, exitCode: number | null = null;
     try {
       await command("docker", [...this.docker, ...args], this.directory); created = true;
@@ -285,6 +321,10 @@ export class FixSandbox {
       try {
         if (this.context.profile === "node" || this.context.profile === "typescript") {
           cases.push(...parseNodeReport(await regularText(join(this.targetDirectory, "node.xml"), 1048576)));
+          return {exitCode, interrupted, durationMs: Date.now() - started, cases};
+        }
+        if (this.context.profile === "go") {
+          cases.push(...parseGoReport(await regularText(join(this.targetDirectory, "go.json"), 1048576), this.context.testClass));
           return {exitCode, interrupted, durationMs: Date.now() - started, cases};
         }
         if (this.context.profile === "python") {
@@ -309,7 +349,7 @@ export class FixSandbox {
       await writeFile(join(this.directory, "verified.patch"), patch, {flag: "wx", mode: 0o600});
       patchHash = sha256(patch);
     }
-    if (this.testSource) await writeFile(join(this.directory, "proposed-regression." + ((this.context.profile === "node" || this.context.profile === "typescript") ? "cjs" : this.context.profile === "python" ? "py" : "java")), this.testSource, {flag: "wx", mode: 0o600});
+    if (this.testSource) await writeFile(join(this.directory, "proposed-regression." + ((this.context.profile === "node" || this.context.profile === "typescript") ? "cjs" : this.context.profile === "python" ? "py" : this.context.profile === "go" ? "go" : "java")), this.testSource, {flag: "wx", mode: 0o600});
     // Write the completion marker last, after its content-addressed artifact exists.
     await writeFile(join(this.directory, "receipt.json"), JSON.stringify({...receipt, patchHash,
       cleanupRequiresAttention: this.unsafeCleanup}, null, 2) + "\n", {flag: "wx", mode: 0o600});
