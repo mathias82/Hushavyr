@@ -15,3 +15,6 @@ hushavyr.sarif
 
 hushavyr-comment.md
 .hushavyr-tool/
+
+# Fake credential used by the end-to-end fixture workspace
+!e2e/fixtures/workspace/.env

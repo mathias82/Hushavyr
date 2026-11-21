@@ -22,3 +22,7 @@
 
 **/fixtures/**
 .hushavyr/**
+
+# End-to-end test sources and build output
+e2e/**
+**/dist/e2e/**
