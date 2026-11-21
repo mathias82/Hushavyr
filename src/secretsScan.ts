@@ -19,8 +19,8 @@ function literalValue(raw: string): string | undefined {
   if (/^[\[{@?]|^%\w+%$|\$\(|\$\{|\(|\b(?:process\.env|getenv|environ|GetEnvironmentVariable|Configuration|config|settings)\b/.test(value)) return;
   const text = value.replace(/^(["'`])(.*)\1$/, "$2");
   if (text.length < 4) return;
-  // UI text and translations ("Κωδικός πρόσβασης", "Password") are labels, not secrets.
-  if (/\s/.test(text.trim()) || /^\p{Lu}\p{Ll}+$/u.test(text) || /[\u0370-\u03ff]/.test(text)) return;
+  // UI text and translations ("Κωδικός πρόσβασης", "パスワード", "Password") are labels, not secrets.
+  if (/\s/.test(text.trim()) || /^\p{Lu}\p{Ll}+$/u.test(text) || /(?=\p{L})\P{Script=Latin}/u.test(text)) return;
   return text;
 }
 // Tests, fixtures, docs, examples and local/dev profiles usually hold throwaway values: still reported, but MEDIUM so real config stands out.

@@ -111,8 +111,11 @@ test("CLI folder scan reports credentials and skips dependency folders", async (
     await writeFile(join(root, "package-lock.json"), "{\n  \"password\": \"hunter2-super-secret-value\"\n}\n");
     await mkdir(join(root, "node_modules"));
     await writeFile(join(root, "node_modules", "dep.js"), "const password = \"hunter2-super-secret-value\";\n");
+    await mkdir(join(root, "test"));
+    await writeFile(join(root, "test", "login.test.js"), "const password = \"hunter2-super-secret-value\";\n");
     const results = await scanFolder(root, join(__dirname, "..", "..", "rules", "hushavyr-review.yml"));
     assert.ok(results.some(r => r.path === "config.js" && r.level === "error"));
+    assert.ok(results.some(r => r.path === "test/login.test.js" && r.level === "warning"));
     assert.ok(results.every(r => !r.path.startsWith("node_modules") && r.path !== "package-lock.json"));
   } finally { await rm(root, {recursive: true, force: true}); }
 });

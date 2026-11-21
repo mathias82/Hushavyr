@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **Less noise on real repos:** translations in non-Latin scripts (e.g. `"LABEL_PASSWORD": "パスワード"`) are no longer reported as credentials; the CLI/SARIF reports credentials in tests, fixtures and docs as `warning`, as the editor already did. On OWASP Juice Shop HIGH findings went from 220 to 35, 34 of them real ([report](docs/juice-shop-benchmark.md)).
+
 ## 1.0.4
 - **Git history secret scan:** `@ai-privacy /gitleaks history` or *Hushavyr: Find Secrets in Git History* scans every commit with Gitleaks, locally. Each finding shows its commit, so secrets that were deleted but are still in history get found. Rotated secrets can be silenced with `.gitleaksignore`.
 - **Redacted always:** Gitleaks runs with `--redact`, so secret values never reach reports or the model.

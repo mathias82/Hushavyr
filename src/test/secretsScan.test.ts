@@ -39,3 +39,8 @@ test("credentials in tests, docs, examples and dev profiles are MEDIUM; real con
   assert.equal(sev("app/requests.properties"), "HIGH");
   assert.equal(scanSecrets('private static final String PASSWORD = "s3cr3t-value-1";', "src/LoginServiceTest.java")[0]?.severity, "MEDIUM");
 });
+test("translations in any non-Latin script are labels, not credentials", () => {
+ const i18n = '{\n "LABEL_PASSWORD": "パスワード",\n "MANDATORY_PASSWORD": "请提供密码",\n "LABEL_PRIVATE_KEY": "รหัสผ่าน",\n "PASSWORD_HINT": "پسورد"\n}';
+ assert.deepEqual(scanSecrets(i18n, "frontend/src/assets/i18n/ja_JP.json"), []);
+ assert.equal(scanSecrets('{\n "password": "s3cr3t-Pässwörd-42"\n}', "config.json").length, 1);
+});
