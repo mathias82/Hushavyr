@@ -2,6 +2,17 @@
 
 Code review and security checks in VS Code that run **on your machine** with Ollama. Your code does not go to a cloud model.
 
+## Why Hushavyr?
+
+**Hushavyr** is a coined name built around **“hush”** — the idea of keeping something quiet, confidential, and protected. **“-avyr”** is a distinctive invented ending, not a word with an established dictionary meaning.
+
+The name expresses the project's privacy-first philosophy: review and improve code locally, keep sensitive information under your control, and require explicit approval before sharing anything externally.
+
+> **Private AI. Verified Code.**  
+> *Your code stays yours.*
+
+This is a brand interpretation, not a literal translation of an existing word.
+
 ## Install
 
 1. Install **Hushavyr** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr).
