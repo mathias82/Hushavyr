@@ -5,7 +5,7 @@ import {join, relative, resolve} from "node:path";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {auditDependencies, findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
-import {SarifResult, sarifLevel, toSarif} from "./sarif";
+import {SarifResult, canonicalRule, sarifLevel, toSarif} from "./sarif";
 import {loadIgnore} from "./teamMemory";
 import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
 import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
@@ -30,7 +30,7 @@ function semgrep(root: string, rules: string): Promise<SarifResult[]> {
     {cwd: root, timeout: 600000, maxBuffer: 64 * 1024 * 1024, env: {...process.env, SEMGREP_SEND_METRICS: "off"}}, (_error, stdout) => {
       try {
         const data = JSON.parse(stdout) as {results?: {path: string; start: {line: number}; check_id: string; extra?: {message?: string; severity?: string}}[]};
-        done((data.results ?? []).map(r => ({ruleId: r.check_id.split(".").slice(-1)[0], message: r.extra?.message ?? r.check_id,
+        done((data.results ?? []).map(r => ({ruleId: canonicalRule(r.check_id.split(".").slice(-1)[0]), message: r.extra?.message ?? r.check_id,
           path: r.path, line: r.start.line, level: sarifLevel(r.extra?.severity ?? "WARNING")})));
       } catch { done([]); }
     }));
@@ -62,7 +62,8 @@ export async function scanFolder(root: string, rules: string, log: (line: string
   log("semgrep: " + fromSemgrep.length + " findings");
   for (const r of fromSemgrep) {
     const same = results.findIndex(x => x.path === r.path && x.line === r.line && x.ruleId !== "hardcoded-credential");
-    if (same >= 0) results[same] = r; else results.push(r);
+    if (same >= 0) results[same] = r;
+    else if (!results.some(x => x.path === r.path && x.line === r.line && x.ruleId === r.ruleId)) results.push(r);
   }
   const audit = await auditDependencies(root);
   log("trivy: " + audit.status + " (" + audit.findings + " vulnerabilities)");

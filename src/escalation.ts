@@ -73,7 +73,10 @@ export async function escalate(input: EscalationInput, deps: EscalationDeps): Pr
   const blocked = escalationBlock(input);
   if (blocked) return {outcome: "blocked", reason: blocked};
   const pseudo = pseudonymize(input.code);
-  const payload = escalationPayload(input.question, pseudo.text);
+  // Names from the code that the user repeats in the question are replaced by the same tokens.
+  const tokenOf = new Map([...pseudo.map].filter(([t]) => t.startsWith("id")).map(([t, original]) => [original, t]));
+  const question = input.question.replace(/\b[A-Za-z_$][\w$]*\b/g, w => tokenOf.get(w) ?? w);
+  const payload = escalationPayload(question, pseudo.text);
   // The outgoing text itself is checked again, so a leak through the question is also caught.
   const recheck = classifyInput({prompt: payload, workspaceTrusted: true}).reasons.filter(r => r !== "unverified-sensitivity");
   if (recheck.length || scanSecrets(payload).length) return {outcome: "blocked", reason: "the outgoing payload still looks sensitive"};
