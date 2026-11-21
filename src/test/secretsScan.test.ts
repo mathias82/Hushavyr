@@ -27,3 +27,15 @@ test("finds hardcoded credentials in code declarations and SQL built by concaten
   assert.equal(scanSecurity("db.js", 'conn.query("SELECT * FROM u WHERE n = \'" + req.query.name + "\'", cb);').length, 1);
   assert.equal(scanSecurity("db.js", 'conn.query("SELECT * FROM u WHERE n = ?", [name], cb);').length, 0);
 });
+
+test("credentials in tests, docs, examples and dev profiles are MEDIUM; real config stays HIGH", () => {
+  const line = "password=s3cr3t-value-1";
+  const sev = (path: string) => scanSecrets(line, path)[0]?.severity;
+  assert.equal(sev("src/main/resources/application.properties"), "HIGH");
+  assert.equal(sev("src/main/resources/application-dev.properties"), "MEDIUM");
+  assert.equal(sev("src/test/resources/application.properties"), "MEDIUM");
+  assert.equal(sev("docs/setup.md"), "MEDIUM");
+  assert.equal(sev(".env.example"), "MEDIUM");
+  assert.equal(sev("app/requests.properties"), "HIGH");
+  assert.equal(scanSecrets('private static final String PASSWORD = "s3cr3t-value-1";', "src/LoginServiceTest.java")[0]?.severity, "MEDIUM");
+});

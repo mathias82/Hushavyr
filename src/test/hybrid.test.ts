@@ -54,6 +54,16 @@ test("thorough review runs the general pass plus each lens and merges static can
   assert.ok(result?.findings.some(f => f.line === 3));
 });
 
+test("light review runs one short pass and still keeps static candidates", async () => {
+  const calls: {maxTokens?: number}[] = [];
+  const client = {generate: async (_prompt: string, options?: {maxTokens?: number}) => { calls.push(options ?? {}); return '{"findings":[]}'; }};
+  const result = await runLocalReview(client, "review", sqlSource, () => false, undefined,
+    {depth: "light", staticFindings: Promise.resolve([{...finding(3), path: "file:///Repo.java", evidence: sqlSource[0].text.split("\n")[2].trim()}])});
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].maxTokens, 1536);
+  assert.ok(result?.findings.some(f => f.line === 3));
+});
+
 test("call context pulls the callee definition from another file", () => {
   const caller = {path: "file:///Svc.java", text: "class Svc { void run(String id) { repo.lookup(id); } }"};
   const files = [{path: "file:///Repo.java", text: "class Repo {\n  void lookup(String id) {\n    query(id);\n  }\n}"}];
@@ -126,7 +136,8 @@ test("a /review marker maps to the right offline runner and nearest project", as
   const { runnerFor, projectRootFor } = await import("../proofTarget");
   assert.equal(runnerFor("/w/app/src/main/java/A.java"), "Java / Maven");
   assert.equal(runnerFor("/w/a.mts"), "TypeScript / Node.js");
-  assert.equal(runnerFor("/w/a.go"), undefined);
+  assert.equal(runnerFor("/w/a.go"), "Go / go test");
+  assert.equal(runnerFor("/w/a.rb"), undefined);
   const files = new Set(["/w/svc/pom.xml", "/w/pom.xml"]);
   assert.equal(projectRootFor("/w/svc/src/main/java/A.java", "Java / Maven", "/w", p => files.has(p)), "/w/svc");
   assert.equal(projectRootFor("/w/lib/x.py", "Python / pytest", "/w", p => files.has(p)), undefined);
@@ -211,6 +222,21 @@ test("taint follows request input across files and functions to the sink", async
     {path: "Repo.java", text: "class Repo {\n  public User byId(String id) {\n    return stmt.executeQuery(\"SELECT * FROM u WHERE id=\" + id);\n  }\n}"}
   ]);
   assert.deepEqual(java.map(f => [f.kind, f.sink.path, f.sink.line, f.via]), [["sql", "Repo.java", 3, ["byId"]]]);
+});
+
+test("servlet taint covers Java sinks, constant branches, collection slots and kind-aware encoders", async () => {
+  const { taintFlows } = await import("../taint");
+  const servlet = (name: string, body: string) => ({path: `${name}.java`, text: `class ${name} {\n  public void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {\n${body}\n  }\n}`});
+  const flows = taintFlows([
+    servlet("Cmd", "    String v = \"\";\n    for (Cookie c : request.getCookies()) {\n      v = c.getValue();\n    }\n    new ProcessBuilder(\"sh\", \"-c\", v).start();"),
+    servlet("Dead", "    String p = request.getParameter(\"p\");\n    String bar;\n    int n = 86;\n    if ((7 * 42) - n > 200) bar = \"safe\";\n    else bar = p;\n    String g = \"ABC\";\n    switch (g.charAt(1)) {\n      case 'A': bar = p; break;\n      case 'B': bar = bar + \"x\"; break;\n      default: bar = p;\n    }\n    response.getWriter().println(bar);"),
+    servlet("Slots", "    String p = request.getHeader(\"h\");\n    java.util.List<String> l = new java.util.ArrayList<String>();\n    l.add(\"a\");\n    l.add(p);\n    l.add(\"b\");\n    l.remove(0);\n    java.util.Map<String, Object> m = new java.util.HashMap<String, Object>();\n    m.put(\"k1\", p);\n    m.put(\"k2\", \"safe\");\n    new java.io.File(l.get(1) + (String) m.get(\"k2\"));"),
+    servlet("Writer", "    String p = ctx.getRequestParameter(\"p\");\n    String safe = org.owasp.esapi.ESAPI.encoder().encodeForHTML(p);\n    java.io.PrintWriter out = response.getWriter();\n    out.println(safe);\n    out.format(java.util.Locale.US, \"%s\", new Object[] {p});\n    request.getSession().setAttribute(\"k\", safe);"),
+    servlet("Ldap", "    String p = request.getParameter(\"p\");\n    DirContext ctx = helper.getDirContext();\n    ctx.search(\"ou=users\", \"(uid=\" + p + \")\", controls);\n    String init = getServletConfig().getInitParameter(\"x\");\n    Runtime.getRuntime().exec(init);")
+  ]);
+  assert.deepEqual(flows.map(f => [f.sink.path, f.kind, f.sink.line]).sort(), [
+    ["Cmd.java", "command", 7], ["Ldap.java", "ldap", 5], ["Writer.java", "trust-boundary", 8], ["Writer.java", "xss", 7]
+  ]);
 });
 
 test("function-level reachability finds a call of the vulnerable function, not just the import", () => {
@@ -374,4 +400,31 @@ test("Rust: shell commands, format! SQL and MD5 are flagged; a direct program ca
   assert.deepEqual(rules("c.execute(&format!(\"DELETE FROM t WHERE n = '{}'\", n), [])"), ["SQL string concatenation"]);
   assert.deepEqual(rules("md5::compute(x)"), ["Weak cryptographic hash"]);
   assert.deepEqual(rules("Command::new(\"git\").arg(\"log\").arg(x)"), []);
+});
+
+test("taint ignores method heads, other methods' locals, System.out, static helpers and other languages", () => {
+  const { taintFlows } = require("../taint") as typeof import("../taint");
+  const servlet = {path: "file:///S.java", text: [
+    "class S {",
+    "  void doGet(HttpServletRequest request, HttpServletResponse response) throws Exception {",
+    "    String id = request.getParameter(\"id\");",
+    "    PrintWriter out = response.getWriter();",
+    "    Helper.execute(id);",
+    "    evaluate(id);",
+    "  }",
+    "  public int execute(Connection conn, Map<String, Object> id) throws Exception {",
+    "    System.out.println(\"id \" + id);",
+    "    return conn.createStatement().executeUpdate(\"DELETE FROM t\");",
+    "  }",
+    "}"].join("\n")};
+  const js = {path: "file:///lib.js", text: "function evaluate(code) {\n  return eval(code);\n}"};
+  assert.deepEqual(taintFlows([servlet, js]), []);
+  const real = {path: "file:///R.java", text: "class R {\n  void doGet(HttpServletRequest request) throws Exception {\n    String id = request.getParameter(\"id\");\n    stmt.executeQuery(\"SELECT * FROM t WHERE id=\" + id);\n  }\n}"};
+  assert.deepEqual(taintFlows([real]).map(f => [f.kind, f.sink.line]), [["sql", 4]]);
+});
+
+test("insecure random is reported only near security use", () => {
+  const { scanSecurity } = require("../securityRules") as typeof import("../securityRules");
+  assert.deepEqual(scanSecurity("A.java", "double x = Math.random();"), []);
+  assert.equal(scanSecurity("A.java", "String token = \"\" + new Random().nextInt();").length, 1);
 });

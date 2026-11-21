@@ -20,3 +20,7 @@ test("covers Go, C#, PHP and Python indicators without flagging safe forms",()=>
  assert.equal(scanSecurity("app.js","eval(userInput)")[0].rule,"Unsafe dynamic code evaluation");
  assert.equal(scanSecurity("app.js","eval('1+1')").length,0);
 });
+test("flags weak Java ciphers, key generators and insecure random but not AES/GCM or SecureRandom",()=>{
+ const java=["Cipher c = Cipher.getInstance(\"DES/CBC/PKCS5Padding\");","Cipher e = Cipher.getInstance(\"AES/ECB/PKCS5Padding\");","SecretKey k = KeyGenerator.getInstance(\"DES\").generateKey();","MessageDigest md = MessageDigest.getInstance(\"SHA1\", \"SUN\");","double r = new java.util.Random().nextDouble();","Cipher g = Cipher.getInstance(\"AES/GCM/NoPadding\");","SecureRandom s = new SecureRandom();"].join("\n");
+ assert.deepEqual(scanSecurity("Crypto.java",java).map(x=>x.line),[1,2,3,4,5]);
+});

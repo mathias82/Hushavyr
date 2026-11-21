@@ -28,7 +28,8 @@ const CANONICAL: Array<[RegExp, string]> = [
   [/^(?:js|python)-eval$/, "unsafe-dynamic-code-evaluation"],
   [/^python-unsafe-deserialization$/, "unsafe-python-deserialization"],
   [/insecure-tls$|tls-disabled$|insecure-trust-manager$/, "tls-certificate-validation-disabled"],
-  [/^weak-hash(?:-\w+)?$/, "weak-cryptographic-hash"]
+  [/^weak-hash(?:-\w+)?$/, "weak-cryptographic-hash"],
+  [/weak-cipher$/, "weak-encryption-algorithm"]
 ];
 /** One rule id per weakness, whether the bundled Semgrep pack or the built-in rules found it. */
 export function canonicalRule(id: string): string {
