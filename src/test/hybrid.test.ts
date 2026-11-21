@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { staticReview, semgrepToFindings } from "../staticReview";
 import { mergeFindings, runLocalReview, LENSES } from "../localReview";
 import { callContext, definitionSnippet } from "../callContext";
-import { collectImports, reachability } from "../reachability";
+import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../reachability";
 import { toSarif, sarifLevel } from "../sarif";
 import { ResultCache } from "../reviewCache";
 import { scanFolder } from "../cli";
@@ -222,4 +222,20 @@ test("taint follows request input across files and functions to the sink", async
     {path: "Repo.java", text: "class Repo {\n  public User byId(String id) {\n    return stmt.executeQuery(\"SELECT * FROM u WHERE id=\" + id);\n  }\n}"}
   ]);
   assert.deepEqual(java.map(f => [f.kind, f.sink.path, f.sink.line, f.via]), [["sql", "Repo.java", 3, ["byId"]]]);
+});
+
+test("function-level reachability finds a call of the vulnerable function, not just the import", () => {
+  assert.deepEqual(vulnerableSymbols("left-pad", "Prototype pollution in zipObjectDeep via yaml.load()"), ["zipObjectDeep", "load"]);
+  assert.deepEqual(vulnerableSymbols("lodash", "nodejs-lodash: command injection via template"), ["template"]);
+  assert.deepEqual(vulnerableSymbols("lodash", "prototype pollution in zipObjectDeep function"), ["zipObjectDeep"]);
+  assert.deepEqual(vulnerableSymbols("lodash", "Allocation of Resources Without Limits"), []);
+  const files = [
+    {path: "a.js", text: "import _ from 'lodash';\nconst x = _.map(list, f);"},
+    {path: "b.js", text: "const _ = require('lodash');\n// _.template(input)\nconst html = _.template(userInput)();"},
+    {path: "c.js", text: "const template = (s) => s;\ntemplate('no lodash here');"}
+  ];
+  assert.deepEqual(findVulnerableCall("lodash", "package-lock.json", ["template"], files), {path: "b.js", line: 3, symbol: "template"});
+  assert.equal(findVulnerableCall("lodash", "package-lock.json", ["template"], files.slice(0, 1).concat(files[2])), undefined);
+  const java = [{path: "M.java", text: "import com.fasterxml.jackson.databind.ObjectMapper;\nclass M { void f(ObjectMapper m) { m.enableDefaultTyping(); } }"}];
+  assert.equal(findVulnerableCall("com.fasterxml.jackson.core:jackson-databind", "pom.xml", vulnerableSymbols("com.fasterxml.jackson.core:jackson-databind", "Deserialization"), java)?.line, 2);
 });

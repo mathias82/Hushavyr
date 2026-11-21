@@ -6,6 +6,7 @@ import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {auditDependencies, findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
 import {SarifResult, sarifLevel, toSarif} from "./sarif";
+import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
 import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
 
 const SKIP = new Set([".git", "node_modules", "target", "build", "dist", "out", "coverage", ".venv", "venv", ".next", ".idea", ".vscode", "vendor", "__pycache__"]);
@@ -38,12 +39,14 @@ function semgrep(root: string, rules: string): Promise<SarifResult[]> {
 export async function scanFolder(root: string, rules: string, log: (line: string) => void = () => undefined): Promise<SarifResult[]> {
   const results: SarifResult[] = [];
   const taintFiles: TaintFile[] = [];
+  const depFiles: {path: string; text: string}[] = [];
   for (const file of await walk(root)) {
     if ((await stat(file)).size > 200_000) continue;
     const text = await readFile(file, "utf8");
     if (text.includes("\0")) continue;
     const path = relative(root, file);
     if (SOURCE.test(file)) taintFiles.push({path, text});
+    if (SOURCE.test(file) && collectImports(path, text).length) depFiles.push({path, text});
     if (SOURCE.test(file)) for (const issue of scanSecurity(path, text))
       results.push({ruleId: issue.rule.replace(/\W+/g, "-").toLowerCase(), message: issue.rule + ": " + issue.advice, path, line: issue.line, level: sarifLevel(issue.severity)});
     // Lockfiles hold package names and integrity hashes, never credentials.
@@ -63,7 +66,9 @@ export async function scanFolder(root: string, rules: string, log: (line: string
   for (const v of groupVulnerabilities(audit.vulnerabilities ?? [])) for (const target of v.targets.slice(0, 3)) {
     let line = 1;
     try { line = findDependencyLine(await readFile(join(root, target), "utf8"), v.pkg, v.installed); } catch { /* target is not a readable file */ }
-    results.push({ruleId: v.id, message: v.id + " in " + v.pkg + " " + v.installed + (v.fixed ? ", fixed in " + v.fixed : ", no fix available") + (v.title ? ": " + v.title : ""),
+    const call = findVulnerableCall(v.pkg, target + " " + (audit.manager ?? ""), vulnerableSymbols(v.pkg, v.title ?? ""), depFiles);
+    results.push({ruleId: v.id, message: v.id + " in " + v.pkg + " " + v.installed + (v.fixed ? ", fixed in " + v.fixed : ", no fix available") + (v.title ? ": " + v.title : "") +
+      (call ? " [vulnerable function " + call.symbol + " called at " + call.path + ":" + call.line + "]" : ""),
       path: target, line, level: sarifLevel(v.severity)});
   }
   return results;

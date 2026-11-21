@@ -8,7 +8,7 @@ import {runScanner} from "./externalScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
 import {runSemgrep} from "./semgrep";
 import {flowSeverity, flowTitle, taintFlows, TaintFile} from "./taint";
-import {collectImports, reachability} from "./reachability";
+import {collectImports, findVulnerableCall, reachability, SymbolCall, vulnerableSymbols} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
@@ -128,6 +128,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       let securityFindings = 0;
       const imports = new Set<string>();
       const taintFiles: TaintFile[] = [];
+      const depFiles: {path: string; text: string}[] = [];
+      const depUris = new Map<string, vscode.Uri>();
       const uriOf = new Map<string, vscode.Uri>();
       for (const uri of files) {
         if (token.isCancellationRequested) break;
@@ -136,7 +138,11 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
         if (bytes.length > 60_000 || bytes.includes(0)) continue;
         const relative = vscode.workspace.asRelativePath(uri);
         const localContent = Buffer.from(bytes).toString("utf8");
-        if (request.command === "dependencies") for (const name of collectImports(uri.path, localContent)) imports.add(name);
+        if (request.command === "dependencies") {
+          const found = collectImports(uri.path, localContent);
+          for (const name of found) imports.add(name);
+          if (found.length) { depFiles.push({path: relative, text: localContent}); depUris.set(relative, uri); }
+        }
         if (request.command === "security") {
           taintFiles.push({path: relative, text: localContent});
           uriOf.set(relative, uri);
@@ -162,9 +168,16 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           if (age !== undefined && age > 7) stream.markdown("**" + age + " " + tr(lang, "dbDays") + ".** " + tr(lang, "dbStale") + "\n\n");
           // Packages the project source actually imports come first; the rest are usually transitive or unused.
           const reach = (v: GroupedVulnerability) => reachability(v.pkg, v.targets.join(" ") + " " + (audit.manager ?? ""), imports);
-          const order = {"imported": 0, "unknown": 1, "not-imported": 2};
-          const groups = groupVulnerabilities(audit.vulnerabilities ?? []).map((v, index) => ({v, index, r: reach(v)}))
-            .sort((a, b) => order[a.r] - order[b.r] || a.index - b.index).map(x => x.v);
+          const eco = (v: GroupedVulnerability) => v.targets.join(" ") + " " + (audit.manager ?? "");
+          // Function level: is a vulnerable function of the package actually called? Those come first.
+          const calls = new Map<GroupedVulnerability, SymbolCall | undefined>();
+          const called = (v: GroupedVulnerability) => {
+            if (!calls.has(v)) calls.set(v, reach(v) === "imported" ? findVulnerableCall(v.pkg, eco(v), vulnerableSymbols(v.pkg, v.title ?? ""), depFiles) : undefined);
+            return calls.get(v);
+          };
+          const order = {"imported": 1, "unknown": 2, "not-imported": 3};
+          const groups = groupVulnerabilities(audit.vulnerabilities ?? []).map((v, index) => ({v, index, r: called(v) ? 0 : order[reach(v)]}))
+            .sort((a, b) => a.r - b.r || a.index - b.index).map(x => x.v);
           const reached = groups.filter(v => reach(v) === "imported").length;
           const unreached = groups.filter(v => reach(v) === "not-imported").length;
           if (reached || unreached) stream.markdown("**" + tr(lang, "reachHeader") + "** " + reached + " " + tr(lang, "reachImported") + " · " + unreached + " " + tr(lang, "reachNotImported") + "\n\n");
@@ -175,7 +188,8 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
             const files = v.targets.slice(0, 5).map(t => "`" + t.replace(/`/g, "") + "`").join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
             stream.markdown("- **" + v.severity + "** · " + id + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
               (v.fixed ? tr(lang, "fixedIn") + " `" + v.fixed.replace(/`/g, "") + "`" : tr(lang, "noFix")) + (files ? " · " + tr(lang, "inFiles") + " " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") +
-              (r === "imported" ? " · **" + tr(lang, "tagImported") + "**" : r === "not-imported" ? " · _" + tr(lang, "tagNotImported") + "_" : "") + "\n");
+              (called(v) ? " · **" + tr(lang, "tagCalled") + " " + findingLink(depUris.get(called(v)!.path)!, called(v)!.line, called(v)!.path + ":" + called(v)!.line) + " (`" + called(v)!.symbol + "`)**" :
+              r === "imported" ? " · **" + tr(lang, "tagImported") + "**" : r === "not-imported" ? " · _" + tr(lang, "tagNotImported") + "_" : "") + "\n");
           }
           if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " " + tr(lang, "moreHidden") + ". Links open the public NVD page only if you click them._\n");
           if (shown.length) stream.markdown("\n");

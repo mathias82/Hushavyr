@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.0.29
+- Function-level CVE reachability: `/dependencies` and the CLI show when the vulnerable function itself (from the advisory title or a curated list: lodash, jackson-databind, snakeyaml, PyYAML...) is called, with a link to the call. Those CVEs are listed first.
 - Project-wide taint: `/security`, `/review` and the CLI follow request input (`req.query`, `@RequestParam`, Flask/FastAPI routes...) through functions and files to SQL, shell, eval, file, outbound-URL and innerHTML sinks. No model, no Semgrep Pro.
 - `/explain` and `/review` ignore Chat instruction files (copilot-instructions.md, AGENTS.md, .ai-context) and use the open code file.
 - PR review in CI: `hushavyr-review` reviews only the changed lines of a PR with local Ollama, applies team rules and dismissals, and writes a PR comment (Markdown) and SARIF. Example workflow for a self-hosted runner: `examples/hushavyr-pr-review.yml`.
