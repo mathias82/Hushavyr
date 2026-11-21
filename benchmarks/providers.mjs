@@ -3,8 +3,9 @@
 // Never transmits code, reads credentials, or invokes a cloud provider.
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-const root=resolve(new URL('..',import.meta.url).pathname);
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const cli=resolve(root,'dist/benchmark.js');
 const [action,...args]=process.argv.slice(2);
 const arg=(name,fallback)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1]};
