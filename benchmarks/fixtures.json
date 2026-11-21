@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Synthetic polyglot cases calibrated to built-in Hushavyr security rule IDs. Run the actual CLI with benchmarks/run.mjs; optional Semgrep findings may change precision.",
+  "description": "112 synthetic polyglot cases across 10 languages; Kotlin and Rust include negative controls; no positive Rust detector coverage is claimed. Results must be measured, not inferred.",
   "cases": [
     {
       "id": "js-eval",
@@ -111,6 +111,932 @@
       "language": "go",
       "path": "go/clean.go",
       "code": "package main\nfunc add(a, b int) int { return a + b }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "javascript-extended-1",
+      "language": "javascript",
+      "path": "javascript/case_1.js",
+      "code": "function f(x){return eval(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-2",
+      "language": "javascript",
+      "path": "javascript/case_2.js",
+      "code": "function f(x){return new Function(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-3",
+      "language": "javascript",
+      "path": "javascript/case_3.js",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-4",
+      "language": "javascript",
+      "path": "javascript/case_4.js",
+      "code": "function f(x){return eval(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-5",
+      "language": "javascript",
+      "path": "javascript/case_5.js",
+      "code": "function f(x){return new Function(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-6",
+      "language": "javascript",
+      "path": "javascript/case_6.js",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-7",
+      "language": "javascript",
+      "path": "javascript/case_7.js",
+      "code": "function f(x){return eval(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-8",
+      "language": "javascript",
+      "path": "javascript/case_8.js",
+      "code": "function f(x){return new Function(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-9",
+      "language": "javascript",
+      "path": "javascript/case_9.js",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "javascript-extended-10",
+      "language": "javascript",
+      "path": "javascript/case_10.js",
+      "code": "function f(x){return eval(x)}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-1",
+      "language": "typescript",
+      "path": "typescript/case_1.ts",
+      "code": "export const f=(x:string)=>eval(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-2",
+      "language": "typescript",
+      "path": "typescript/case_2.ts",
+      "code": "export const f=(x:string)=>new Function(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-3",
+      "language": "typescript",
+      "path": "typescript/case_3.ts",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-4",
+      "language": "typescript",
+      "path": "typescript/case_4.ts",
+      "code": "export const f=(x:string)=>eval(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-5",
+      "language": "typescript",
+      "path": "typescript/case_5.ts",
+      "code": "export const f=(x:string)=>new Function(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-6",
+      "language": "typescript",
+      "path": "typescript/case_6.ts",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-7",
+      "language": "typescript",
+      "path": "typescript/case_7.ts",
+      "code": "export const f=(x:string)=>eval(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-8",
+      "language": "typescript",
+      "path": "typescript/case_8.ts",
+      "code": "export const f=(x:string)=>new Function(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-9",
+      "language": "typescript",
+      "path": "typescript/case_9.ts",
+      "code": "const tls={rejectUnauthorized:false};\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "typescript-extended-10",
+      "language": "typescript",
+      "path": "typescript/case_10.ts",
+      "code": "export const f=(x:string)=>eval(x);\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-1",
+      "language": "python",
+      "path": "python/case_1.py",
+      "code": "import pickle\nvalue=pickle.loads(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-2",
+      "language": "python",
+      "path": "python/case_2.py",
+      "code": "import hashlib\nvalue=hashlib.md5(data)\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-3",
+      "language": "python",
+      "path": "python/case_3.py",
+      "code": "import yaml\nvalue=yaml.load(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-4",
+      "language": "python",
+      "path": "python/case_4.py",
+      "code": "import pickle\nvalue=pickle.loads(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-5",
+      "language": "python",
+      "path": "python/case_5.py",
+      "code": "import hashlib\nvalue=hashlib.md5(data)\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-6",
+      "language": "python",
+      "path": "python/case_6.py",
+      "code": "import yaml\nvalue=yaml.load(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-7",
+      "language": "python",
+      "path": "python/case_7.py",
+      "code": "import pickle\nvalue=pickle.loads(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-8",
+      "language": "python",
+      "path": "python/case_8.py",
+      "code": "import hashlib\nvalue=hashlib.md5(data)\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-9",
+      "language": "python",
+      "path": "python/case_9.py",
+      "code": "import yaml\nvalue=yaml.load(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "python-extended-10",
+      "language": "python",
+      "path": "python/case_10.py",
+      "code": "import pickle\nvalue=pickle.loads(data)\n",
+      "expected": [
+        "unsafe-python-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-1",
+      "language": "java",
+      "path": "java/case_1.java",
+      "code": "class X{void f(String x)throws Exception{Runtime.getRuntime().exec(x);}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-2",
+      "language": "java",
+      "path": "java/case_2.java",
+      "code": "class X{void f()throws Exception{new ObjectInputStream(stream);}}\n",
+      "expected": [
+        "java-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-3",
+      "language": "java",
+      "path": "java/case_3.java",
+      "code": "class X{void f()throws Exception{MessageDigest.getInstance(\"MD5\");}}\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-4",
+      "language": "java",
+      "path": "java/case_4.java",
+      "code": "class X{void f(String x)throws Exception{Runtime.getRuntime().exec(x);}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-5",
+      "language": "java",
+      "path": "java/case_5.java",
+      "code": "class X{void f()throws Exception{new ObjectInputStream(stream);}}\n",
+      "expected": [
+        "java-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-6",
+      "language": "java",
+      "path": "java/case_6.java",
+      "code": "class X{void f()throws Exception{MessageDigest.getInstance(\"MD5\");}}\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-7",
+      "language": "java",
+      "path": "java/case_7.java",
+      "code": "class X{void f(String x)throws Exception{Runtime.getRuntime().exec(x);}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-8",
+      "language": "java",
+      "path": "java/case_8.java",
+      "code": "class X{void f()throws Exception{new ObjectInputStream(stream);}}\n",
+      "expected": [
+        "java-deserialization"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-9",
+      "language": "java",
+      "path": "java/case_9.java",
+      "code": "class X{void f()throws Exception{MessageDigest.getInstance(\"MD5\");}}\n",
+      "expected": [
+        "weak-cryptographic-hash"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "java-extended-10",
+      "language": "java",
+      "path": "java/case_10.java",
+      "code": "class X{void f(String x)throws Exception{Runtime.getRuntime().exec(x);}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-1",
+      "language": "go",
+      "path": "go/case_1.go",
+      "code": "package main\nimport \"os/exec\"\nfunc f(){exec.Command(\"sh\",\"-c\", \"echo hi\").Run()}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-2",
+      "language": "go",
+      "path": "go/case_2.go",
+      "code": "package main\nimport \"crypto/tls\"\nvar config=tls.Config{InsecureSkipVerify:true}\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-3",
+      "language": "go",
+      "path": "go/case_3.go",
+      "code": "package main\nfunc add(a,b int)int{return a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "go-extended-4",
+      "language": "go",
+      "path": "go/case_4.go",
+      "code": "package main\nimport \"os/exec\"\nfunc f(){exec.Command(\"sh\",\"-c\", \"echo hi\").Run()}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-5",
+      "language": "go",
+      "path": "go/case_5.go",
+      "code": "package main\nimport \"crypto/tls\"\nvar config=tls.Config{InsecureSkipVerify:true}\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-6",
+      "language": "go",
+      "path": "go/case_6.go",
+      "code": "package main\nfunc add(a,b int)int{return a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "go-extended-7",
+      "language": "go",
+      "path": "go/case_7.go",
+      "code": "package main\nimport \"os/exec\"\nfunc f(){exec.Command(\"sh\",\"-c\", \"echo hi\").Run()}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-8",
+      "language": "go",
+      "path": "go/case_8.go",
+      "code": "package main\nimport \"crypto/tls\"\nvar config=tls.Config{InsecureSkipVerify:true}\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "go-extended-9",
+      "language": "go",
+      "path": "go/case_9.go",
+      "code": "package main\nfunc add(a,b int)int{return a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "go-extended-10",
+      "language": "go",
+      "path": "go/case_10.go",
+      "code": "package main\nimport \"os/exec\"\nfunc f(){exec.Command(\"sh\",\"-c\", \"echo hi\").Run()}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "csharp-extended-1",
+      "language": "csharp",
+      "path": "csharp/case_1.cs",
+      "code": "using System.Diagnostics;\nclass X{void F(){Process.Start(\"cmd\");}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "csharp-extended-2",
+      "language": "csharp",
+      "path": "csharp/case_2.cs",
+      "code": "class X{int Add(int a,int b){return a+b;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-3",
+      "language": "csharp",
+      "path": "csharp/case_3.cs",
+      "code": "class X{bool Ok(){return true;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-4",
+      "language": "csharp",
+      "path": "csharp/case_4.cs",
+      "code": "using System.Diagnostics;\nclass X{void F(){Process.Start(\"cmd\");}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "csharp-extended-5",
+      "language": "csharp",
+      "path": "csharp/case_5.cs",
+      "code": "class X{int Add(int a,int b){return a+b;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-6",
+      "language": "csharp",
+      "path": "csharp/case_6.cs",
+      "code": "class X{bool Ok(){return true;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-7",
+      "language": "csharp",
+      "path": "csharp/case_7.cs",
+      "code": "using System.Diagnostics;\nclass X{void F(){Process.Start(\"cmd\");}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "csharp-extended-8",
+      "language": "csharp",
+      "path": "csharp/case_8.cs",
+      "code": "class X{int Add(int a,int b){return a+b;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-9",
+      "language": "csharp",
+      "path": "csharp/case_9.cs",
+      "code": "class X{bool Ok(){return true;}}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "csharp-extended-10",
+      "language": "csharp",
+      "path": "csharp/case_10.cs",
+      "code": "using System.Diagnostics;\nclass X{void F(){Process.Start(\"cmd\");}}\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "php-extended-1",
+      "language": "php",
+      "path": "php/case_1.php",
+      "code": "<?php\nfunction f($x){eval($x);}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "php-extended-2",
+      "language": "php",
+      "path": "php/case_2.php",
+      "code": "<?php\nfunction f($x){system($x);}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-3",
+      "language": "php",
+      "path": "php/case_3.php",
+      "code": "<?php\nfunction f($a,$b){return $a+$b;}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-4",
+      "language": "php",
+      "path": "php/case_4.php",
+      "code": "<?php\nfunction f($x){eval($x);}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "php-extended-5",
+      "language": "php",
+      "path": "php/case_5.php",
+      "code": "<?php\nfunction f($x){system($x);}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-6",
+      "language": "php",
+      "path": "php/case_6.php",
+      "code": "<?php\nfunction f($a,$b){return $a+$b;}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-7",
+      "language": "php",
+      "path": "php/case_7.php",
+      "code": "<?php\nfunction f($x){eval($x);}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "php-extended-8",
+      "language": "php",
+      "path": "php/case_8.php",
+      "code": "<?php\nfunction f($x){system($x);}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-9",
+      "language": "php",
+      "path": "php/case_9.php",
+      "code": "<?php\nfunction f($a,$b){return $a+$b;}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "php-extended-10",
+      "language": "php",
+      "path": "php/case_10.php",
+      "code": "<?php\nfunction f($x){eval($x);}\n",
+      "expected": [
+        "unsafe-dynamic-code-evaluation"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ruby-extended-1",
+      "language": "ruby",
+      "path": "ruby/case_1.rb",
+      "code": "verify_mode = OpenSSL::SSL::VERIFY_NONE\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ruby-extended-2",
+      "language": "ruby",
+      "path": "ruby/case_2.rb",
+      "code": "def add(a,b)\n a+b\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-3",
+      "language": "ruby",
+      "path": "ruby/case_3.rb",
+      "code": "def greet(x)\n x.to_s\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-4",
+      "language": "ruby",
+      "path": "ruby/case_4.rb",
+      "code": "verify_mode = OpenSSL::SSL::VERIFY_NONE\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ruby-extended-5",
+      "language": "ruby",
+      "path": "ruby/case_5.rb",
+      "code": "def add(a,b)\n a+b\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-6",
+      "language": "ruby",
+      "path": "ruby/case_6.rb",
+      "code": "def greet(x)\n x.to_s\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-7",
+      "language": "ruby",
+      "path": "ruby/case_7.rb",
+      "code": "verify_mode = OpenSSL::SSL::VERIFY_NONE\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "ruby-extended-8",
+      "language": "ruby",
+      "path": "ruby/case_8.rb",
+      "code": "def add(a,b)\n a+b\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-9",
+      "language": "ruby",
+      "path": "ruby/case_9.rb",
+      "code": "def greet(x)\n x.to_s\nend\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "ruby-extended-10",
+      "language": "ruby",
+      "path": "ruby/case_10.rb",
+      "code": "verify_mode = OpenSSL::SSL::VERIFY_NONE\n",
+      "expected": [
+        "tls-certificate-validation-disabled"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "kotlin-extended-1",
+      "language": "kotlin",
+      "path": "kotlin/case_1.kt",
+      "code": "class X { fun run(x: String) { Runtime.getRuntime().exec(x) } }\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "kotlin-extended-2",
+      "language": "kotlin",
+      "path": "kotlin/case_2.kt",
+      "code": "class X { fun add(a: Int,b: Int): Int = a+b }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-3",
+      "language": "kotlin",
+      "path": "kotlin/case_3.kt",
+      "code": "class X { fun twice(x: Int): Int = x*2 }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-4",
+      "language": "kotlin",
+      "path": "kotlin/case_4.kt",
+      "code": "class X { fun run(x: String) { Runtime.getRuntime().exec(x) } }\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "kotlin-extended-5",
+      "language": "kotlin",
+      "path": "kotlin/case_5.kt",
+      "code": "class X { fun add(a: Int,b: Int): Int = a+b }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-6",
+      "language": "kotlin",
+      "path": "kotlin/case_6.kt",
+      "code": "class X { fun twice(x: Int): Int = x*2 }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-7",
+      "language": "kotlin",
+      "path": "kotlin/case_7.kt",
+      "code": "class X { fun run(x: String) { Runtime.getRuntime().exec(x) } }\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "kotlin-extended-8",
+      "language": "kotlin",
+      "path": "kotlin/case_8.kt",
+      "code": "class X { fun add(a: Int,b: Int): Int = a+b }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-9",
+      "language": "kotlin",
+      "path": "kotlin/case_9.kt",
+      "code": "class X { fun twice(x: Int): Int = x*2 }\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "kotlin-extended-10",
+      "language": "kotlin",
+      "path": "kotlin/case_10.kt",
+      "code": "class X { fun run(x: String) { Runtime.getRuntime().exec(x) } }\n",
+      "expected": [
+        "potential-command-execution"
+      ],
+      "category": "security"
+    },
+    {
+      "id": "rust-extended-1",
+      "language": "rust",
+      "path": "rust/case_1.rs",
+      "code": "fn add(a:i32,b:i32)->i32{a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-2",
+      "language": "rust",
+      "path": "rust/case_2.rs",
+      "code": "fn twice(a:i32)->i32{a*2}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-3",
+      "language": "rust",
+      "path": "rust/case_3.rs",
+      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-4",
+      "language": "rust",
+      "path": "rust/case_4.rs",
+      "code": "fn add(a:i32,b:i32)->i32{a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-5",
+      "language": "rust",
+      "path": "rust/case_5.rs",
+      "code": "fn twice(a:i32)->i32{a*2}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-6",
+      "language": "rust",
+      "path": "rust/case_6.rs",
+      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-7",
+      "language": "rust",
+      "path": "rust/case_7.rs",
+      "code": "fn add(a:i32,b:i32)->i32{a+b}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-8",
+      "language": "rust",
+      "path": "rust/case_8.rs",
+      "code": "fn twice(a:i32)->i32{a*2}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-9",
+      "language": "rust",
+      "path": "rust/case_9.rs",
+      "code": "fn is_even(a:i32)->bool{a%2==0}\n",
+      "expected": [],
+      "category": "clean"
+    },
+    {
+      "id": "rust-extended-10",
+      "language": "rust",
+      "path": "rust/case_10.rs",
+      "code": "fn add(a:i32,b:i32)->i32{a+b}\n",
       "expected": [],
       "category": "clean"
     }
