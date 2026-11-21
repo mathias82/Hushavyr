@@ -86,7 +86,7 @@ export async function runSetup(): Promise<void> {
   }
   summary.push("Ollama: running");
   const best = recommendedModel(totalmem());
-  const options = [...new Set([model, best, "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"])];
+  const options = [...new Set([model, best, "qwen2.5-coder:7b", "qwen2.5-coder:14b", "qwen3-coder:30b", "qwen2.5-coder:32b", "deepseek-coder-v2:16b"])];
   const pick = await vscode.window.showQuickPick(options.map(label => ({
     label, description: label === best ? tr(language, "setupRecommended") : label === model ? tr(language, "setupCurrent") : undefined
   })), {placeHolder: tr(language, "setupPick")});

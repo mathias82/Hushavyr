@@ -15,7 +15,7 @@ if ! curl --silent --fail --max-time 2 "$URL/api/tags" >/dev/null; then
     brew services start ollama
   else
     echo "Starting Ollama in the background..."
-    nohup ollama serve > "${TMPDIR:-/tmp}/ai-privacy-router-ollama.log" 2>&1 < /dev/null &
+    OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 nohup ollama serve > "${TMPDIR:-/tmp}/ai-privacy-router-ollama.log" 2>&1 < /dev/null &
   fi
 fi
 

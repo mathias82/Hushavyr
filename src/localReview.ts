@@ -5,9 +5,10 @@ import { verifyReview } from "./verifyReview";
 import { scanSecurity } from "./securityRules";
 import { Finding } from "./review";
 
-export type ReviewDepth = "fast" | "thorough";
+export type ReviewDepth = "fast" | "thorough" | "light";
 export interface ReviewOptions {
-  /** "thorough" adds focused security and robustness passes; "fast" is one pass plus a retry when empty. */
+  /** "thorough" adds focused security and robustness passes; "fast" is one pass plus a retry when empty;
+   * "light" (small machines) is one short pass; static candidates and the verifier carry the rest. */
   depth?: ReviewDepth;
   /** Static analyzer candidates (semgrep / bundled rules), triaged together with the model's findings. */
   staticFindings?: Promise<Finding[]>;
@@ -53,9 +54,10 @@ async function collectFindings(
 ): Promise<ReviewResult | undefined> {
   if (cancelled()) return;
   const prompt = reviewPrompt(instruction, source);
-  const raw = await client.generate(prompt, {schema: reviewSchema});
+  const raw = await client.generate(prompt, depth === "light" ? {schema: reviewSchema, maxTokens: 1536} : {schema: reviewSchema});
   if (cancelled()) return;
   const first = validateReview(raw, source);
+  if (depth === "light") return first;
   if (depth === "thorough") {
     const passes = [first, ...await lensFindings(client, prompt, source, cancelled)];
     if (cancelled()) return;

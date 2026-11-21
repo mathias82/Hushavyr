@@ -42,9 +42,11 @@ test("ensureInstalled does not pull when the server is unreachable", async () =>
 });
 test("recommendedModel scales with memory", () => {
   const gb = 1024 ** 3;
-  assert.equal(recommendedModel(8 * gb), "qwen2.5-coder:7b");
+  assert.equal(recommendedModel(8 * gb), "qwen2.5-coder:3b");
+  assert.equal(recommendedModel(16 * gb), "qwen2.5-coder:7b");
   assert.equal(recommendedModel(24 * gb), "qwen2.5-coder:14b");
-  assert.equal(recommendedModel(64 * gb), "qwen2.5-coder:32b");
+  assert.equal(recommendedModel(64 * gb), "qwen3-coder:30b");
+  assert.equal(recommendedModel(32 * gb), "qwen3-coder:30b");
 });
 test("detectTools reports each missing binary", async () => {
   assert.deepEqual(await detectTools(async exe => exe === "semgrep"), {semgrep: true, gitleaks: false, trivy: false});
@@ -74,6 +76,18 @@ test("uses an explicit model setting, otherwise the best fit for memory", () => 
   const GB = 1024 ** 3;
   const unset = {inspect: () => ({}), get: <T>(_k: string, f: T) => f};
   assert.equal(configuredModel(unset, 24 * GB), "qwen2.5-coder:14b");
-  assert.equal(configuredModel(unset, 8 * GB), "qwen2.5-coder:7b");
+  assert.equal(configuredModel(unset, 8 * GB), "qwen2.5-coder:3b");
   assert.equal(configuredModel({...unset, inspect: () => ({globalValue: "deepseek-coder-v2:16b"})}, 64 * GB), "deepseek-coder-v2:16b");
+});
+
+test("review depth follows memory unless set", () => {
+  const {autoDepth, configuredDepth} = require("../model") as typeof import("../model");
+  const gb = 1024 ** 3;
+  assert.equal(autoDepth(8 * gb), "light");
+  assert.equal(autoDepth(16 * gb), "fast");
+  assert.equal(autoDepth(32 * gb), "thorough");
+  const config = (value: string) => ({get: <T>(_key: string, fallback?: T) => (value || fallback) as T});
+  assert.equal(configuredDepth(config(""), 8 * gb), "light");
+  assert.equal(configuredDepth(config("auto"), 32 * gb), "thorough");
+  assert.equal(configuredDepth(config("thorough"), 8 * gb), "thorough");
 });
