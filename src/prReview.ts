@@ -63,7 +63,7 @@ function git(root: string, args: string[]): Promise<string> {
 }
 
 async function main(args: string[]): Promise<void> {
-  let root = ".", base = "origin/main", markdown = "", sarif = "", failOn = "high", depth: "fast" | "thorough" = "fast", maxFiles = 20;
+  let root = ".", base = "origin/main", markdown = "", sarif = "", failOn = "high", depth: "fast" | "thorough" | "light" = "fast", maxFiles = 20;
   let model = process.env.OLLAMA_MODEL ?? "";
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -73,8 +73,9 @@ async function main(args: string[]): Promise<void> {
     else if (a === "--fail-on") failOn = args[++i] ?? "high";
     else if (a === "--model") model = args[++i] ?? "";
     else if (a === "--thorough") depth = "thorough";
+    else if (a === "--light") depth = "light";
     else if (a === "--max-files") maxFiles = Math.max(1, Number(args[++i]) || 20);
-    else if (a === "--help") { console.log("Usage: hushavyr-review [folder] [--base origin/main] [--model name] [--thorough] [--max-files 20] [--markdown comment.md] [--sarif review.sarif] [--fail-on high|medium|none]"); return; }
+    else if (a === "--help") { console.log("Usage: hushavyr-review [folder] [--base origin/main] [--model name] [--thorough|--light] [--max-files 20] [--markdown comment.md] [--sarif review.sarif] [--fail-on high|medium|none]"); return; }
     else root = a;
   }
   if (!/^[\w./-]+$/.test(base) || base.startsWith("-")) throw new Error("Invalid --base");

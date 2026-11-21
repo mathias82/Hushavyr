@@ -1,4 +1,4 @@
-export interface LocalModelConfig { model: string; timeoutMs?: number; endpoint?: string }
+export interface LocalModelConfig { model: string; timeoutMs?: number; endpoint?: string; /** Context window; smaller is faster and uses less memory. */ contextTokens?: number }
 export interface OllamaTransport { (url: string, init: RequestInit): Promise<Response> }
 export interface GenerateOptions { json?: boolean; schema?: object; signal?: AbortSignal; maxTokens?: number }
 
@@ -130,7 +130,7 @@ export class LocalOllama {
     const data = await this.request("/api/generate", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({model: this.config.model, prompt, stream: false, keep_alive: "30m",
-        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: Math.min(options.maxTokens ?? 4096, 12288), num_ctx: 16384}} : {})})
+        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: Math.min(options.maxTokens ?? 4096, 12288), num_ctx: this.config.contextTokens ?? 16384}} : {})})
     }, options.signal);
     if (!data || typeof data !== "object" || !("response" in data) || typeof data.response !== "string") throw new Error("Invalid local Ollama response. No cloud fallback.");
     return data.response;
