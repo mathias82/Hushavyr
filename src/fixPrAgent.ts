@@ -11,6 +11,15 @@ const execute = promisify(execFile);
 const command: Exec = async (bin, args, cwd) => (await execute(bin, args, {cwd, timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   env: {...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never"}})).stdout.trim();
 
+async function secretScan(cwd: string): Promise<void> {
+  try {
+    const {stdout} = await execute("gitleaks", ["dir", "--no-banner", "--redact", "--exit-code", "1", "."],
+      {cwd, timeout: 120000, maxBuffer: 1024 * 1024});
+    scanResult(0, stdout);
+  } catch {
+    throw new Error("Gitleaks scan blocked publication. Install gitleaks, resolve any findings and retry.");
+  }
+}
 async function confirm(message: string, detail: string, action: string): Promise<boolean> {
   return (await vscode.window.showWarningMessage(message, {modal: true, detail}, action)) === action;
 }
@@ -43,6 +52,65 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
     let worktree: string | undefined;
     let pushed: string | undefined;
     try {
+      const patchPath = join(resolve(receiptPath, ".."), "verified.patch");
+      if (!(await lstat(patchPath)).isFile()) throw new Error("verified.patch is not a regular file");
+      const patch = await readFile(patchPath);
+      const receipt = checkReceipt(await readFile(receiptPath, "utf8"), patch);
+      if (typeof receipt === "string") throw new Error(receipt);
+      if (scanSecrets(addedLines(patch.toString("utf8"))).length) throw new Error("the patch looks like it contains a credential");
+      const top = await command("git", ["rev-parse", "--show-toplevel"], root);
+      if (resolve(top) !== resolve(root)) throw new Error("the workspace must be the Git repository root");
+      if (await command("git", ["status", "--porcelain"], root)) throw new Error("commit or stash your changes first");
+      const head = await command("git", ["rev-parse", "HEAD"], root);
+      if (head !== receipt.baseCommit) throw new Error("HEAD differs from the verified base commit; verify the fix again");
+      const remote = await command("git", ["remote", "get-url", "origin"], root);
+      const current = await command("git", ["branch", "--show-current"], root);
+      const base = await defaultBase(root, current);
+      if (!base) throw new Error("cannot find the base branch (detached HEAD and no origin/HEAD)");
+      const branch = "hushavyr/verified-fix-" + Date.now().toString(36);
+      worktree = await mkdtemp(join(tmpdir(), "hushavyr-pr-"));
+      // The worktree starts from the exact commit used to verify the fix; the active checkout is never touched.
+      await command("git", ["worktree", "add", "--detach", worktree, head], root);
+      await command("git", ["-c", "core.safecrlf=false", "apply", "--check", "--", patchPath], worktree);
+      await command("git", ["-c", "core.safecrlf=false", "apply", "--", patchPath], worktree);
+      await command("git", ["add", "--intent-to-add", "--all"], worktree); // include the new regression test in the diff
+      if (!await command("git", ["status", "--porcelain"], worktree)) throw new Error("the verified patch made no changes");
+      const diff = await command("git", ["diff", "--no-ext-diff", "--"], worktree);
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({language: "diff", content: diff}), {preview: false});
+      const where = remote.replace(/\/\/[^@/]+@/, "//");
+      if (!await confirm("Push this verified fix to a new branch and open a draft pull request?",
+        "Review the diff that just opened.\nRemote: " + where + " (your git host, not an AI service)\nBase: " + base + "\nNothing is merged automatically.",
+        "Push and open draft PR")) return;
+      if (await command("git", ["rev-parse", "HEAD"], root) !== head) throw new Error("the checkout changed; nothing was pushed");
+      await command("git", ["switch", "-c", branch], worktree);
+      await command("git", ["add", "--all"], worktree);
+      await command("git", ["commit", "-m", "fix: locally verified regression repair"], worktree);
+      await command("git", ["push", "--set-upstream", "origin", branch], worktree);
+      pushed = branch;
+      let url: string | undefined;
+      try {
+        url = /https:\/\/\S+/.exec(await command("gh", ["pr", "create", "--draft", "--base", base, "--head", branch,
+          "--title", "fix: locally verified regression repair", "--body", prBody(receipt)], worktree))?.[0];
+      } catch {
+        url = compareUrl(remote, base, branch);
+        void vscode.window.showWarningMessage("Hushavyr: branch " + branch + " pushed. The gh CLI could not open the PR (install it and run gh auth login)." +
+          (url ? " Open it on GitHub instead." : ""), ...(url ? ["Open on GitHub"] : [])).then(c => { if (c && url) void vscode.env.openExternal(vscode.Uri.parse(url)); });
+        return;
+      }
+      void vscode.window.showInformationMessage("Hushavyr: draft PR created" + (url ? ": " + url : "."), ...(url ? ["Open PR"] : [])).then(choice => {
+        if (choice === "Open PR" && url && /^https:\/\//.test(url)) void vscode.env.openExternal(vscode.Uri.parse(url));
+      });
+    } catch (error) {
+      const reason = (error instanceof Error ? error.message : "unknown error").split("\n")[0].slice(0, 300);
+      void vscode.window.showErrorMessage("Hushavyr: draft PR stopped: " + reason + "." + (pushed ? " Branch " + pushed + " was pushed and may need cleanup." : " Nothing was pushed."));
+    } finally {
+      if (worktree) {
+        try { await command("git", ["worktree", "remove", "--force", worktree], root); await rm(worktree, {recursive: true, force: true}); }
+        catch { void vscode.window.showWarningMessage("Hushavyr: remove the temporary worktree manually: " + worktree); }
+      }
+    }
+  }));
+}      const receipt = JSON.parse(raw) as FixProofReceipt & {patchHash?: string; cleanupRequiresAttention?: boolean};
       const patchPath = join(resolve(receiptPath, ".."), "verified.patch");
       if (!(await lstat(patchPath)).isFile()) throw new Error("verified.patch is not a regular file");
       const patch = await readFile(patchPath);
