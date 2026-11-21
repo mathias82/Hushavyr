@@ -1,6 +1,6 @@
 export interface LocalModelConfig { model: string; timeoutMs?: number; endpoint?: string }
 export interface OllamaTransport { (url: string, init: RequestInit): Promise<Response> }
-export interface GenerateOptions { json?: boolean; schema?: object; signal?: AbortSignal }
+export interface GenerateOptions { json?: boolean; schema?: object; signal?: AbortSignal; maxTokens?: number }
 
 export function localEndpoint(value = "http://127.0.0.1:11434"): string {
   const url = new URL(value);
@@ -46,6 +46,12 @@ export class LocalOllama {
     if (!installed) {
       throw new Error("Configured model is not installed locally. Run npm run ai:serve or install it with Ollama. No cloud fallback.");
     }
+  }
+  /** Names of models installed on this machine (remote and cloud models excluded). */
+  async listModels(signal?: AbortSignal): Promise<string[]> {
+    const data = await this.request("/api/tags", {method: "GET"}, signal) as {models?: Array<{name?: unknown; remote_model?: unknown; remote_host?: unknown}>};
+    return (data?.models ?? []).filter(m => typeof m.name === "string" && !m.remote_model && !m.remote_host && !/(?:^|[:/-])cloud(?:$|[:/-])/i.test(m.name as string))
+      .map(m => m.name as string).sort();
   }
   /** True when the loopback Ollama server answers; never throws. */
   async isRunning(signal?: AbortSignal): Promise<boolean> {
@@ -124,7 +130,7 @@ export class LocalOllama {
     const data = await this.request("/api/generate", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({model: this.config.model, prompt, stream: false, keep_alive: "30m",
-        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: 4096, num_ctx: 16384}} : {})})
+        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: Math.min(options.maxTokens ?? 4096, 12288), num_ctx: 16384}} : {})})
     }, options.signal);
     if (!data || typeof data !== "object" || !("response" in data) || typeof data.response !== "string") throw new Error("Invalid local Ollama response. No cloud fallback.");
     return data.response;

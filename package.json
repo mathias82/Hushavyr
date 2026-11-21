@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Privacy-aware local AI routing",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -281,6 +281,10 @@
             "description": "Explain the open, selected or attached code locally (purpose, main flow, notable points)"
           },
           {
+            "name": "edit",
+            "description": "Change the open or selected code locally (e.g. \"add them\" after /explain); shows a diff, nothing changes until you apply"
+          },
+          {
             "name": "review-changes",
             "description": "Review your uncommitted changes (git) locally; no prompt or selection needed"
           },
@@ -319,6 +323,10 @@
           {
             "name": "escalate",
             "description": "Opt-in: send only the selected function, pseudonymized and approved by you, to a Copilot model"
+          },
+          {
+            "name": "pr",
+            "description": "Commit your changes to a new branch, push and open a pull request (asks first, blocks credentials)"
           }
         ]
       }

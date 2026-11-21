@@ -16,6 +16,8 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | --- | --- |
 | `/review` | Finds bugs and security issues in the open file, and checks your team rules |
 | `/explain` | Explains the open or selected code |
+| `/edit` | Changes the open or selected code with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
+| `/pr` | Commits your changes to a new branch, pushes it and opens a pull request (`gh`, or a GitHub link). Asks first and stops if it finds credentials. |
 | `/review-changes` | Reviews your uncommitted changes |
 | `/scan` | Reviews the whole project: AI, Semgrep, Gitleaks, built-in rules, data flow and CVEs |
 | `/scan-changed` | Same as `/scan`, but only for files that changed since the last scan |
