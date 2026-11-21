@@ -12,6 +12,8 @@ Hushavyr is a **free, local AI code reviewer** and **security scanner** for VS C
 
 ![Hushavyr demo: install, setup and every chat command running locally](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-demo.gif)
 
+▶️ [Watch in HD (MP4)](https://github.com/mathias82/Hushavyr/releases/download/v1.0.1/hushavyr-demo.mp4)
+
 ## Why Hushavyr?
 
 **Hushavyr** is a coined name built around **“hush”** — the idea of keeping something quiet, confidential, and protected. **“-avyr”** is a distinctive invented ending, not a word with an established dictionary meaning.
