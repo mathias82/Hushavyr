@@ -3,6 +3,7 @@ import {mkdtemp, readFile, rm, lstat} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join, resolve} from "node:path";
 import {scanSecrets} from "./secretsScan";
+import {assertMatchingRemote, scanResult} from "./fixPrPolicy";
 import {addedLines, checkReceipt, compareUrl, prBody, type Exec} from "./pullRequest";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
@@ -11,6 +12,15 @@ const execute = promisify(execFile);
 const command: Exec = async (bin, args, cwd) => (await execute(bin, args, {cwd, timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   env: {...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never"}})).stdout.trim();
 
+async function secretScan(cwd: string): Promise<void> {
+  try {
+    const {stdout} = await execute("gitleaks", ["dir", "--no-banner", "--redact", "--exit-code", "1", "."],
+      {cwd, timeout: 120000, maxBuffer: 1024 * 1024});
+    scanResult(0, stdout);
+  } catch {
+    throw new Error("Gitleaks scan blocked publication. Install gitleaks, resolve any findings and retry.");
+  }
+}
 async function confirm(message: string, detail: string, action: string): Promise<boolean> {
   return (await vscode.window.showWarningMessage(message, {modal: true, detail}, action)) === action;
 }
@@ -55,6 +65,8 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       const head = await command("git", ["rev-parse", "HEAD"], root);
       if (head !== receipt.baseCommit) throw new Error("HEAD differs from the verified base commit; verify the fix again");
       const remote = await command("git", ["remote", "get-url", "origin"], root);
+      const ghRepo = await command("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], root);
+      assertMatchingRemote(remote, ghRepo);
       const current = await command("git", ["branch", "--show-current"], root);
       const base = await defaultBase(root, current);
       if (!base) throw new Error("cannot find the base branch (detached HEAD and no origin/HEAD)");
@@ -66,6 +78,7 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
       await command("git", ["-c", "core.safecrlf=false", "apply", "--", patchPath], worktree);
       await command("git", ["add", "--intent-to-add", "--all"], worktree); // include the new regression test in the diff
       if (!await command("git", ["status", "--porcelain"], worktree)) throw new Error("the verified patch made no changes");
+      await secretScan(worktree);
       const diff = await command("git", ["diff", "--no-ext-diff", "--"], worktree);
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({language: "diff", content: diff}), {preview: false});
       const where = remote.replace(/\/\/[^@/]+@/, "//");
@@ -73,6 +86,8 @@ export function registerVerifiedFixPr(context: vscode.ExtensionContext): void {
         "Review the diff that just opened.\nRemote: " + where + " (your git host, not an AI service)\nBase: " + base + "\nNothing is merged automatically.",
         "Push and open draft PR")) return;
       if (await command("git", ["rev-parse", "HEAD"], root) !== head) throw new Error("the checkout changed; nothing was pushed");
+      assertMatchingRemote(await command("git", ["remote", "get-url", "origin"], root), ghRepo);
+      await secretScan(worktree);
       await command("git", ["switch", "-c", branch], worktree);
       await command("git", ["add", "--all"], worktree);
       await command("git", ["commit", "-m", "fix: locally verified regression repair"], worktree);
