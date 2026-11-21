@@ -38,9 +38,13 @@ jobs:
         run: node benchmarks/run.mjs --out benchmarks/results.json
       - name: Score real scanner results
         run: node benchmarks/evaluate.mjs --results benchmarks/results.json
+      - name: Generate offline HTML dashboard
+        run: node benchmarks/dashboard.mjs --results benchmarks/results.json --out benchmarks/dashboard.html
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: polyglot-benchmark-results
-          path: benchmarks/results.json
+          path: |
+            benchmarks/results.json
+            benchmarks/dashboard.html
           if-no-files-found: warn
