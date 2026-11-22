@@ -1,6 +1,6 @@
 // Deterministic scan helpers shared by the workspace scan: chat links, taint flows and local rule/secret findings.
-import {markDependencies} from "./dependencyMarkers";
-import {dependencyFix, findDependencyLine, groupVulnerabilities, GroupedVulnerability, isDirectDependency, manifestFor} from "./dependencyAudit";
+import {markDependencies} from "../deps/dependencyMarkers";
+import {dependencyFix, findDependencyLine, groupVulnerabilities, GroupedVulnerability, isDirectDependency, manifestFor} from "../deps/dependencyAudit";
 import {readFile} from "node:fs/promises";
 import {auditDependenciesWithOsv} from "./codeScanners";
 import {join} from "node:path";
@@ -8,7 +8,7 @@ import {flowSeverity, flowTitle, loadTaintRules, taintFlows, TaintFile, TaintFlo
 import {collectImports, findVulnerableCall, reachability, vulnerableSymbols} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import * as vscode from "vscode";
-import {offerToolInstallation} from "./model/setup";
+import {offerToolInstallation} from "../model/setup";
 
 /** Chat file links use the original workspace URI, never user-controlled markdown paths. */
 /** File link (lockfile line) and the concrete fix command for one dependency row of a chat report. */

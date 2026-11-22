@@ -2,7 +2,7 @@
 import {execFile} from "node:child_process";
 import {existsSync} from "node:fs";
 import {homedir} from "node:os";
-import {defaultFindSecBugsPlugin} from "../codeScanners";
+import {defaultFindSecBugsPlugin} from "../scan/codeScanners";
 
 /** Ollama server environment: flash attention and an 8-bit KV cache roughly halve context memory with no visible quality loss. */
 export const OLLAMA_SERVE_ENV = {OLLAMA_FLASH_ATTENTION: "1", OLLAMA_KV_CACHE_TYPE: "q8_0"};

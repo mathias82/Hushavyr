@@ -1,6 +1,6 @@
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {scanSecrets} from "./secretsScan";
+import {scanSecrets} from "./scan/secretsScan";
 import {sha256} from "./fixProof";
 import {githubRepo, validateProof} from "./fixPrPolicy";
 import {exec as run} from "./util/exec";

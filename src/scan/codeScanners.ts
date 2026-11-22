@@ -3,8 +3,8 @@ import {join, relative, resolve, isAbsolute, dirname, basename} from "node:path"
 import {mkdtemp, readFile, rm, readdir, access, stat} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {tmpdir, homedir} from "node:os";
-import {exec} from "./util/exec";
-import {auditDependencies, DependencyAudit, DependencyVulnerability} from "./dependencyAudit";
+import {exec} from "../util/exec";
+import {auditDependencies, DependencyAudit, DependencyVulnerability} from "../deps/dependencyAudit";
 
 export type CodeScanner = "findsecbugs" | "bandit" | "gosec";
 export interface CodeFinding {tool: CodeScanner; rule: string; severity: "HIGH" | "MEDIUM"; path: string; line: number; message: string; cwe?: number}

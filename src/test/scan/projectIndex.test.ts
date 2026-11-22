@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {diffIndex, fingerprint, parseIndex} from "../projectIndex";
+import {diffIndex, fingerprint, parseIndex} from "../../scan/projectIndex";
 
 test("incremental index identifies changed, unchanged and deleted files", () => {
   const old = [fingerprint("src/A.java", Buffer.from("old")), fingerprint("src/Removed.java", Buffer.from("gone"))];

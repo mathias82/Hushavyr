@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {scanSecurity} from "../securityRules";
+import {scanSecurity} from "../../scan/securityRules";
 test("detects insecure TLS and weak crypto",()=>{
  const found=scanSecurity("app.ts","const opts = {rejectUnauthorized: false};\ncreateHash('md5')");
  assert.deepEqual(found.map(x=>x.line),[1,2]);

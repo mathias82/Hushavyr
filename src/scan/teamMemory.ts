@@ -1,8 +1,8 @@
 import {createHash} from "node:crypto";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {Finding} from "./review/review";
-import {parseDependencyFinding} from "./dependencyAudit";
+import {Finding} from "../review/review";
+import {parseDependencyFinding} from "../deps/dependencyAudit";
 
 /**
  * Team memory lives in the repository (.hushavyr/dismissed.json) so a false positive dismissed by one

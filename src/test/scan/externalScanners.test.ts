@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {parseScannerOutput,runScanner} from "../externalScanners";
+import {parseScannerOutput,runScanner} from "../../scan/externalScanners";
 test("Semgrep parses locations without exposing source snippets",()=>{
  const output=JSON.stringify({results:[{check_id:"local.rule",path:"src/a.ts",start:{line:7},extra:{severity:"WARNING",lines:"SECRET"}}]});
  assert.deepEqual(parseScannerOutput("semgrep",output,"/repo"),[{tool:"semgrep",rule:"local.rule",severity:"WARNING",path:"src/a.ts",line:7}]);
@@ -23,7 +23,7 @@ test("missing bundled Semgrep rules fail safely before invoking CLI",async()=>{
 test("bundled rules cover Java JavaScript TypeScript and Python",()=>{
  const {readFileSync}=require("node:fs") as typeof import("node:fs");
  const {join}=require("node:path") as typeof import("node:path");
- const yaml=readFileSync(join(__dirname,"../../rules/hushavyr-review.yml"),"utf8");
+ const yaml=readFileSync(join(__dirname,"../../../rules/hushavyr-review.yml"),"utf8");
  for(const language of ["java","javascript","typescript","python"])assert.match(yaml,new RegExp(language));
  assert.match(yaml,/hushavyr.java-sql-concatenation/);
  assert.match(yaml,/InsecureTrustManagerFactory/);

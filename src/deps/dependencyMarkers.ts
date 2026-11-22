@@ -1,5 +1,5 @@
 import {findDependencyLine, GroupedVulnerability} from "./dependencyAudit";
-import {dismissalText, fingerprint, loadDismissals} from "./teamMemory";
+import {dismissalText, fingerprint, loadDismissals} from "../scan/teamMemory";
 import * as vscode from "vscode";
 
 let dependencyMarkers: vscode.DiagnosticCollection | undefined;

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import {homedir, totalmem} from "node:os";
-import {defaultFindSecBugsPlugin, hasOsvDatabase} from "../codeScanners";
+import {defaultFindSecBugsPlugin, hasOsvDatabase} from "../scan/codeScanners";
 import {LocalOllama} from "./ollama";
 import {startOllamaServer} from "./ollamaCommands";
 import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan, toolCommand} from "./setupSteps";

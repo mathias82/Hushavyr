@@ -4,12 +4,12 @@ import {readFile, stat, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {LocalOllama} from "./model/ollama";
 import {runLocalReview} from "./review/localReview";
-import {staticReview} from "./staticReview";
+import {staticReview} from "./scan/staticReview";
 import {Finding, reviewSummary} from "./review/review";
-import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./teamMemory";
+import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./scan/teamMemory";
 import {totalmem} from "node:os";
 import {recommendedModel} from "./model/model";
-import {sarifLevel, toSarif} from "./sarif";
+import {sarifLevel, toSarif} from "./scan/sarif";
 
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
 export const COMMENT_MARKER = "<!-- hushavyr-pr-review -->";

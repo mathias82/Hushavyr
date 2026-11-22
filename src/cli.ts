@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import {readdir, readFile, stat, writeFile} from "node:fs/promises";
 import {join, relative, resolve} from "node:path";
-import {scanSecurity} from "./securityRules";
-import {scanSecrets} from "./secretsScan";
-import {findDependencyLine, groupVulnerabilities} from "./dependencyAudit";
-import {SarifResult, canonicalRule, sarifLevel, toSarif} from "./sarif";
-import {runScanner} from "./externalScanners";
-import {auditDependenciesWithOsv, runCodeScanners, statusLine} from "./codeScanners";
-import {loadIgnore} from "./teamMemory";
-import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
-import {flowSeverity, flowTitle, initJavaParser, loadTaintRules, pythonHandler, taintFlows, TaintFile} from "./taint";
+import {scanSecurity} from "./scan/securityRules";
+import {scanSecrets} from "./scan/secretsScan";
+import {findDependencyLine, groupVulnerabilities} from "./deps/dependencyAudit";
+import {SarifResult, canonicalRule, sarifLevel, toSarif} from "./scan/sarif";
+import {runScanner} from "./scan/externalScanners";
+import {auditDependenciesWithOsv, runCodeScanners, statusLine} from "./scan/codeScanners";
+import {loadIgnore} from "./scan/teamMemory";
+import {collectImports, findVulnerableCall, vulnerableSymbols} from "./scan/reachability";
+import {flowSeverity, flowTitle, initJavaParser, loadTaintRules, pythonHandler, taintFlows, TaintFile} from "./scan/taint";
 
 const SKIP = new Set([".git", "node_modules", "target", "build", "dist", "out", "coverage", ".venv", "venv", ".next", ".idea", ".vscode", "vendor", "__pycache__"]);
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;

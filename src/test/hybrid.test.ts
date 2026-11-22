@@ -3,11 +3,11 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { staticReview, semgrepToFindings } from "../staticReview";
+import { staticReview, semgrepToFindings } from "../scan/staticReview";
 import { mergeFindings, runLocalReview, LENSES } from "../review/localReview";
 import { callContext, definitionSnippet, isTestFileOf } from "../review/callContext";
-import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../reachability";
-import { toSarif, sarifLevel } from "../sarif";
+import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../scan/reachability";
+import { toSarif, sarifLevel } from "../scan/sarif";
 import { ResultCache } from "../review/reviewCache";
 import { scanFolder } from "../cli";
 import { staticGateProblems } from "../benchmark";
@@ -172,7 +172,7 @@ test("a bug counts as reproduced only when the approved test failed by assertion
 });
 
 test("team dismissals are stored in the repo and hide the same finding after it moves", async () => {
-  const { addDismissal, loadDismissals, withoutDismissed, fingerprint } = await import("../teamMemory");
+  const { addDismissal, loadDismissals, withoutDismissed, fingerprint } = await import("../scan/teamMemory");
   const root = await mkdtemp(join(tmpdir(), "hushavyr-team-"));
   try {
     await addDismissal(root, {fingerprint: fingerprint("src/A.java", "  run(id);  "), path: "src/A.java", reason: "id is validated\nupstream"});
@@ -190,7 +190,7 @@ test("team dismissals are stored in the repo and hide the same finding after it 
 });
 
 test("team rules file is capped and added to the review instruction as criteria", async () => {
-  const { loadTeamRules, withTeamRules } = await import("../teamMemory");
+  const { loadTeamRules, withTeamRules } = await import("../scan/teamMemory");
   const root = await mkdtemp(join(tmpdir(), "hushavyr-rules-"));
   try {
     assert.equal(await loadTeamRules(root), "");
@@ -222,7 +222,7 @@ test("PR review keeps only findings on changed lines and renders a safe comment"
 });
 
 test("taint follows request input across files and functions to the sink", async () => {
-  const { taintFlows, flowTitle } = await import("../taint");
+  const { taintFlows, flowTitle } = await import("../scan/taint");
   const js = taintFlows([
     {path: "routes.js", text: "app.get('/u', (req, res) => {\n  const id = req.query.id;\n  res.json(users.find(id));\n});\napp.get('/n', (req, res) => res.json(users.find(parseInt(req.query.n))));"},
     {path: "users.js", text: "function find(id) {\n  return load(id);\n}\nfunction load(key) {\n  return db.query(\"SELECT * FROM u WHERE id=\" + key);\n}\nfunction safe(id) {\n  return db.query(\"SELECT * FROM u WHERE id=?\", [id]);\n}"}
@@ -243,7 +243,7 @@ test("taint follows request input across files and functions to the sink", async
 });
 
 test("servlet taint covers Java sinks, constant branches, collection slots and kind-aware encoders", async () => {
-  const { taintFlows } = await import("../taint");
+  const { taintFlows } = await import("../scan/taint");
   const servlet = (name: string, body: string) => ({path: `${name}.java`, text: `class ${name} {\n  public void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {\n${body}\n  }\n}`});
   const flows = taintFlows([
     servlet("Cmd", "    String v = \"\";\n    for (Cookie c : request.getCookies()) {\n      v = c.getValue();\n    }\n    new ProcessBuilder(\"sh\", \"-c\", v).start();"),
@@ -258,7 +258,7 @@ test("servlet taint covers Java sinks, constant branches, collection slots and k
 });
 
 test("Python taint follows Flask views through branches, slots, guards and safe responses", async () => {
-  const { taintFlows } = await import("../taint");
+  const { taintFlows } = await import("../scan/taint");
   const view = (name: string, body: string[]) => [`@app.route("/${name}", methods=["POST"])`, `def ${name}():`, ...body.map(l => "    " + l)];
   const text = ["import os, subprocess, html, urllib.parse", "from flask import request, redirect, session, make_response, abort", "",
     ...view("sql", ["p = request.args.get('p')", "cur.execute(f\"SELECT * FROM u WHERE id='{p}'\")", "cur.execute('SELECT * FROM u WHERE id=?', (p,))", "return 'ok'"]),
@@ -294,13 +294,13 @@ test("function-level reachability finds a call of the vulnerable function, not j
 });
 
 test("secrets scan ignores file globs but still flags real credentials", async () => {
-  const { scanSecrets } = await import("../secretsScan");
+  const { scanSecrets } = await import("../scan/secretsScan");
   assert.equal(scanSecrets('const secretInclude = "**/*.{env,properties,yml}";').length, 0);
   assert.equal(scanSecrets('const apiSecret = "Zq8xK2mP9vL4nR7tY1wE";').length, 1);
 });
 
 test("ignore file matches dirs, files and globs; the CLI skips them", async () => {
-  const { ignoreMatcher } = await import("../teamMemory");
+  const { ignoreMatcher } = await import("../scan/teamMemory");
   const match = ignoreMatcher("# fixtures\nsrc/test/\nsrc/benchmark.ts\n**/*.gen.ts\n");
   assert.ok(match("src/test/a.test.ts"));
   assert.ok(match("src/benchmark.ts"));
@@ -417,7 +417,7 @@ test("/improve asks for real improvements and keeps a safe change summary", asyn
 });
 
 test("credentials: code references and UI names are not secrets, literals still are", async () => {
-  const { scanSecrets } = await import("../secretsScan");
+  const { scanSecrets } = await import("../scan/secretsScan");
   const none = (text: string, path = "") => assert.equal(scanSecrets(text, path).length, 0, text);
   none("    apiKey = options.ApiKey,", "A.cs");
   none("    password = password,", "Login.kt");
@@ -432,7 +432,7 @@ test("credentials: code references and UI names are not secrets, literals still 
 });
 
 test("Rust: shell commands, format! SQL and MD5 are flagged; a direct program call is not", async () => {
-  const { scanSecurity } = await import("../securityRules");
+  const { scanSecurity } = await import("../scan/securityRules");
   const rules = (code: string) => scanSecurity("a.rs", code).map(i => i.rule);
   assert.deepEqual(rules("Command::new(\"sh\").arg(\"-c\").arg(x)"), ["Potential command execution"]);
   assert.deepEqual(rules("c.execute(&format!(\"DELETE FROM t WHERE n = '{}'\", n), [])"), ["SQL string concatenation"]);
@@ -441,7 +441,7 @@ test("Rust: shell commands, format! SQL and MD5 are flagged; a direct program ca
 });
 
 test("taint ignores method heads, other methods' locals, System.out, static helpers and other languages", () => {
-  const { taintFlows } = require("../taint") as typeof import("../taint");
+  const { taintFlows } = require("../scan/taint") as typeof import("../scan/taint");
   const servlet = {path: "file:///S.java", text: [
     "class S {",
     "  void doGet(HttpServletRequest request, HttpServletResponse response) throws Exception {",
@@ -462,13 +462,13 @@ test("taint ignores method heads, other methods' locals, System.out, static help
 });
 
 test("insecure random is reported only near security use", () => {
-  const { scanSecurity } = require("../securityRules") as typeof import("../securityRules");
+  const { scanSecurity } = require("../scan/securityRules") as typeof import("../scan/securityRules");
   assert.deepEqual(scanSecurity("A.java", "double x = Math.random();"), []);
   assert.equal(scanSecurity("A.java", "String token = \"\" + new Random().nextInt();").length, 1);
 });
 
 test("provider token formats are found whatever the variable is called", async () => {
-  const { scanSecrets } = await import("../secretsScan");
+  const { scanSecrets } = await import("../scan/secretsScan");
   // Built at runtime so the test file itself holds no token-shaped literal.
   const stripe = "sk_" + "live_" + "51HxQe2LkW8vT3mN9pQrStUv";
   assert.deepEqual(scanSecrets("module.exports = {\n  stripeKey: '" + stripe + "',\n};", "src/config.js").map(f => f.line), [2]);

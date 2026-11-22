@@ -1,8 +1,8 @@
 // Downloads the public Trivy and OSV.dev CVE databases (no VS Code API). No code or dependency list leaves the machine.
-import {exec} from "./util/exec";
+import {exec} from "../util/exec";
 import {dbIsStale, trivyDbAgeHours} from "./dependencyAudit";
-import {downloadOsvDatabase, osvDbAgeHours} from "./codeScanners";
-import {runs} from "./model/setupSteps";
+import {downloadOsvDatabase, osvDbAgeHours} from "../scan/codeScanners";
+import {runs} from "../model/setupSteps";
 
 const missing = (e: unknown) => (e as {code?: unknown}).code === "ENOENT";
 

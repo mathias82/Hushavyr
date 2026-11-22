@@ -8,7 +8,7 @@ import {codeBlock, editPrompt, editSchema, parseEdit, parseSummary, shortDiff} f
 import {escalate, MAX_ESCALATION_CHARS} from "./escalation";
 import {confirmPublicPayload, pickCopilotModel} from "./autoPrompt";
 import {writeRetainedAuditEvent} from "./audit";
-import {loadIgnore} from "./teamMemory";
+import {loadIgnore} from "./scan/teamMemory";
 
 export const MAX_EDIT_CHARS = 12_000;
 export interface EditTarget {uri: vscode.Uri; languageId: string; path: string; original: string; range?: vscode.Range; instruction: string; previousAnswer: string; title?: string}

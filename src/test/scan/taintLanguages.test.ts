@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {parseTaintRules, taintFlows} from "../taint";
+import {parseTaintRules, taintFlows} from "../../scan/taint";
 
 const kinds = (path: string, text: string) => taintFlows([{path, text}]).map(f => `${f.kind}:${f.sink.line}`);
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { parseTrivyVulnerabilities } from "../dependencyAudit";
+import { parseTrivyVulnerabilities } from "../../deps/dependencyAudit";
 test("lists CVEs worst-first with fixed versions and sanitized text", () => {
   const result = parseTrivyVulnerabilities({Results: [{Target: "pom.xml", Vulnerabilities: [
     {VulnerabilityID: "CVE-2024-0002", PkgName: "a", InstalledVersion: "1.0", Severity: "LOW", Title: "low"},
@@ -13,7 +13,7 @@ test("lists CVEs worst-first with fixed versions and sanitized text", () => {
   assert.doesNotMatch(result[0].title, /[\n\u0000]/);
   assert.deepEqual(parseTrivyVulnerabilities(null), []);
 });
-import { groupVulnerabilities, findDependencyLine } from "../dependencyAudit";
+import { groupVulnerabilities, findDependencyLine } from "../../deps/dependencyAudit";
 test("groups the same CVE across manifests into one row", () => {
   const v = {id: "CVE-2026-1", pkg: "g:a", installed: "1", severity: "MEDIUM", title: "", target: "pom.xml"};
   const groups = groupVulnerabilities([v, {...v}, {...v, target: "mod/pom.xml"}, {...v, installed: "2"}]);
@@ -29,9 +29,9 @@ test("finds the declaration line per manifest type, falling back to line 1", () 
 test("finds version properties that pin an inherited dependency", () => {
   assert.equal(findDependencyLine("<properties>\n <java>21</java>\n <opentelemetry.version>1.62.0</opentelemetry.version>\n</properties>", "io.opentelemetry:opentelemetry-api", "1.62.0"), 3);
 });
-import {bumpVersion, firstFixedVersion, parseMarkerMessage} from "../dependencyAudit";
-import {relatedScriptSources, localImportSpecifiers} from "../review/relatedJava";
-import {tr} from "../i18n";
+import {bumpVersion, firstFixedVersion, parseMarkerMessage} from "../../deps/dependencyAudit";
+import {relatedScriptSources, localImportSpecifiers} from "../../review/relatedJava";
+import {tr} from "../../i18n";
 import {mkdtemp, mkdir, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -72,14 +72,14 @@ test("follows relative imports in TypeScript and Python without leaving the proj
   assert.deepEqual(py.map(s => s.path), ["src/helper.py"]);
   assert.deepEqual(localImportSpecifiers("a.ts", "const a = require('./x');"), ["./x"]);
 });
-import {dbAgeDays} from "../dependencyAudit";
+import {dbAgeDays} from "../../deps/dependencyAudit";
 test("computes vulnerability database age in whole days", () => {
   const now = Date.parse("2026-11-21T00:00:00Z");
   assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
   assert.equal(dbAgeDays("not json", now), undefined);
 });
-import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../fixEdit";
-import {parseChangedFiles} from "../changedFiles";
+import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../../fixEdit";
+import {parseChangedFiles} from "../../changedFiles";
 test("fix window stays inside the file", () => {
   assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});
   assert.deepEqual(fixWindow(5, 4), {start: 1, end: 4});
@@ -106,7 +106,7 @@ test("changed file list drops traversal, lockfiles and build output", () => {
   assert.deepEqual(parseChangedFiles("src/a.ts\n../x.ts\n/etc/p.py\npackage-lock.json\nnode_modules/q/i.js\ndist/b.js\nREADME.md\nsrc/B.java"), ["src/a.ts", "src/B.java"]);
 });
 
-import {auditDependencies} from "../dependencyAudit";
+import {auditDependencies} from "../../deps/dependencyAudit";
 import {mkdtempSync, mkdirSync, writeFileSync} from "node:fs";
 import {join as joinPath} from "node:path";
 test("manifests in direct subfolders are detected and a bare package.json gets a lockfile hint", async () => {
@@ -122,8 +122,8 @@ test("manifests in direct subfolders are detected and a bare package.json gets a
   assert.match(nested.note, /package-lock-only/);
 });
 
-import {dbAgeHours, dbIsStale, formatDbAge} from "../dependencyAudit";
-import {osvDbAgeHours} from "../codeScanners";
+import {dbAgeHours, dbIsStale, formatDbAge} from "../../deps/dependencyAudit";
+import {osvDbAgeHours} from "../../scan/codeScanners";
 test("CVE database age uses the download time and flags anything over a day as stale", async () => {
   const now = Date.parse("2026-11-21T12:00:00Z");
   assert.equal(dbAgeHours(JSON.stringify({UpdatedAt: "2026-11-01T00:00:00Z", DownloadedAt: "2026-11-21T09:30:00Z"}), now), 2);
@@ -147,7 +147,7 @@ test("findingFix gives scanner, data-flow and secret findings a fix by kind; dep
 });
 
 test("dependency fix: exact command for direct and transitive packages", async () => {
-  const {dependencyFix, isDirectDependency, manifestFor} = await import("../dependencyAudit");
+  const {dependencyFix, isDirectDependency, manifestFor} = await import("../../deps/dependencyAudit");
   assert.equal(manifestFor("web/package-lock.json"), "web/package.json");
   assert.equal(manifestFor("go.sum"), "go.mod");
   const pkg = "{\n  \"dependencies\": {\"lodash\": \"^4.17.20\"}\n}";
@@ -162,7 +162,7 @@ test("dependency fix: exact command for direct and transitive packages", async (
 });
 
 test("reads a dependency CVE back from markers, CLI lines and chat rows", async () => {
-  const {parseDependencyFinding} = await import("../dependencyAudit");
+  const {parseDependencyFinding} = await import("../../deps/dependencyAudit");
   const expected = {id: "CVE-2021-23337", pkg: "lodash", installed: "4.17.20", fixed: "4.17.21"};
   assert.deepEqual(parseDependencyFinding("CVE-2021-23337 in lodash 4.17.20 (HIGH). Fixed in 4.17.21."), expected);
   assert.deepEqual(parseDependencyFinding("CVE-2021-23337 in lodash 4.17.20, fixed in 4.17.21: Command injection"), expected);
@@ -173,7 +173,7 @@ test("reads a dependency CVE back from markers, CLI lines and chat rows", async 
 });
 
 test("plans a dependency upgrade: deterministic bump when direct, model edit otherwise", async () => {
-  const {acceptManifestEdit, planDependencyFix} = await import("../dependencyAudit");
+  const {acceptManifestEdit, planDependencyFix} = await import("../../deps/dependencyAudit");
   const pkg = "{\n  \"dependencies\": {\n    \"lodash\": \"4.17.20\"\n  }\n}\n";
   const direct = planDependencyFix("app/package-lock.json", {id: "CVE-1", pkg: "lodash", installed: "4.17.20", fixed: "4.17.21"}, pkg, "app/package.json")!;
   assert.equal(direct.manifest, "app/package.json");

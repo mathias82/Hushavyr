@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import {mkdtemp, readFile, rm, lstat} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join, resolve} from "node:path";
-import {scanSecrets} from "./secretsScan";
+import {scanSecrets} from "./scan/secretsScan";
 import {assertMatchingRemote, scanResult} from "./fixPrPolicy";
 import {addedLines, checkReceipt, compareUrl, prBody, statusPaths, type Exec} from "./pullRequest";
 

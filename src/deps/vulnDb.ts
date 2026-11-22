@@ -1,7 +1,7 @@
 // Freshness of the offline CVE databases (Trivy, OSV). Only public vulnerability data is downloaded; no code or dependency list leaves the machine.
 import * as vscode from "vscode";
 import {dbIsStale, formatDbAge, trivyDbAgeHours} from "./dependencyAudit";
-import {osvDbAgeHours} from "./codeScanners";
+import {osvDbAgeHours} from "../scan/codeScanners";
 import {downloadVulnDatabases, vulnDbsStale} from "./vulnDbDownload";
 
 export const UPDATE_VULN_DBS = "aiPrivacyRouter.updateVulnDbs";

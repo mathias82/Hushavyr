@@ -1,5 +1,5 @@
 import {registerApplyFix} from "./applyFix";
-import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./trivyCommands";
+import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./deps/trivyCommands";
 import * as vscode from "vscode";
 import {registerVerifiedFix} from "./fixAgent";
 import {registerVerifiedFixPr} from "./fixPrAgent";
@@ -7,18 +7,18 @@ import {createAutoPrompt} from "./autoPrompt";
 import {registerEditCommands} from "./editFlow";
 import {registerEscalationCommands} from "./escalateSuggest";
 import {registerPullRequestCommand} from "./prFlow";
-import {addDismissal, dismissalText, fingerprint} from "./teamMemory";
+import {addDismissal, dismissalText, fingerprint} from "./scan/teamMemory";
 import {runSetup} from "./model/setup";
-import {clearDependencyMarkers} from "./workspaceScan";
+import {clearDependencyMarkers} from "./scan/workspaceScan";
 import {registerOllamaCommands} from "./model/ollamaCommands";
 import {registerLocalCommands} from "./localCommands";
 import {registerChatParticipant} from "./chatParticipant";
 import {registerReportIssue} from "./reportIssue";
 import {clearScanFindings, dropScanFinding, registerPaletteCommands} from "./paletteCommands";
 import {forgetFinding, registerExplainFinding} from "./explainFinding";
-import {dropDependencyMarker} from "./dependencyMarkers";
+import {dropDependencyMarker} from "./deps/dependencyMarkers";
 import {registerTerminalCommand} from "./terminal/register";
-import {UPDATE_VULN_DBS, updateVulnerabilityDatabases} from "./vulnDb";
+import {UPDATE_VULN_DBS, updateVulnerabilityDatabases} from "./deps/vulnDb";
 
 export function activate(context: vscode.ExtensionContext): void {
   registerVerifiedFix(context);

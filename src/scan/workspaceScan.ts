@@ -1,9 +1,9 @@
 import {loadIgnore} from "./teamMemory";
-import {configuredClient} from "./model/model";
-import {tr} from "./i18n";
-import {uiLanguage} from "./trivyCommands";
-import {trivyDbAgeDays, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
-import {autoUpdateIfStale, offerUpdateIfStale, vulnDbAges, vulnDbStatus} from "./vulnDb";
+import {configuredClient} from "../model/model";
+import {tr} from "../i18n";
+import {uiLanguage} from "../deps/trivyCommands";
+import {trivyDbAgeDays, groupVulnerabilities, GroupedVulnerability} from "../deps/dependencyAudit";
+import {autoUpdateIfStale, offerUpdateIfStale, vulnDbAges, vulnDbStatus} from "../deps/vulnDb";
 import {runScanner} from "./externalScanners";
 import {auditDependenciesWithOsv, CodeFinding, runCodeScanners, scannerLabel, statusLine} from "./codeScanners";
 import {join, resolve, relative, isAbsolute} from "node:path";
@@ -13,10 +13,10 @@ import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import * as vscode from "vscode";
-import {offerToolInstallation} from "./model/setup";
+import {offerToolInstallation} from "../model/setup";
 import {dependencyRowInfo, findingLink, streamFlows, readSmallText, deterministicForScan, workspaceTaintRules} from "./scanFindings";
-import {markDependencies} from "./dependencyMarkers";
-export {clearDependencyMarkers} from "./dependencyMarkers";
+import {markDependencies} from "../deps/dependencyMarkers";
+export {clearDependencyMarkers} from "../deps/dependencyMarkers";
 
 const scanCommands = new Set(["scan", "scan-changed", "secrets", "security", "gitleaks", "dependencies"]);
 const deterministicCommands = new Set(["secrets", "security", "gitleaks", "dependencies"]);

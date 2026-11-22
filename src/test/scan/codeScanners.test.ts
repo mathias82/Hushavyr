@@ -3,9 +3,9 @@ import {strict as assert} from "node:assert";
 import {mkdtemp, writeFile, rm, mkdir, chmod} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {parseBandit, parseGosec, parseSpotBugs, sourceResolver, findClassDirs, runCodeScanner, parseOsv, mergeOsv, runOsvScanner, hasOsvDatabase, osvDatabaseDirs} from "../codeScanners";
-import {DependencyVulnerability} from "../dependencyAudit";
-import {scanFolder} from "../cli";
+import {parseBandit, parseGosec, parseSpotBugs, sourceResolver, findClassDirs, runCodeScanner, parseOsv, mergeOsv, runOsvScanner, hasOsvDatabase, osvDatabaseDirs} from "../../scan/codeScanners";
+import {DependencyVulnerability} from "../../deps/dependencyAudit";
+import {scanFolder} from "../../cli";
 
 const banditRow = (over: object) => ({filename: "./app/main.py", line_number: 6, issue_severity: "HIGH", issue_confidence: "HIGH", test_id: "B602",
   issue_text: "subprocess call with shell=True identified, security issue.", issue_cwe: {id: 78}, code: "6     subprocess.call(SECRET_CMD, shell=True)", ...over});
@@ -150,7 +150,7 @@ test("CLI adds Bandit findings with a prefixed rule id, once per line next to bu
     await writeFile(join(bin, "bandit"), "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = \"-o\" ]; then shift; printf '%s' '" + report + "' > \"$1\"; fi; shift; done\nexit 1\n");
     await chmod(join(bin, "bandit"), 0o755);
     process.env.PATH = bin + ":" + path;
-    const results = await scanFolder(root, join(__dirname, "..", "..", "rules", "hushavyr-review.yml"));
+    const results = await scanFolder(root, join(__dirname, "..", "..", "..", "rules", "hushavyr-review.yml"));
     const bandit = results.filter(r => r.ruleId.startsWith("bandit-"));
     assert.ok(bandit.some(r => r.ruleId === "bandit-B608" && r.line === 6 && r.level === "warning"));
     const line4 = results.filter(r => r.path === "app.py" && r.line === 4);

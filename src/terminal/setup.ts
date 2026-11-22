@@ -3,7 +3,7 @@ import {spawn} from "node:child_process";
 import {readdir} from "node:fs/promises";
 import {homedir} from "node:os";
 import {join} from "node:path";
-import {hasOsvDatabase} from "../codeScanners";
+import {hasOsvDatabase} from "../scan/codeScanners";
 import {LocalOllama} from "../model/ollama";
 import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, OLLAMA_SERVE_ENV, ollamaInstaller, relevantTools, runs, setupPlan, toolCommand} from "../model/setupSteps";
 

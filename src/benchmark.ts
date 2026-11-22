@@ -3,7 +3,7 @@ import { ReviewSource } from "./review/context";
 import { Finding, reviewPrompt, validateReview } from "./review/review";
 import { readFileSync } from "node:fs";
 import { runLocalReview } from "./review/localReview";
-import { staticReview } from "./staticReview";
+import { staticReview } from "./scan/staticReview";
 import { join } from "node:path";
 import { reviewDifficulty } from "./review/difficulty";
 
