@@ -5,7 +5,7 @@ import {homedir} from "node:os";
 import {join} from "node:path";
 import {hasOsvDatabase} from "../codeScanners";
 import {LocalOllama} from "../ollama";
-import {detectTools, hasInstaller, installCommands, InstallableTool, OLLAMA_SERVE_ENV, ollamaInstaller, relevantTools, runs, setupPlan} from "../setupSteps";
+import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, OLLAMA_SERVE_ENV, ollamaInstaller, relevantTools, runs, setupPlan, toolCommand} from "../setupSteps";
 
 export interface SetupIO {
   out(text: string): void;
@@ -48,23 +48,26 @@ export async function terminalSetup(io: SetupIO, endpoint: string, model: string
   const platform = process.platform;
   const probe = new LocalOllama({model, endpoint});
   io.out(io.dim("Checking Ollama, the model and the analyzers…"));
-  const [running, ollama, installer, tools, osvDatabase, kinds] = await Promise.all([
+  const [running, ollama, installer, tools, osvDatabase, kinds, installers] = await Promise.all([
     probe.isRunning(), runs("ollama", ["--version"]),
     (async () => { const found = ollamaInstaller(platform); return found && await hasInstaller(found) ? found.command : undefined; })(),
-    detectTools(), hasOsvDatabase(), projectKinds(root)]);
+    detectTools(), hasOsvDatabase(), projectKinds(root), detectInstallers()]);
   if (!ollama && !running && !installer) {
     io.out("Ollama is not installed and no installer (Homebrew, WinGet, curl) was found. Install it from " + (ollamaInstaller(platform)?.download ?? "https://ollama.com/download") + ", then run /setup again.");
     return false;
   }
   const installed = running ? await probe.listModels().catch(() => [] as string[]) : [];
   const relevant = new Set(relevantTools(tools, kinds));
-  const missing = platform === "win32" ? [] : (Object.keys(tools) as InstallableTool[]).filter(t => !tools[t]).sort((a, b) => Number(relevant.has(b)) - Number(relevant.has(a)));
+  const absent = platform === "win32" ? [] : (Object.keys(tools) as InstallableTool[]).filter(t => !tools[t]).sort((a, b) => Number(relevant.has(b)) - Number(relevant.has(a)));
+  const missing = absent.filter(t => toolCommand(t, platform, installers));
+  const manual = absent.filter(t => relevant.has(t) && !missing.includes(t));
+  if (manual.length) io.out(io.dim("Install by hand if you want them (no Homebrew, pipx or go here): " + manual.map(manualInstall).join(" · ")));
   let chosen: InstallableTool[] = [];
   if (missing.length) {
     io.out("Missing dependency and security analyzers: " + missing.map(t => installCommands[t].label).join(", "));
     if (await io.ask("Install them too?")) chosen = missing;
   }
-  const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosen, osvInstalled: tools["osv-scanner"], osvDatabase});
+  const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosen, osvInstalled: tools["osv-scanner"], osvDatabase, installers});
   if (!steps.length) { io.out("Everything is set up: Ollama is running and " + model + " is downloaded."); return true; }
   io.out("Setup will run " + steps.length + " step(s) on this machine:");
   steps.forEach((step, i) => io.out("  " + (i + 1) + ". " + step.label + "\n     " + io.dim(step.command)));

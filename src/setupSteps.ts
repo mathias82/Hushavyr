@@ -39,12 +39,32 @@ export const installCommands: Record<InstallableTool, {label: string; purpose: s
   gosec: {label: "gosec", purpose: "offline Go security checks", darwin: "brew install gosec", other: "go install github.com/securego/gosec/v2/cmd/gosec@latest"},
   "osv-scanner": {label: "OSV-Scanner", purpose: "offline dependency vulnerability checks against the OSV.dev database", darwin: "brew install osv-scanner", other: "go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest"}
 };
+/** Package managers the analyzer installs can use. */
+export interface Installers { brew: boolean; pipx: boolean; go: boolean }
+export async function detectInstallers(run: Runner = defaultRunner): Promise<Installers> {
+  const [brew, pipx, go] = await Promise.all([run("brew", ["--version"]), run("pipx", ["--version"]), run("go", ["version"])]);
+  return {brew, pipx, go};
+}
+/** The install command this machine can actually run (Homebrew on macOS or Linux, else pipx or go), or undefined when it must be installed by hand. */
+export function toolCommand(tool: InstallableTool, platform: NodeJS.Platform, installers: Installers): string | undefined {
+  if (platform === "win32") return undefined;
+  if (installers.brew) return installCommands[tool].darwin;
+  const other = installCommands[tool].other;
+  return other.startsWith("pipx ") && installers.pipx || other.startsWith("go ") && installers.go ? other : undefined;
+}
+/** Where to install an analyzer by hand when setup cannot. */
+export const manualInstall = (tool: InstallableTool): string =>
+  installCommands[tool].label + ": " + ({trivy: "https://trivy.dev/latest/getting-started/installation/", findsecbugs: "https://spotbugs.readthedocs.io/en/latest/installing.html",
+    semgrep: "https://semgrep.dev/docs/getting-started/", bandit: "https://bandit.readthedocs.io/en/latest/start.html", gitleaks: "https://github.com/gitleaks/gitleaks#installing",
+    gosec: "https://github.com/securego/gosec#install", "osv-scanner": "https://google.github.io/osv-scanner/installation/"} as Record<InstallableTool, string>)[tool];
 /** What this machine has, and what the user chose, before setup runs. */
 export interface SetupState {
   platform: NodeJS.Platform; root?: string;
   ollama: boolean; installer?: string; running: boolean;
   model: string; modelReady: boolean;
   tools: InstallableTool[]; osvInstalled: boolean; osvDatabase: boolean;
+  /** Defaults to Homebrew on macOS and nothing elsewhere. */
+  installers?: Installers;
 }
 export interface SetupStep { kind: "ollama-install" | "ollama-start" | "model" | "tool" | "osv-database"; label: string; command: string; tool?: InstallableTool }
 
@@ -55,9 +75,11 @@ export function setupPlan(state: SetupState): SetupStep[] {
   if (!state.running) steps.push({kind: "ollama-start", label: "Start the local Ollama server (127.0.0.1 only)", command: "ollama serve"});
   if (!state.modelReady) steps.push({kind: "model", label: "Download the model " + state.model + " (several GB, once)", command: "ollama pull " + state.model});
   if (state.platform === "win32") return steps;
-  for (const tool of state.tools)
-    steps.push({kind: "tool", tool, label: "Install " + installCommands[tool].label + " (" + installCommands[tool].purpose + ")", command: state.platform === "darwin" ? installCommands[tool].darwin : installCommands[tool].other});
-  if (state.root && !state.osvDatabase && (state.osvInstalled || state.tools.includes("osv-scanner")))
+  const installers = state.installers ?? {brew: state.platform === "darwin", pipx: false, go: false};
+  const tools = state.tools.flatMap(tool => { const command = toolCommand(tool, state.platform, installers); return command ? [{tool, command}] : []; });
+  for (const {tool, command} of tools)
+    steps.push({kind: "tool", tool, label: "Install " + installCommands[tool].label + " (" + installCommands[tool].purpose + ")", command});
+  if (state.root && !state.osvDatabase && (state.osvInstalled || tools.some(t => t.tool === "osv-scanner")))
     steps.push({kind: "osv-database", label: "Download the OSV offline vulnerability database (public data, no code sent)", command: osvDatabaseCommand(state.root)});
   return steps;
 }

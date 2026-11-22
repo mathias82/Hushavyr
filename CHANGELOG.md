@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.10
+- **Setup works the same on Linux and Windows:** analyzers are only offered when this machine can install them (Homebrew on macOS or Linux, otherwise pipx or go). The rest are listed with an install link instead of failing as a setup step. On Windows, setup installs Ollama and the model only.
+- **Ollama key repair on Windows too:** the missing-key case is recognized from the Windows error text. On Linux, the hint says `sudo systemctl restart ollama`.
+
 ## 1.0.9
 - **Setup repairs Ollama's missing key:** if `~/.ollama` was deleted while Ollama kept running, every model download failed until a restart. Setup now writes a fresh key and retries the download.
 - **Setup errors say what went wrong:** a failed model download shows Ollama's own error instead of "Check Ollama and disk space".

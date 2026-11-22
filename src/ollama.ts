@@ -23,7 +23,7 @@ export function localEndpoint(value = "http://127.0.0.1:11434"): string {
  * Writes a fresh key where the local server looks for it (only that exact path, never overwriting) so the pull can be retried.
  */
 export function repairOllamaKey(error: unknown, base: string, home = homedir()): boolean {
-  const missing = error instanceof Error ? /open (.+id_ed25519): no such file/.exec(error.message)?.[1] : undefined;
+  const missing = error instanceof Error ? /open (.+id_ed25519): (?:no such file|The system cannot find)/i.exec(error.message)?.[1] : undefined;
   const expected = join(home, ".ollama", "id_ed25519");
   if (!missing || resolve(missing) !== expected || existsSync(expected) || !/^http:\/\/127\.0\.0\.1:/.test(base)) return false;
   try {
@@ -38,7 +38,7 @@ function pullReason(error: unknown): string {
   const text = error instanceof Error ? error.message.replace(/[^\x20-\x7e]/g, "").slice(0, 200) : "";
   if (!text || text === "pull failed" || error instanceof Error && error.name === "AbortError") return "";
   // Ollama loses its key when ~/.ollama is deleted while the server keeps running.
-  if (/id_ed25519/.test(text)) return ": Ollama is missing its key file; quit and restart Ollama, then try again";
+  if (/id_ed25519/.test(text)) return ": Ollama is missing its key file; restart Ollama (" + (process.platform === "linux" ? "sudo systemctl restart ollama" : "quit it from the menu bar or tray and start it again") + "), then try again";
   return ": " + text;
 }
 

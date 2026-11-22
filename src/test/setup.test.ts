@@ -58,6 +58,16 @@ test("repairOllamaKey writes a missing Ollama key once, only at the expected pat
   assert.match(readFileSync(key, "utf8"), /BEGIN PRIVATE KEY/);
   if (process.platform !== "win32") assert.equal(statSync(key).mode & 0o777, 0o600);
   assert.equal(repairOllamaKey(missing, "http://127.0.0.1:11434", home), false);
+  const windowsHome = mkdtempSync(join(tmpdir(), "hush-home-"));
+  assert.equal(repairOllamaKey(new Error("open " + join(windowsHome, ".ollama", "id_ed25519") + ": The system cannot find the file specified."), "http://127.0.0.1:11434", windowsHome), true);
+});
+test("setupPlan only runs analyzer installs this machine can perform", () => {
+  const linux = {platform: "linux" as const, root: "/w", ollama: true, running: true, model: "m", modelReady: true, osvInstalled: false, osvDatabase: false,
+    tools: ["trivy", "semgrep", "gitleaks", "osv-scanner"] as ("trivy" | "semgrep" | "gitleaks" | "osv-scanner")[]};
+  assert.deepEqual(setupPlan({...linux, installers: {brew: false, pipx: true, go: false}}).map(s => s.command), ["pipx install semgrep"]);
+  assert.deepEqual(setupPlan({...linux, installers: {brew: false, pipx: false, go: false}}), []);
+  assert.deepEqual(setupPlan({...linux, installers: {brew: true, pipx: false, go: false}}).map(s => s.command.split(/ &&| -/)[0]),
+    ["brew install trivy", "brew install semgrep", "brew install gitleaks", "brew install osv-scanner", "osv-scanner scan source"]);
 });
 test("recommendedModel scales with memory", () => {
   const gb = 1024 ** 3;

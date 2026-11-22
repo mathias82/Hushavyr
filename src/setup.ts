@@ -3,7 +3,7 @@ import {homedir, totalmem} from "node:os";
 import {defaultFindSecBugsPlugin, hasOsvDatabase} from "./codeScanners";
 import {LocalOllama} from "./ollama";
 import {startOllamaServer} from "./ollamaCommands";
-import {detectTools, hasInstaller, installCommands, InstallableTool, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan} from "./setupSteps";
+import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan, toolCommand} from "./setupSteps";
 import {tr} from "./i18n";
 import {existsSync} from "node:fs";
 import {shimPath} from "./terminal/shim";
@@ -108,10 +108,10 @@ export async function runSetup(): Promise<void> {
   const platform = process.platform, root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const probe = new LocalOllama({model: configuredModel(config), endpoint, timeoutMs});
   const exclude = "**/{node_modules,.git,.venv,venv,vendor}/**";
-  const [running, ollama, installer, tools, osvDatabase, python, go, jvm] = await Promise.all([
+  const [running, ollama, installer, tools, osvDatabase, installers, python, go, jvm] = await Promise.all([
     probe.isRunning(), runs("ollama", ["--version"]),
     (async () => { const found = ollamaInstaller(platform); return found && await hasInstaller(found) ? found.command : undefined; })(),
-    detectTools(undefined, config.get<string>("findSecBugsPlugin", "") || defaultFindSecBugsPlugin()), hasOsvDatabase(),
+    detectTools(undefined, config.get<string>("findSecBugsPlugin", "") || defaultFindSecBugsPlugin()), hasOsvDatabase(), detectInstallers(),
     ...["**/*.py", "**/go.mod", "**/{pom.xml,build.gradle,build.gradle.kts}"].map(async glob => (await vscode.workspace.findFiles(glob, exclude, 1)).length > 0)]);
   if (!ollama && !running && !installer) {
     const download = ollamaInstaller(platform)?.download ?? "https://ollama.com/download";
@@ -138,7 +138,9 @@ export async function runSetup(): Promise<void> {
   }
   // Every missing dependency and security analyzer; the ones this workspace's languages use are listed first.
   const relevant = new Set(relevantTools(tools, {python, go, jvm}));
-  const missing = platform === "win32" ? [] : (Object.keys(tools) as InstallableTool[]).filter(tool => !tools[tool]).sort((a, b) => Number(relevant.has(b)) - Number(relevant.has(a)));
+  const absent = platform === "win32" ? [] : (Object.keys(tools) as InstallableTool[]).filter(tool => !tools[tool]).sort((a, b) => Number(relevant.has(b)) - Number(relevant.has(a)));
+  const missing = absent.filter(tool => toolCommand(tool, platform, installers));
+  const manual = absent.filter(tool => relevant.has(tool) && !missing.includes(tool));
   let chosenTools: InstallableTool[] = [];
   // The `hushavyr` command for terminals outside VS Code (Terminal.app, iTerm, Windows Terminal).
   const shimMissing = !existsSync(shimPath(platform, homedir(), process.env));
@@ -154,7 +156,7 @@ export async function runSetup(): Promise<void> {
   }
   const installTerminal = () => terminalCommand ? vscode.commands.executeCommand(INSTALL_TERMINAL_COMMAND) : undefined;
 
-  const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosenTools, osvInstalled: tools["osv-scanner"], osvDatabase});
+  const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosenTools, osvInstalled: tools["osv-scanner"], osvDatabase, installers});
   const summary = () => "Ollama: " + (ollama || steps.some(s => s.kind === "ollama-install") ? "installed" : "missing") + " · model " + model +
     " · analyzers: " + (Object.keys(tools) as InstallableTool[]).filter(tool => tools[tool] || chosenTools.includes(tool)).map(tool => installCommands[tool].label).join(", ");
   if (!steps.length) {
@@ -203,5 +205,6 @@ export async function runSetup(): Promise<void> {
   });
   await installTerminal();
   if (failed.length) void vscode.window.showWarningMessage("Hushavyr setup did not finish: " + failed.join("; ") + ". Fix it and run Hushavyr: Setup again; finished steps are skipped.");
-  else void vscode.window.showInformationMessage(tr(language, "setupDone") + " " + summary());
+  else void vscode.window.showInformationMessage(tr(language, "setupDone") + " " + summary() +
+    (manual.length ? " Not installable here (no Homebrew, pipx or go), install by hand if you want them: " + manual.map(manualInstall).join(" · ") : ""));
 }
