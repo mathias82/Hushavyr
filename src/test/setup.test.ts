@@ -11,7 +11,7 @@ const load = (Module as unknown as {_load: (name: string, ...args: unknown[]) =>
 (Module as unknown as {_load: unknown})._load = function(this: unknown, name: string, ...args: unknown[]) {
   return name === "vscode" ? stub : load.call(this, name, ...args);
 };
-const {recommendedModel, detectTools, lowMemoryWarning, relevantTools, offerToolInstallation, osvDatabaseCommand} = require("../setup") as typeof import("../setup");
+const {recommendedModel, detectTools, lowMemoryWarning, relevantTools, offerToolInstallation, osvDatabaseCommand, setupPlan} = require("../setup") as typeof import("../setup");
 
 const ndjson = (...events: object[]) => new Response(events.map(e => JSON.stringify(e)).join("\n") + "\n");
 
@@ -130,4 +130,15 @@ test("setup offers curated, recommended and locally installed models, and accept
   assert.deepEqual(choices.at(-1), {label: "codestral:22b", tags: ["installed"]});
   assert.equal(new Set(choices.map(c => c.label)).size, choices.length);
   assert.deepEqual(["codestral", "user/model:q4_K_M", "gpt-oss:120b-cloud", "bad name", "x; rm -rf"].map(isLocalModelName), [true, true, false, false, false]);
+});
+
+test("setupPlan installs and starts Ollama, downloads the model and installs the chosen analyzers in order; a ready machine needs nothing", () => {
+  const fresh = {platform: "darwin" as const, root: "/w", ollama: false, installer: "brew install ollama", running: false, model: "qwen2.5-coder:7b",
+    modelReady: false, tools: ["semgrep", "osv-scanner"] as ("semgrep" | "osv-scanner")[], osvInstalled: false, osvDatabase: false};
+  assert.deepEqual(setupPlan(fresh).map(s => s.kind + ": " + s.command.split(" -")[0]),
+    ["ollama-install: brew install ollama", "ollama-start: ollama serve", "model: ollama pull qwen2.5-coder:7b", "tool: brew install semgrep", "tool: brew install osv-scanner", "osv-database: osv-scanner scan source"]);
+  assert.deepEqual(setupPlan({...fresh, ollama: true, running: true, modelReady: true, tools: [], osvDatabase: true}), []);
+  // Installed but stopped (the common case after a reboot): only the server is started.
+  assert.deepEqual(setupPlan({...fresh, ollama: true, modelReady: true, tools: [], osvDatabase: true}).map(s => s.kind), ["ollama-start"]);
+  assert.deepEqual(setupPlan({...fresh, platform: "win32", installer: "winget install --id Ollama.Ollama --exact"}).map(s => s.kind), ["ollama-install", "ollama-start", "model"]);
 });

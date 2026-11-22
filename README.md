@@ -31,7 +31,7 @@ This is a brand interpretation, not a literal translation of an existing word.
 ## Install
 
 1. Install **Hushavyr** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr), or from [Open VSX](https://open-vsx.org/extension/mathias82/hushavyr) for VSCodium, Cursor, Windsurf and Gitpod.
-2. Run **Hushavyr: Setup** from the Command Palette. It installs or downloads Ollama, a local model and, if you agree, Semgrep, Gitleaks, Trivy, OSV-Scanner and, for the languages in your project, FindSecBugs, Bandit and gosec. Nothing is installed without asking you.
+2. Run **Hushavyr: Setup** from the Command Palette. You pick the model and the analyzers, confirm once, and it does the rest: installs and starts Ollama, downloads the model, and installs Semgrep, Gitleaks, Trivy, OSV-Scanner, FindSecBugs, Bandit and gosec with the Trivy and OSV offline databases. Every command is listed before anything runs; run it again after a reboot to restart Ollama (finished steps are skipped).
 3. Open a project and type `@ai-privacy /review` in Chat, or run **Hushavyr: Review Current File** from the Command Palette.
 
 ## What it uses

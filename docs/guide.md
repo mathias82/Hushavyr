@@ -264,7 +264,7 @@ Settings are application-scoped, so repository settings cannot relax the user's 
 
 ## Optional offline analyzers
 
-`/security`, `/scan` and the `hushavyr-scan` CLI also run these tools when they are installed. A missing tool is skipped; it never fails a scan. **Hushavyr: Setup** offers each one (with your confirmation) only when the workspace has matching code.
+`/security`, `/scan` and the `hushavyr-scan` CLI also run these tools when they are installed. A missing tool is skipped; it never fails a scan. **Hushavyr: Setup** installs all of the missing ones in one go after a single confirmation (you can uncheck any); the ones matching the workspace's languages are listed first.
 
 | Tool | Runs when | Kept findings | Rule ids |
 | --- | --- | --- | --- |
