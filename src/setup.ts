@@ -1,13 +1,15 @@
 import * as vscode from "vscode";
-import {execFile} from "node:child_process";
-import {existsSync} from "node:fs";
 import {homedir, totalmem} from "node:os";
 import {defaultFindSecBugsPlugin, hasOsvDatabase} from "./codeScanners";
 import {LocalOllama} from "./ollama";
-import {hasInstaller, ollamaInstaller, runs, startOllamaServer} from "./ollamaCommands";
+import {startOllamaServer} from "./ollamaCommands";
+import {detectTools, hasInstaller, installCommands, InstallableTool, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan} from "./setupSteps";
 import {tr} from "./i18n";
 import {configuredModel, isLocalModelName, modelChoices, recommendedModel} from "./model";
 export {recommendedModel};
+export {detectTools, osvDatabaseCommand, relevantTools, setupPlan} from "./setupSteps";
+export type {InstallableTool, Runner, SetupState, SetupStep} from "./setupSteps";
+const installPromptOpen = new Set<InstallableTool>();
 
 
 /** Approximate resident size of common quantized models; warn before loading one that will swap. */
@@ -19,39 +21,6 @@ export function lowMemoryWarning(model: string, memoryBytes = totalmem()): strin
   return needGb > haveGb ? "**Warning:** " + model + " needs about " + Math.ceil(needGb) + " GB of memory but this machine has " + Math.floor(haveGb) + " GB; expect slow responses. Run **Hushavyr: Setup** to pick a smaller model." : "";
 }
 
-export type Runner = (executable: string, args: string[]) => Promise<boolean>;
-const defaultRunner: Runner = (executable, args) => new Promise(resolve =>
-  execFile(executable, args, {timeout: 8000, windowsHide: true}, error => resolve(!error)));
-
-/** Which optional offline tools are installed; each probe only runs `--version`. FindSecBugs also needs its plugin jar. */
-export async function detectTools(run: Runner = defaultRunner, findSecBugsPlugin = defaultFindSecBugsPlugin(), exists: (path: string) => boolean = existsSync): Promise<Record<InstallableTool, boolean>> {
-  const [semgrep, gitleaks, trivy, spotbugs, bandit, gosec, osv] = await Promise.all([
-    run("semgrep", ["--version"]), run("gitleaks", ["version"]), run("trivy", ["--version"]), run("spotbugs", ["-version"]),
-    run("bandit", ["--version"]), run("gosec", ["-version"]), run("osv-scanner", ["--version"])]);
-  return {semgrep, gitleaks, trivy, findsecbugs: spotbugs && exists(findSecBugsPlugin), bandit, gosec, "osv-scanner": osv};
-}
-
-export type InstallableTool = "semgrep" | "gitleaks" | "trivy" | "findsecbugs" | "bandit" | "gosec" | "osv-scanner";
-/** Only offer analyzers the workspace can use: Bandit for Python, gosec for Go modules, FindSecBugs for Maven/Gradle builds. */
-export function relevantTools(installed: Record<InstallableTool, boolean>, has: {python: boolean; go: boolean; jvm: boolean}): InstallableTool[] {
-  const relevant: Record<InstallableTool, boolean> = {semgrep: true, gitleaks: true, trivy: true, "osv-scanner": true, bandit: has.python, gosec: has.go, findsecbugs: has.jvm};
-  return (Object.keys(installed) as InstallableTool[]).filter(tool => !installed[tool] && relevant[tool]);
-}
-const pluginUrl = "https://repo1.maven.org/maven2/com/h3xstream/findsecbugs/findsecbugs-plugin/1.14.0/findsecbugs-plugin-1.14.0.jar";
-const pluginDownload = "mkdir -p ~/.hushavyr && curl -fsSL -o ~/.hushavyr/findsecbugs-plugin.jar " + pluginUrl;
-/** Downloads public OSV.dev data for the ecosystems found in `root`; vulnerability matching itself stays local. */
-export const osvDatabaseCommand = (root: string): string =>
-  "osv-scanner scan source --offline-vulnerabilities --download-offline-databases --no-resolve --format table -r '" + root.replace(/'/g, "'\\''") + "'";
-const installPromptOpen = new Set<InstallableTool>();
-const installCommands: Record<InstallableTool, {label: string; purpose: string; darwin: string; other: string}> = {
-  semgrep: {label: "Semgrep", purpose: "additional offline security checks", darwin: "brew install semgrep", other: "pipx install semgrep"},
-  gitleaks: {label: "Gitleaks", purpose: "offline secret scanning", darwin: "brew install gitleaks", other: "go install github.com/gitleaks/gitleaks/v8@latest"},
-  trivy: {label: "Trivy", purpose: "offline dependency vulnerability audits", darwin: "brew install trivy && trivy image --download-db-only", other: "See https://trivy.dev/latest/getting-started/installation/ then run: trivy image --download-db-only"},
-  findsecbugs: {label: "FindSecBugs (SpotBugs)", purpose: "bytecode security analysis of compiled Java and Kotlin classes", darwin: "brew install spotbugs && " + pluginDownload, other: "See https://spotbugs.readthedocs.io/en/latest/installing.html then run: " + pluginDownload},
-  bandit: {label: "Bandit", purpose: "offline Python security checks", darwin: "brew install bandit", other: "pipx install bandit"},
-  gosec: {label: "gosec", purpose: "offline Go security checks", darwin: "brew install gosec", other: "go install github.com/securego/gosec/v2/cmd/gosec@latest"},
-  "osv-scanner": {label: "OSV-Scanner", purpose: "offline dependency vulnerability checks against the OSV.dev database", darwin: "brew install osv-scanner", other: "go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest"}
-};
 export async function offerToolInstallation(tool: InstallableTool): Promise<void> {
   if (installPromptOpen.has(tool)) return;
   installPromptOpen.add(tool);
@@ -98,29 +67,6 @@ export async function offerOsvDatabase(terminal?: vscode.Terminal): Promise<void
   const target = terminal ?? vscode.window.createTerminal({name: "Hushavyr · OSV database"});
   target.show();
   target.sendText(osvDatabaseCommand(root));
-}
-
-/** What this machine has, and what the user chose, before setup runs. */
-export interface SetupState {
-  platform: NodeJS.Platform; root?: string;
-  ollama: boolean; installer?: string; running: boolean;
-  model: string; modelReady: boolean;
-  tools: InstallableTool[]; osvInstalled: boolean; osvDatabase: boolean;
-}
-export interface SetupStep { kind: "ollama-install" | "ollama-start" | "model" | "tool" | "osv-database"; label: string; command: string; tool?: InstallableTool }
-
-/** The steps that bring this machine to a working setup, in order: Ollama, its server, the model, then the chosen analyzers. */
-export function setupPlan(state: SetupState): SetupStep[] {
-  const steps: SetupStep[] = [];
-  if (!state.ollama && state.installer) steps.push({kind: "ollama-install", label: "Install Ollama", command: state.installer});
-  if (!state.running) steps.push({kind: "ollama-start", label: "Start the local Ollama server (127.0.0.1 only)", command: "ollama serve"});
-  if (!state.modelReady) steps.push({kind: "model", label: "Download the model " + state.model + " (several GB, once)", command: "ollama pull " + state.model});
-  if (state.platform === "win32") return steps;
-  for (const tool of state.tools)
-    steps.push({kind: "tool", tool, label: "Install " + installCommands[tool].label + " (" + installCommands[tool].purpose + ")", command: state.platform === "darwin" ? installCommands[tool].darwin : installCommands[tool].other});
-  if (state.root && !state.osvDatabase && (state.osvInstalled || state.tools.includes("osv-scanner")))
-    steps.push({kind: "osv-database", label: "Download the OSV offline vulnerability database (public data, no code sent)", command: osvDatabaseCommand(state.root)});
-  return steps;
 }
 
 /** Runs a shell command as a visible VS Code task and resolves with its exit code (undefined when it could not start). */
