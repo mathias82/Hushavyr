@@ -354,6 +354,37 @@ const RESPONSE_CALL = /^(?:[\w.]*\.)?(?:make_response|Response|HttpResponse)\s*\
 const NOT_MARKUP = /^(?:[\w.]*\.)?(?:redirect|jsonify|send_file|send_from_directory|abort|url_for|render_template|JsonResponse|HttpResponseRedirect|FileResponse)\s*\(/;
 const ALL_KINDS: SinkKind[] = ["sql", "nosql", "command", "code", "path", "ssrf", "xss", "ldap", "xpath", "trust-boundary", "redirect", "xxe", "deserialization"];
 
+/** Sink kinds an anchored validation regex rules out: none when it admits arbitrary text, fewer when it allows quotes, dots or slashes. */
+function regexKinds(source: string): SinkKind[] {
+  const anchored = /^\^|^\\A/.test(source) && /(?:\$|\\z|\\Z)$/.test(source);
+  if (!anchored || /(?<!\\)\.[*+?{]|\[\^|\x5c[SWD]|(?<![\x5c[])\.(?![^\[]*\])/.test(source)) return [];
+  return ALL_KINDS.filter(k => !(k === "path" && /[./]|\\\./.test(source)) && !(["sql", "xpath", "ldap", "nosql", "code"].includes(k) && /['"\x5c]/.test(source.replace(/\x5c[dws.\-]/g, "")))
+    && !(k === "xss" && /[<>]/.test(source)) && !(k === "command" && /[;&|$`]/.test(source.slice(0, -1))));
+}
+
+/** The variable a validating predicate checks and the sink kinds it then rules out ("is_numeric($id)", "allowed.includes(x)", "/^\d+$/.test(x)"). */
+function validatesFor(pred: string, lits: readonly string[]): {name: string; kinds: SinkKind[]} | undefined {
+  const p = pred.trim().replace(/^\((.*)\)$/s, "$1").trim(), v = "([A-Za-z_$][\\w$]*)";
+  const lit = (m: string) => { const at = /^"@(\d+)"$/.exec(m.trim()); return at ? lits[+at[1]] : undefined; };
+  let m = new RegExp("^(?:is_numeric|is_int|is_integer|is_float|ctype_digit|ctype_alnum|ctype_alpha|ctype_xdigit|Number\\.isInteger|Number\\.isSafeInteger|Number\\.isFinite|(?:StringUtils|NumberUtils)\\.is(?:Numeric|Alphanumeric|Alpha|Digits|CreatableNumber)|validator\\.is(?:Int|Numeric|Alphanumeric|Alpha|UUID|MongoId|Hexadecimal|Boolean)|(?:int|long|short|byte|uint|ulong|decimal|double|float|Guid|bool)\\.TryParse)\\s*\\(\\s*" + v + "\\b").exec(p);
+  if (m) return {name: m[1], kinds: ALL_KINDS};
+  m = new RegExp("^filter_var\\s*\\(\\s*" + v + "\\s*,\\s*FILTER_VALIDATE_(?:INT|FLOAT|BOOLEAN?|IP)\\b").exec(p);
+  if (m) return {name: m[1], kinds: ALL_KINDS};
+  m = new RegExp("^(?:in_array\\s*\\(\\s*" + v + "\\s*,|[A-Za-z_$][\\w$.]*\\.(?:includes|contains|Contains|has|containsKey|ContainsKey|include\\?)\\s*\\(\\s*" + v + "\\s*\\)$)").exec(p);
+  if (m && !/^"@/.test(p)) return {name: m[1] ?? m[2], kinds: ALL_KINDS};
+  m = new RegExp("^(?:preg_match\\s*\\(\\s*(\"@\\d+\")\\s*,\\s*" + v + "|(?:Pattern\\.matches|Regex\\.IsMatch)\\s*\\(\\s*(?:(\"@\\d+\")\\s*,\\s*" + v + "|" + v + "\\s*,\\s*(\"@\\d+\"))|" + v + "\\.matches\\s*\\(\\s*(\"@\\d+\")\\s*\\))").exec(p);
+  if (m) {
+    const source = lit(m[1] ?? m[3] ?? m[6] ?? m[8] ?? "") ?? "", name = m[2] ?? m[4] ?? m[5] ?? m[7];
+    // preg_match patterns carry delimiters and flags (/^\d+$/i); Java's matches() is always anchored.
+    const body = m[1] ? source.replace(/^(.)(.*)\1[a-zA-Z]*$/s, "$2") : m[8] ? "^" + source.replace(/^\^?/, "").replace(/\$?$/, "") + "$" : source;
+    const kinds = regexKinds(body);
+    return kinds.length ? {name, kinds} : undefined;
+  }
+  m = new RegExp("^/(.+)/[a-z]*\\.test\\s*\\(\\s*" + v + "\\s*\\)$").exec(p);
+  if (m) { const kinds = regexKinds(m[1]); return kinds.length ? {name: m[2], kinds} : undefined; }
+  return undefined;
+}
+
 /** Follows tainted variables through one body; returns every sink reached (directly or through summarised calls) and whether taint is returned. */
 function analyse(lines: readonly string[], firstLine: number, path: string, initial: ReadonlyMap<string, number>, summaries: Summaries, skipFirst: boolean, project?: JavaProject, isRoute = false): {hits: Hit[]; returned?: number; markup?: number} {
   const tainted = new Map(initial), htmlSafe = new Set<string>(), writers = new Set<string>(), consts = new Map<string, Value>(), slots = new Map<string, Slots>();
@@ -362,7 +393,37 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
   const declOf = go ? GO_DECL : DECL;
   // Python only: kinds a variable was validated for by a guard, the tainted variables each one was derived from, names assigned so far.
   const safeFor = new Map<string, Set<SinkKind>>(), derived = new Map<string, string[]>(), seen = new Set<string>(), lists = new Map<string, string[]>();
+  // Brace languages: variables an if guard proved safe, valid while the block the guard covers (ctx; undefined is the whole body) is open.
+  const guarded = new Map<string, {ctx?: Ctx; kinds: Set<SinkKind>}>();
   let returned: number | undefined, markup: number | undefined, pending: Ctx | undefined, span = [0, 0], index = 0, route = isRoute;
+  const isGuarded = (word: string, kind?: SinkKind) => {
+    const g = guarded.get(word);
+    return !!g && (g.ctx === undefined || stack.includes(g.ctx)) && (g.kinds.size === ALL_KINDS.length || (kind !== undefined && g.kinds.has(kind)));
+  };
+  /** Records what an if condition proves: every &&-ed check inside the block (into), or after an exiting block every ||-ed negated check. */
+  const guard = (cond: string, into: Ctx | undefined, negated: boolean) => {
+    const parts = topLevelSplit(cond, negated ? "||" : "&&");
+    if (parts.some(p => topLevelSplit(p, negated ? "&&" : "||").length > 1)) return;
+    for (const part of parts) {
+      let p = part.trim().replace(/^\((.*)\)$/s, "$1").trim();
+      if (negated) { const not = /^!\s*([\s\S]+)$/.exec(p) ?? /^([\s\S]+?)\s*===?\s*false$/.exec(p); if (!not) continue; p = not[1]; }
+      const v = validatesFor(p, lits);
+      if (v && tainted.has(v.name)) guarded.set(v.name, {ctx: into, kinds: new Set(v.kinds)});
+    }
+  };
+  /** Whether the if block starting with rest (or, when it only opens a brace, on the next lines) always leaves: return, throw, die, exit. */
+  const exits = (rest: string): boolean => {
+    const EXIT = /^\s*(?:return|throw|exit|die|continue|break)\b/;
+    const r = rest.trim().replace(/^\{/, "").trim();
+    if (r) return EXIT.test(r) || /;\s*(?:return|throw|exit|die)\b[^}]*\}?\s*$/.test(r);
+    for (let i = span[1] - firstLine + 1, depth = 0; i < lines.length && i <= span[1] - firstLine + 6; i++) {
+      const l = lines[i].trim();
+      if (/^\}/.test(l) && depth === 0) return false;
+      if (depth === 0 && EXIT.test(l)) return true;
+      for (const ch of l) depth += ch === "{" ? 1 : ch === "}" ? -1 : 0;
+    }
+    return false;
+  };
   /** Syntax-tree view of the calls of name in the current statement (Java only). */
   const site = (name: string): Site => project?.resolve(path, name, span[0], span[1]);
   const live = () => stack.every(c => c.kind !== "dead" && (c.kind !== "switch" || c.live));
@@ -453,13 +514,14 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       expr = expr.slice(0, call.index) + "\"\"" + expr.slice(closing(expr, open) + 1);
     }
     if (found !== undefined) return found;
-    for (const word of expr.match(/[A-Za-z_$][\w$]*/g) ?? []) if (tainted.has(word) && !(xss && htmlSafe.has(word)) && !(kind && safeFor.get(word)?.has(kind))) return tainted.get(word);
+    for (const word of expr.match(/[A-Za-z_$][\w$]*/g) ?? []) if (tainted.has(word) && !(xss && htmlSafe.has(word)) && !(kind && safeFor.get(word)?.has(kind)) && !isGuarded(word, kind)) return tainted.get(word);
     return undefined;
   };
   const assign = (name: string, op: string, input: string, line: number, isWeak: boolean) => {
     // A response's headers are not its body: make_response((body, {"X-Header": value})).
     const response = py ? RESPONSE_CALL.exec(input.trim()) : null, rhs = response ? body1(input.trim(), response[0].length - 1) : input;
     const from = origin(rhs, line), value = op === "=" && !isWeak ? constant(ternary(rhs)) : undefined;
+    if (op === "=") guarded.delete(name);
     if (value !== undefined) consts.set(name, value); else consts.delete(name);
     const container = op === "=" && !isWeak && (CONTAINER.test(rhs.trim()) || (py && PY_CONTAINER.test(rhs.trim())));
     if (container) slots.set(name, {list: [], keys: new Map(), depth: stack.length, config: /ConfigParser/.test(rhs)}); else if (op === "=" || from !== undefined) slots.delete(name);
@@ -477,6 +539,9 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
     if (from !== undefined && keep && origin(rhs, line, "xss") === undefined) htmlSafe.add(name); else if (from !== undefined || strong) htmlSafe.delete(name);
     if (from !== undefined) tainted.set(name, from);
     else if (strong) tainted.delete(name);
+    // A value built only from constants or guard-validated variables, assigned inside a conditional block, holds until that block closes.
+    // Sanitizer calls do not count: escaping is kind-specific and the old taint comes back after the block.
+    else if (op === "=" && !py && tainted.has(name) && stack.length && (rhs.match(/[A-Za-z_$][\w$]*/g) ?? []).every(w => !tainted.has(w) || isGuarded(w))) guarded.set(name, {ctx: stack[stack.length - 1], kinds: new Set(ALL_KINDS)});
   };
   /** A value stored into a container taints it; the container stays HTML-safe only while everything stored was escaped. */
   const store = (name: string, from: number | undefined, value: string, line: number) => {
@@ -627,7 +692,7 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       return;
     }
     if (decl) {
-      tainted.clear(); htmlSafe.clear(); writers.clear(); consts.clear(); slots.clear(); safeFor.clear(); derived.clear(); seen.clear(); lists.clear();
+      tainted.clear(); htmlSafe.clear(); writers.clear(); consts.clear(); slots.clear(); safeFor.clear(); derived.clear(); seen.clear(); lists.clear(); guarded.clear();
       route = py && lines.slice(Math.max(0, index - 3), index).some(l => ROUTE.test(l));
       stack.push({kind: "plain"});
       const rest = text.slice(decl[0].length);
@@ -653,7 +718,12 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       const prev = header[1] === "if" ? false : ifs.get(d), v = prev === true ? undefined : constant(cond);
       const kind = prev === true || v === false ? "dead" : v === true && prev === false ? "plain" : "cond";
       ifs.set(d, prev === true || v === true ? true : prev === false && v === false ? false : undefined);
-      return enter({kind}, rest, line, first);
+      const ctx: Ctx = {kind};
+      if (!first && !py && kind === "cond") {
+        if (header[1] === "if" && exits(rest)) guard(cond, stack[stack.length - 1], true);
+        else guard(cond, ctx, false);
+      }
+      return enter(ctx, rest, line, first);
     }
     if (py) {
       const check = /^\s*__validated__\(([\s\S]*)\)\s*$/.exec(text);

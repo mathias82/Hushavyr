@@ -73,3 +73,51 @@ test("JS $where NoSQL injection is found through ternary arms and quoted templat
   ].join("\n");
   assert.deepEqual(kinds("track.ts", js), ["nosql:4"]);
 });
+
+test("If guards: validated variables are safe inside the guard or after an exiting negated check", () => {
+  const php = [
+    "<?php",
+    "$id = $_GET['id'];",
+    "if (is_numeric($id)) { mysqli_query($c, \"SELECT * FROM t WHERE id = $id\"); }",
+    "mysqli_query($c, \"SELECT * FROM t WHERE id = $id\");",
+    "$p = $_GET['p'];",
+    "if (!preg_match('/^[a-z]+$/', $p)) { exit; }",
+    "include $p . '.php';",
+    "$q = $_GET['q'];",
+    "if (!preg_match('/^.*$/', $q)) exit;",
+    "include $q;",
+    "$e = $_GET['e'];",
+    "if ($x) { $e = mysqli_real_escape_string($c, $e); mysqli_query($c, \"SELECT * FROM t WHERE id = $e\"); }",
+  ].join("\n");
+  assert.deepEqual(kinds("a.php", php).sort(), ["path:10", "sql:12", "sql:4"]);
+  const ts = [
+    "export function h () {",
+    "  return (req, res) => {",
+    "    const id = req.query.id",
+    "    if (!/^\\d+$/.test(id)) { return res.status(400).end() }",
+    "    db.query('SELECT * FROM t WHERE id = ' + id)",
+    "    const to = req.query.to",
+    "    if (allowed.includes(to)) {",
+    "      res.redirect(to)",
+    "    } else {",
+    "      res.redirect(to)",
+    "    }",
+    "  }",
+    "}",
+  ].join("\n");
+  assert.deepEqual(kinds("h.ts", ts), ["redirect:10"]);
+});
+
+test("A clean value assigned inside a conditional block is safe only until the block closes", () => {
+  const php = [
+    "<?php",
+    "$t = $_GET['t'];",
+    "$o = explode('.', $t);",
+    "if (is_numeric($o[0]) && is_numeric($o[1])) {",
+    "  $t = $o[0] . '.' . $o[1];",
+    "  shell_exec('ping ' . $t);",
+    "}",
+    "shell_exec('ping ' . $t);",
+  ].join("\n");
+  assert.deepEqual(kinds("p.php", php), ["command:8"]);
+});

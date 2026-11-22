@@ -49,7 +49,6 @@ The OWASP Benchmark scores did not change: Java 97.2%, Python 100%, both with 0%
 
 ## Known false positives
 
-- DVWA `exec/source/impossible.php`: octets are checked with `is_numeric` inside an `if`. Outside Python the data-flow tracking does not use `if` guards as sanitizers yet.
 - DVWA `upload/impossible.php`: `rename`/`unlink` on a temporary upload file.
 - Juice Shop: the Klingon translation `"mu'wIj"` reported as a credential.
 

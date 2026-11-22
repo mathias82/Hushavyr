@@ -263,8 +263,6 @@
   "taint-code vulnerabilities/view_help.php:22",
   "taint-command vulnerabilities/exec/source/high.php:26",
   "taint-command vulnerabilities/exec/source/high.php:30",
-  "taint-command vulnerabilities/exec/source/impossible.php:22",
-  "taint-command vulnerabilities/exec/source/impossible.php:26",
   "taint-command vulnerabilities/exec/source/low.php:10",
   "taint-command vulnerabilities/exec/source/low.php:14",
   "taint-command vulnerabilities/exec/source/medium.php:19",

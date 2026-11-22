@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- **`if` guards count as validation in every language:** `is_numeric`, `ctype_digit`, `filter_var(..., FILTER_VALIDATE_INT)`, `in_array`/`includes` allow-lists and anchored regex checks (`preg_match('/^[a-z]+$/', $x)`, `/^\d+$/.test(x)`, `x.matches("[0-9]+")`, `Regex.IsMatch`) make a value safe inside the guarded block, or after an `if (!check) return;`. Removes the DVWA `exec/impossible.php` false positive; unanchored or `.*` patterns still count as tainted.
+- **CI benchmark gate:** every push re-scans six pinned real-world apps (`npm run benchmark:realworld`) and the OWASP Benchmark, and fails on any lost or new finding or a score drop.
+
 ## 1.0.5
 - **PHP, Go, C# and Ruby data-flow tracking:** request input (`$_GET`, `r.FormValue`, `Request.Form`, `params[...]`) is followed to SQL, command, file, URL, redirect, XSS, LDAP, XPath, code and deserialization sinks, including string interpolation (`"$id"`, `"#{id}"`, `$"{id}"`), Go `:=` and prepared statements, and Rails hash conditions as safe.
 - **JS/TS gaps closed:** MongoDB `$where` NoSQL injection, Zip Slip, XXE (`noent`, `XML_PARSE_NOENT`), Angular `bypassSecurityTrust*`, `node:vm` as a sandbox, `res.redirect`.
