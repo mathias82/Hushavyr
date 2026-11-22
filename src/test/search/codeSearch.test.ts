@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractSymbols, indexSymbols, rankByName, searchByMeaning, searchWithModel, similarity, projectRoot, keepIndent } from "../codeSearch";
+import { extractSymbols, indexSymbols, rankByName, searchByMeaning, searchWithModel, similarity, projectRoot, keepIndent } from "../../search/codeSearch";
 
 const JAVA = `package shop;
 

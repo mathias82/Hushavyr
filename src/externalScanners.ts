@@ -1,7 +1,7 @@
 import {resolve,relative,isAbsolute,join} from "node:path";
 import {mkdtemp,readFile,rm,access} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {exec as run} from "./exec";
+import {exec as run} from "./util/exec";
 export type Scanner="semgrep"|"gitleaks";
 export interface ScannerFinding {tool:Scanner;rule:string;severity:string;path:string;line:number;message?:string;fix?:string;commit?:string}
 export interface ScannerResult {tool:Scanner;status:"ok"|"missing"|"failed";findings:ScannerFinding[];reason?:"rules-missing"|"execution-failed"|"invalid-output"}

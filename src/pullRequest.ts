@@ -3,7 +3,7 @@ import {join} from "node:path";
 import {scanSecrets} from "./secretsScan";
 import {sha256} from "./fixProof";
 import {githubRepo, validateProof} from "./fixPrPolicy";
-import {exec as run} from "./exec";
+import {exec as run} from "./util/exec";
 export type Exec = (cmd: string, args: string[], cwd: string) => Promise<string>;
 export const defaultExec: Exec = async (cmd, args, cwd) =>
   (await run(cmd, args, {cwd, timeout: 120_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024})).stdout;

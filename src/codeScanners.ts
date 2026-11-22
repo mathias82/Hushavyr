@@ -3,7 +3,7 @@ import {join, relative, resolve, isAbsolute, dirname, basename} from "node:path"
 import {mkdtemp, readFile, rm, readdir, access, stat} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {tmpdir, homedir} from "node:os";
-import {exec} from "./exec";
+import {exec} from "./util/exec";
 import {auditDependencies, DependencyAudit, DependencyVulnerability} from "./dependencyAudit";
 
 export type CodeScanner = "findsecbugs" | "bandit" | "gosec";

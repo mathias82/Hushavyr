@@ -6,7 +6,7 @@ import {scanSecrets} from "./secretsScan";
 import {assertMatchingRemote, scanResult} from "./fixPrPolicy";
 import {addedLines, checkReceipt, compareUrl, prBody, statusPaths, type Exec} from "./pullRequest";
 
-import {exec as execute} from "./exec";
+import {exec as execute} from "./util/exec";
 const command: Exec = async (bin, args, cwd) => (await execute(bin, args, {cwd, timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   env: {...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never"}})).stdout.trim();
 

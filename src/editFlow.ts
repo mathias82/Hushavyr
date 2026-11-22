@@ -1,4 +1,4 @@
-import {keepIndent} from "./codeSearch";
+import {keepIndent} from "./search/codeSearch";
 import * as vscode from "vscode";
 import {inlineText} from "./review";
 import {randomUUID} from "node:crypto";

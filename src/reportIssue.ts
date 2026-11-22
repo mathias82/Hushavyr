@@ -3,7 +3,7 @@ import {arch, platform, release, totalmem} from "node:os";
 import {formatReport} from "./issueReport";
 
 async function onPath(tool: string): Promise<boolean> {
-  const {exec} = await import("./exec");
+  const {exec} = await import("./util/exec");
   try { await exec(tool, ["--version"], {timeout: 3000, windowsHide: true}); return true; } catch { return false; }
 }
 

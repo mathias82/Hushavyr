@@ -3,8 +3,8 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { indexSymbols } from "../codeSearch";
-import { CodeFinder, identifierMentions, isProjectQuestion, projectOverview } from "../projectContext";
+import { indexSymbols } from "../../search/codeSearch";
+import { CodeFinder, identifierMentions, isProjectQuestion, projectOverview } from "../../search/projectContext";
 
 test("isProjectQuestion: questions about the whole project, in English and Greek, not about one bug", () => {
   for (const q of ["describe the project", "what does this app do?", "explain the architecture", "περίγραψε το project", "τι κάνει η εφαρμογή;"]) assert.ok(isProjectQuestion(q), q);

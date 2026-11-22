@@ -1,5 +1,5 @@
 import {isAbsolute, normalize} from "node:path";
-import {exec} from "./exec";
+import {exec} from "./util/exec";
 const CODE = /\.(?:java|kt|[cm]?[jt]sx?|py|go|rs|cs|php|rb|c|cc|cpp|h|hpp|swift|sql|ya?ml|json|xml|gradle|sh)$/i;
 
 /** Safe, bounded list of changed code files from `git` output (relative paths only, no traversal). */

@@ -32,8 +32,8 @@ import {FIX_FINDING} from "./applyFix";
 import {formatTestReceipt} from "./regression";
 import {runWorkspaceTests} from "./localCommands";
 import {ChatSearch} from "./chatSearch";
-import {describeHit, SearchHit} from "./codeSearch";
-import {looksLikeCodeQuestion} from "./projectContext";
+import {describeHit, SearchHit} from "./search/codeSearch";
+import {looksLikeCodeQuestion} from "./search/projectContext";
 
 const reviewCache = new ResultCache<ReviewResult>();
 const CODE_GLOB = "**/*.{java,kt,py,js,jsx,mjs,cjs,ts,tsx,go,cs,rb,php}";

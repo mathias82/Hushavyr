@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import {describeHit, hitText, SearchHit} from "./codeSearch";
-import {CodeFinder, EMBED_MODEL, identifierMentions, isProjectQuestion, projectOverview} from "./projectContext";
+import {describeHit, hitText, SearchHit} from "./search/codeSearch";
+import {CodeFinder, EMBED_MODEL, identifierMentions, isProjectQuestion, projectOverview} from "./search/projectContext";
 import {LocalOllama} from "./ollama";
 import {ReviewSource} from "./context";
 import {configuredClient, configuredModel} from "./model";

@@ -1,5 +1,5 @@
 // Downloads the public Trivy and OSV.dev CVE databases (no VS Code API). No code or dependency list leaves the machine.
-import {exec} from "./exec";
+import {exec} from "./util/exec";
 import {dbIsStale, trivyDbAgeHours} from "./dependencyAudit";
 import {downloadOsvDatabase, osvDbAgeHours} from "./codeScanners";
 import {runs} from "./setupSteps";

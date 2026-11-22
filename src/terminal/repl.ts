@@ -33,8 +33,8 @@ import {answerDifficulty, Difficulty, escalationFragment, reviewDifficulty} from
 import {writeRetainedAuditEvent} from "../audit";
 import {loadIgnore} from "../teamMemory";
 import {copilotSend} from "./copilot";
-import {describeHit, keepIndent, SearchHit} from "../codeSearch";
-import {CodeFinder, EMBED_MODEL, looksLikeCodeQuestion, identifierMentions, isProjectQuestion, projectOverview} from "../projectContext";
+import {describeHit, keepIndent, SearchHit} from "../search/codeSearch";
+import {CodeFinder, EMBED_MODEL, looksLikeCodeQuestion, identifierMentions, isProjectQuestion, projectOverview} from "../search/projectContext";
 
 const ROOT = join(__dirname, "..", "..");
 const RULES = join(ROOT, "rules", "hushavyr-review.yml");

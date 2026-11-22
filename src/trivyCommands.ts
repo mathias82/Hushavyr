@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import {join} from "node:path";
 import {bumpVersion, exportSbom, firstFixedVersion, parseMarkerMessage} from "./dependencyAudit";
 import {tr} from "./i18n";
-import {exec} from "./exec";
+import {exec} from "./util/exec";
 
 export const uiLanguage = (): string => vscode.workspace.getConfiguration("aiPrivacyRouter").get<string>("language", "en");
 
