@@ -2,13 +2,13 @@
 import {execFile} from "node:child_process";
 import {readFile, stat, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
-import {LocalOllama} from "./ollama";
+import {LocalOllama} from "./model/ollama";
 import {runLocalReview} from "./localReview";
 import {staticReview} from "./staticReview";
 import {Finding, reviewSummary} from "./review";
 import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./teamMemory";
 import {totalmem} from "node:os";
-import {recommendedModel} from "./model";
+import {recommendedModel} from "./model/model";
 import {sarifLevel, toSarif} from "./sarif";
 
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;

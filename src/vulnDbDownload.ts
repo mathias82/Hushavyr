@@ -2,7 +2,7 @@
 import {exec} from "./util/exec";
 import {dbIsStale, trivyDbAgeHours} from "./dependencyAudit";
 import {downloadOsvDatabase, osvDbAgeHours} from "./codeScanners";
-import {runs} from "./setupSteps";
+import {runs} from "./model/setupSteps";
 
 const missing = (e: unknown) => (e as {code?: unknown}).code === "ENOENT";
 

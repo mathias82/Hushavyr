@@ -1,4 +1,4 @@
-import { LocalOllama } from "./ollama";
+import { LocalOllama } from "./model/ollama";
 import { ReviewSource } from "./context";
 import { Finding, reviewPrompt, validateReview } from "./review";
 import { readFileSync } from "node:fs";

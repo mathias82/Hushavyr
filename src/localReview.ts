@@ -1,4 +1,4 @@
-import { LocalOllama } from "./ollama";
+import { LocalOllama } from "./model/ollama";
 import { ReviewResult, reviewPrompt, reviewSchema, validateReview } from "./review";
 import { ReviewInput, reviewSources, validateContext } from "./context";
 import { verifyReview } from "./verifyReview";

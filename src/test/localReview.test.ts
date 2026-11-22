@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { LocalOllama } from "../ollama";
+import { LocalOllama } from "../model/ollama";
 import { runLocalReview } from "../localReview";
 import { formatReview, reviewSchema } from "../review";
 

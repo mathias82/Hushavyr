@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { LocalOllama } from "../ollama";
+import { LocalOllama } from "../../model/ollama";
 test("only calls localhost Ollama and returns model text", async () => {
   let target = "";
   const client = new LocalOllama({model:"qwen2.5-coder:7b"}, async (url, init) => {

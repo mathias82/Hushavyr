@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import {homedir, totalmem} from "node:os";
-import {defaultFindSecBugsPlugin, hasOsvDatabase} from "./codeScanners";
+import {defaultFindSecBugsPlugin, hasOsvDatabase} from "../codeScanners";
 import {LocalOllama} from "./ollama";
 import {startOllamaServer} from "./ollamaCommands";
 import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan, toolCommand} from "./setupSteps";
-import {tr} from "./i18n";
+import {tr} from "../i18n";
 import {existsSync} from "node:fs";
-import {shimPath} from "./terminal/shim";
-import {INSTALL_TERMINAL_COMMAND} from "./terminal/register";
+import {shimPath} from "../terminal/shim";
+import {INSTALL_TERMINAL_COMMAND} from "../terminal/register";
 import {configuredModel, isLocalModelName, modelChoices, recommendedModel} from "./model";
 export {recommendedModel};
 export {detectTools, osvDatabaseCommand, relevantTools, setupPlan} from "./setupSteps";

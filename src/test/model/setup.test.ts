@@ -3,17 +3,17 @@ import { strict as assert } from "node:assert";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Module } from "node:module";
-import { LocalOllama, repairOllamaKey } from "../ollama";
+import { LocalOllama, repairOllamaKey } from "../../model/ollama";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { modelHint } from "../review";
+import { modelHint } from "../../review";
 
 const stub = {window: undefined, workspace: undefined} as Record<string, unknown>;
 const load = (Module as unknown as {_load: (name: string, ...args: unknown[]) => unknown})._load;
 (Module as unknown as {_load: unknown})._load = function(this: unknown, name: string, ...args: unknown[]) {
   return name === "vscode" ? stub : load.call(this, name, ...args);
 };
-const {recommendedModel, detectTools, lowMemoryWarning, relevantTools, offerToolInstallation, osvDatabaseCommand, setupPlan} = require("../setup") as typeof import("../setup");
+const {recommendedModel, detectTools, lowMemoryWarning, relevantTools, offerToolInstallation, osvDatabaseCommand, setupPlan} = require("../../model/setup") as typeof import("../../model/setup");
 
 const ndjson = (...events: object[]) => new Response(events.map(e => JSON.stringify(e)).join("\n") + "\n");
 
@@ -119,7 +119,7 @@ test("modelHint only nudges small models with no AI findings", () => {
   assert.equal(modelHint("qwen2.5-coder:7b", {...empty, error: "bad"}), "");
 });
 test("source has no double-escaped newline, quote or bracket sequences", () => {
-  const dir = join(__dirname, "..", "..", "src");
+  const dir = join(__dirname, "..", "..", "..", "src");
   const files = readdirSync(dir, {recursive: true}).map(String).filter(f => f.endsWith(".ts") && !f.startsWith("test") && !f.startsWith("terminal"));
   for (const file of files) {
     assert.doesNotMatch(readFileSync(join(dir, file), "utf8"), /\\\\[nr`\[\]]/, file);
@@ -132,7 +132,7 @@ test("lowMemoryWarning flags models that will not fit", () => {
   assert.equal(lowMemoryWarning("llama3", 8 * gb), "");
 });
 
-import {configuredModel} from "../model";
+import {configuredModel} from "../../model/model";
 test("uses an explicit model setting, otherwise the best fit for memory", () => {
   const GB = 1024 ** 3;
   const unset = {inspect: () => ({}), get: <T>(_k: string, f: T) => f};
@@ -142,7 +142,7 @@ test("uses an explicit model setting, otherwise the best fit for memory", () => 
 });
 
 test("review depth follows memory unless set", () => {
-  const {autoDepth, configuredDepth} = require("../model") as typeof import("../model");
+  const {autoDepth, configuredDepth} = require("../../model/model") as typeof import("../../model/model");
   const gb = 1024 ** 3;
   assert.equal(autoDepth(8 * gb), "light");
   assert.equal(autoDepth(16 * gb), "fast");
@@ -154,7 +154,7 @@ test("review depth follows memory unless set", () => {
 });
 
 test("setup offers curated, recommended and locally installed models, and accepts any local model name", () => {
-  const {modelChoices, isLocalModelName} = require("../model") as typeof import("../model");
+  const {modelChoices, isLocalModelName} = require("../../model/model") as typeof import("../../model/model");
   const choices = modelChoices("qwen2.5-coder:7b", "qwen2.5-coder:14b", ["codestral:22b", "qwen2.5-coder:7b"]);
   assert.deepEqual(choices.slice(0, 2), [{label: "qwen2.5-coder:7b", tags: ["current", "installed"]}, {label: "qwen2.5-coder:14b", tags: ["recommended"]}]);
   assert.deepEqual(choices.at(-1), {label: "codestral:22b", tags: ["installed"]});

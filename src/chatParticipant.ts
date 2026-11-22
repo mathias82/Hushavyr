@@ -1,4 +1,4 @@
-import {configuredModel, configuredDepth} from "./model";
+import {configuredModel, configuredDepth} from "./model/model";
 import {relatedSources} from "./relatedJava";
 import {changedFiles} from "./changedFiles";
 import * as vscode from "vscode";
@@ -11,7 +11,7 @@ import {EditTarget, runEdit} from "./editFlow";
 import {improveInstruction, isEditRequest} from "./codeEdit";
 import {openPullRequest} from "./prFlow";
 import {loadIgnore} from "./teamMemory";
-import {LocalOllama} from "./ollama";
+import {LocalOllama} from "./model/ollama";
 import {asksForExplanation, formatReview, modelHint} from "./review";
 import {runLocalReview, ReviewDepth} from "./localReview";
 import {staticReview} from "./staticReview";
@@ -25,7 +25,7 @@ import {dismissalText, fingerprint, loadDismissals, loadTeamRules, withoutDismis
 import {findingsFromReport} from "./reportFindings";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
-import {lowMemoryWarning} from "./setup";
+import {lowMemoryWarning} from "./model/setup";
 import {runWorkspaceScan, isScanCommand} from "./workspaceScan";
 import {EXPLAIN_FINDING, rememberReport} from "./explainFinding";
 import {FIX_FINDING} from "./applyFix";

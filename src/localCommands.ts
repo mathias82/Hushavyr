@@ -1,4 +1,4 @@
-import {configuredClient, configuredModel} from "./model";
+import {configuredClient, configuredModel} from "./model/model";
 import * as vscode from "vscode";
 import {classifyInput} from "./classifier";
 import {createAutoPrompt, formatRouted} from "./autoPrompt";

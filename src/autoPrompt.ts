@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import {configuredClient} from "./model";
+import {configuredClient} from "./model/model";
 import {writeRetainedAuditEvent} from "./audit";
 import {runRoutedPrompt, RoutedResult, RoutingPolicy, PublicModel} from "./routing";
 

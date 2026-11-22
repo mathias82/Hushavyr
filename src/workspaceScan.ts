@@ -1,5 +1,5 @@
 import {loadIgnore} from "./teamMemory";
-import {configuredClient} from "./model";
+import {configuredClient} from "./model/model";
 import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
 import {trivyDbAgeDays, groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
@@ -13,7 +13,7 @@ import {scanSecurity} from "./securityRules";
 import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import * as vscode from "vscode";
-import {offerToolInstallation} from "./setup";
+import {offerToolInstallation} from "./model/setup";
 import {dependencyRowInfo, findingLink, streamFlows, readSmallText, deterministicForScan, workspaceTaintRules} from "./scanFindings";
 import {markDependencies} from "./dependencyMarkers";
 export {clearDependencyMarkers} from "./dependencyMarkers";

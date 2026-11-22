@@ -4,8 +4,8 @@ import {readdir} from "node:fs/promises";
 import {homedir} from "node:os";
 import {join} from "node:path";
 import {hasOsvDatabase} from "../codeScanners";
-import {LocalOllama} from "../ollama";
-import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, OLLAMA_SERVE_ENV, ollamaInstaller, relevantTools, runs, setupPlan, toolCommand} from "../setupSteps";
+import {LocalOllama} from "../model/ollama";
+import {detectInstallers, detectTools, hasInstaller, installCommands, InstallableTool, manualInstall, OLLAMA_SERVE_ENV, ollamaInstaller, relevantTools, runs, setupPlan, toolCommand} from "../model/setupSteps";
 
 export interface SetupIO {
   out(text: string): void;

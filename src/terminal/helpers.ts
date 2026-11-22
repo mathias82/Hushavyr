@@ -1,5 +1,5 @@
 /** Pure helpers for the hushavyr terminal: command parsing, model choice, diffs and edits. No I/O. */
-import {CURATED_MODELS, recommendedModel} from "../model";
+import {CURATED_MODELS, recommendedModel} from "../model/model";
 
 export interface TerminalCommand {name: string; usage: string; help: string}
 export const COMMANDS: readonly TerminalCommand[] = [
