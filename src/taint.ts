@@ -3,6 +3,7 @@ import {definedNames, definitionSnippet} from "./callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
 import {pythonToBraces} from "./pythonBlocks";
 import {parseSyntax, SyntaxFile, typeOf} from "./syntax";
+import {ANNOTATED, CS, GO, GO_SQL_RECEIVER, HTML_ESCAPE, JAVA, JS, JS_SQL_RECEIVER, LANG_SOURCES, PHP, PY, RB, RECEIVER, SANITIZER, Sink, SINKS, SOURCE} from "./taintRules";
 
 export {initJavaParser};
 // Loading starts at import, so a scan that reads files first finds the parser ready; await initJavaParser() to be sure.
@@ -26,101 +27,7 @@ export type SinkKind = "sql" | "nosql" | "command" | "code" | "path" | "ssrf" | 
 export interface TaintFile { path: string; text: string }
 export interface TaintFlow { kind: SinkKind; source: {path: string; line: number}; sink: {path: string; line: number}; via: string[] }
 
-const JAVA = /\.(?:java|kt)$/i;
-const PY = /\.py$/i;
-const JS = /\.(?:[cm]?js|jsx|tsx?)$/i;
-const GO = /\.go$/i;
-const CS = /\.cs$/i;
-const PHP = /\.php$/i;
-const RB = /\.rb$/i;
 const BRACES = /\.(?:java|kt|js|jsx|mjs|cjs|ts|tsx|cs|php|go|rs|scala|swift)$/i;
-/** arg: which argument is the tainted one (default the first; all: any); unless: a statement that makes the call safe.
- * recv: the tainted value is the receiver before the call (value.constantize); skip: an argument shape that is safe (a Rails
- * hash condition); lit: the argument's first string literal must match (header("Location: " . $url)); shell: when the first
- * argument is a shell (exec.Command("sh", "-c", cmd)), every argument counts. */
-interface Sink { kind: SinkKind; call: RegExp; when?: RegExp; unless?: RegExp; lang?: RegExp; scope?: RegExp; all?: boolean; arg?: number; recv?: boolean; skip?: RegExp; lit?: RegExp; shell?: boolean }
-const SINKS: Sink[] = [
-  {kind: "sql", call: /(?:^|[^\w$])(?:executeQuery|executeUpdate|execute|executemany|query|raw|createQuery|createNativeQuery|prepareStatement|exec_driver_sql)\s*\(/g},
-  {kind: "sql", call: /\.(?:prepareCall|addBatch|batchUpdate|queryFor\w+)\s*\(/g, lang: JAVA},
-  {kind: "command", call: /(?:\bos\.(?:system|popen)|child_process\.(?:exec|execSync)|getRuntime\(\)\.exec|(?:^|[^\w$.])(?:exec|execSync|system|popen))\s*\(/g},
-  {kind: "command", call: /\bsubprocess\.(?:run|call|Popen|check_output|check_call)\s*\(/g, when: /shell\s*=\s*[Tt]rue/},
-  {kind: "command", call: /(?:\.exec|\.command|\bnew\s+ProcessBuilder)\s*\(/g, lang: JAVA, all: true},
-  {kind: "code", call: /(?:(?:^|[^\w$.])(?:eval|Function)|\bnew\s+Function)\s*\(/g},
-  {kind: "path", call: /(?:\b(?:readFile|readFileSync|createReadStream|sendFile|unlink|unlinkSync)|\bFiles\.(?:readAllBytes|readString|newInputStream|lines|delete)|\bnew\s+(?:File|FileInputStream)|(?:^|[^\w$.])open)\s*\(/g},
-  {kind: "path", call: /(?:\bnew\s+(?:java\.io\.)?(?:File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)|\b(?:java\.nio\.file\.)?(?:Paths\.get|Path\.of))\s*\(/g, lang: JAVA, all: true},
-  {kind: "ssrf", call: /(?:(?:^|[^\w$.])(?:fetch|urlopen)|\baxios(?:\.(?:get|post|put|request))?|\brequests\.(?:get|post|put|request)|\bhttps?\.get|\bgetForObject|\bgetForEntity)\s*\(/g},
-  {kind: "xss", call: /(?:\.(?:innerHTML|outerHTML)\s*\+?=|\bdocument\.write\s*\()/g},
-  {kind: "xss", call: /\b(?:getWriter|getOutputStream)\(\)\.(?:print|println|write|format|printf|append)\s*\(/g, lang: JAVA, all: true},
-  {kind: "ldap", call: /\.search\s*\(/g, lang: JAVA, all: true, scope: /\b(?:Initial)?(?:Ldap|Dir)Context\b/},
-  {kind: "xpath", call: /\.(?:evaluate|compile)\s*\(/g, lang: JAVA, scope: /\bXPath\b/},
-  {kind: "trust-boundary", call: /(?:\bgetSession\([^)]*\)|\b\w*[sS]ession)\.(?:setAttribute|putValue)\s*\(/g, lang: JAVA, all: true},
-  {kind: "code", call: /(?:^|[^\w$.])exec\s*\(/g, lang: PY},
-  {kind: "command", call: /\b(?:subprocess\.(?:getoutput|getstatusoutput)|os\.(?:exec\w+|spawn\w+))\s*\(/g, lang: PY, all: true},
-  {kind: "deserialization", call: /\b(?:c?[pP]ickle|_pickle|marshal|dill|cloudpickle|jsonpickle|shelve)\.(?:loads?|decode|open|Unpickler)\s*\(|\byaml\.(?:unsafe_load|unsafe_load_all|full_load|load_all|load)\s*\(/g, lang: PY, unless: /Loader\s*=\s*(?:yaml\.)?C?SafeLoader\b/},
-  {kind: "redirect", call: /(?:^|[^\w$.]|\bflask\.)(?:redirect|HttpResponseRedirect|HttpResponsePermanentRedirect|RedirectResponse)\s*\(/g, lang: PY},
-  {kind: "xxe", call: /\b(?:parseString|parse|fromstring|XML|iterparse|feed)\s*\(/g, lang: PY, all: true, scope: /\bfeature_external_ges\s*,\s*(?:true|1)\b|\bresolve_entities\s*=\s*(?:true|1)\b/i},
-  {kind: "ldap", call: /\.(?:search|search_s|search_st|search_ext|search_ext_s|paged_search)\s*\(/g, lang: PY, all: true, scope: /\bldap3?\b/},
-  {kind: "xpath", call: /(?:\.xpath|\bXPath|\bETXPath)\s*\(/g, lang: PY},
-  {kind: "xpath", call: /\belementpath\.(?:select|iter_select|Selector)\s*\(/g, lang: PY, arg: 1},
-  {kind: "path", call: /\b(?:codecs\.open|io\.open|os\.path\.(?:exists|lexists|isfile|isdir|getsize|getmtime)|os\.(?:remove|unlink|listdir|scandir|stat|makedirs|mkdir|rmdir|rename|replace|chmod)|shutil\.\w+|send_file|FileResponse)\s*\(/g, lang: PY},
-  // JavaScript / TypeScript: MongoDB $where runs JavaScript on the server; vm is not a sandbox; writes; Express redirects.
-  {kind: "nosql", call: /\.(?:find|findOne|findOneAndUpdate|findOneAndDelete|update|updateOne|updateMany|deleteOne|deleteMany|remove|count|countDocuments|aggregate)\s*\(/g, lang: JS, when: /\$where\b/},
-  {kind: "code", call: /\bvm\.(?:runIn(?:New|This)?Context|compileFunction)\s*\(|\bnew\s+vm\.Script\s*\(|(?:^|[^\w$.])(?:safeEval|notevil)\s*\(/g, lang: JS},
-  {kind: "path", call: /\b(?:createWriteStream|writeFile|writeFileSync|appendFile|appendFileSync)\s*\(/g, lang: JS},
-  {kind: "redirect", call: /\bres\.redirect\s*\(/g, lang: JS, all: true},
-  // PHP
-  {kind: "sql", call: /\b(?:mysqli_query|mysql_query|mysqli_multi_query|mysqli_real_query|pg_query|sqlite_query|odbc_exec|db2_exec)\s*\(/g, lang: PHP, all: true},
-  {kind: "command", call: /(?:^|[^\w$>:])(?:shell_exec|passthru|proc_open|pcntl_exec)\s*\(/g, lang: PHP},
-  {kind: "code", call: /(?:^|[^\w$>:])(?:assert|create_function)\s*\(/g, lang: PHP, all: true},
-  {kind: "path", call: /(?:^|[^\w$>:])(?:include|include_once|require|require_once)\b\s*\(?/g, lang: PHP},
-  {kind: "path", call: /(?:^|[^\w$>:])(?:file_get_contents|file_put_contents|fopen|readfile|file|unlink|copy|rename|opendir|scandir|highlight_file|show_source|parse_ini_file)\s*\(/g, lang: PHP},
-  {kind: "ssrf", call: /\bcurl_init\s*\(/g, lang: PHP},
-  {kind: "xss", call: /(?:^|[^\w$>:])(?:echo|print)\b\s*\(?/g, lang: PHP, all: true},
-  {kind: "redirect", call: /\bheader\s*\(/g, lang: PHP, lit: /^\s*location\s*:/i},
-  {kind: "deserialization", call: /\bunserialize\s*\(/g, lang: PHP},
-  {kind: "ldap", call: /\bldap_search\s*\(/g, lang: PHP, arg: 2},
-  // Go
-  {kind: "sql", call: /\.(?:Query|QueryRow|Exec|Prepare|Raw)\s*\(/g, lang: GO},
-  {kind: "sql", call: /\.(?:QueryContext|QueryRowContext|ExecContext|PrepareContext)\s*\(/g, lang: GO, arg: 1},
-  {kind: "command", call: /\bexec\.Command\s*\(/g, lang: GO, shell: true},
-  {kind: "path", call: /\b(?:os\.(?:Open|OpenFile|ReadFile|Create|Remove|RemoveAll|WriteFile|ReadDir|Mkdir|MkdirAll)|ioutil\.(?:ReadFile|WriteFile|ReadDir))\s*\(/g, lang: GO},
-  {kind: "path", call: /\bhttp\.ServeFile\s*\(/g, lang: GO, arg: 2},
-  {kind: "ssrf", call: /\bhttp\.(?:Get|Post|Head|PostForm)\s*\(/g, lang: GO},
-  {kind: "ssrf", call: /\bhttp\.NewRequest\s*\(/g, lang: GO, arg: 1},
-  {kind: "redirect", call: /\bhttp\.Redirect\s*\(/g, lang: GO, arg: 2},
-  {kind: "xss", call: /\btemplate\.(?:HTML|JS|HTMLAttr|URL)\s*\(|\bw\.Write\s*\(/g, lang: GO},
-  {kind: "xss", call: /\b(?:fmt\.Fprint(?:f|ln)?|io\.WriteString)\s*\(\s*w\s*,/g, lang: GO, all: true},
-  // C#
-  {kind: "sql", call: /\bnew\s+(?:Sql|SqlCe|Sqlite|SQLite|MySql|Npgsql|OleDb|Odbc|Oracle)(?:Command|DataAdapter)\s*\(|\.CommandText\s*=(?!=)/g, lang: CS},
-  {kind: "sql", call: /\.(?:ExecuteSqlRaw|ExecuteSqlCommand|FromSqlRaw|SqlQuery|ExecuteQuery|ExecuteCommand)\s*\(/g, lang: CS},
-  {kind: "command", call: /\bProcess\.Start\s*\(|\bnew\s+ProcessStartInfo\s*\(/g, lang: CS, all: true},
-  {kind: "command", call: /\.(?:FileName|Arguments)\s*=(?!=)/g, lang: CS, scope: /\bProcessStartInfo\b/},
-  {kind: "path", call: /\b(?:File\.(?:ReadAllText|ReadAllBytes|ReadAllLines|ReadLines|OpenRead|OpenText|OpenWrite|Open|Delete|WriteAllText|WriteAllBytes|Copy|Move|AppendAllText|Create)|Directory\.(?:GetFiles|Delete|CreateDirectory|EnumerateFiles)|new\s+(?:FileStream|StreamReader|StreamWriter|FileInfo|DirectoryInfo)|Response\.(?:WriteFile|TransmitFile)|PhysicalFile)\s*\(/g, lang: CS},
-  {kind: "xss", call: /\bResponse\.Write\s*\(|\bnew\s+HtmlString\s*\(|\bHtml\.Raw\s*\(|\.InnerHtml\s*\+?=(?!=)|\blbl\w*\.Text\s*\+?=(?!=)/g, lang: CS},
-  {kind: "redirect", call: /\b(?:Response\.)?Redirect(?:Permanent)?\s*\(/g, lang: CS},
-  {kind: "ldap", call: /\bnew\s+DirectorySearcher\s*\(|\.Filter\s*=(?!=)/g, lang: CS, scope: /\bDirectorySearcher\b/},
-  {kind: "xpath", call: /\.(?:SelectNodes|SelectSingleNode)\s*\(/g, lang: CS},
-  {kind: "deserialization", call: /\.Deserialize\s*\(/g, lang: CS, scope: /\b(?:BinaryFormatter|LosFormatter|SoapFormatter|NetDataContractSerializer|ObjectStateFormatter)\b|TypeNameHandling\.(?:All|Objects|Auto|Arrays)\b/},
-  // Ruby (Rails): a hash or an array with placeholders is a bound condition, not SQL text.
-  {kind: "sql", call: /\.(?:where|not|find_by_sql|count_by_sql|find_by|order|reorder|group|having|joins|pluck|select|from|exists\?|delete_all|update_all|calculate|exec_query|select_all|select_one|select_value|select_rows)\s*\(/g, lang: RB, skip: /^\s*(?:\w+:\s|:\w+\s*=>|\{|\[)/},
-  {kind: "command", call: /(?:^|[^\w$.:])(?:system|exec|spawn)\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\b(?:IO\.popen|Open3\.(?:capture2e?|capture3|popen2e?|popen3)|Kernel\.(?:system|exec|spawn))(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|%x[({[]|`/g, lang: RB},
-  {kind: "code", call: /(?:^|[^\w$.:])(?:eval|instance_eval|class_eval|module_eval)\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\.(?:send|public_send|__send__)\s*\(/g, lang: RB},
-  {kind: "code", call: /\.(?:constantize|safe_constantize)\b/g, lang: RB, recv: true},
-  {kind: "deserialization", call: /\b(?:Marshal\.(?:load|restore)|YAML\.(?:load|unsafe_load|load_documents)|Psych\.(?:load|unsafe_load)|Oj\.load)\s*\(/g, lang: RB},
-  {kind: "redirect", call: /\bredirect_to\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))/g, lang: RB},
-  {kind: "path", call: /\b(?:File\.(?:read|open|new|readlines|binread|write|delete|unlink)|IO\.(?:read|readlines|binread)|FileUtils\.\w+)\s*\(|\bsend_file\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))/g, lang: RB},
-  {kind: "xss", call: /\.html_safe\b/g, lang: RB, recv: true},
-  {kind: "xss", call: /(?:^|[^\w$.:])raw\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\brender\s*\(?\s*(?:inline|html):/g, lang: RB}
-];
-/** Request input per language, beyond the shared SOURCE; scope limits a source to files that use a library (zip entries). */
-const LANG_SOURCES: {lang: RegExp; re: RegExp; scope?: RegExp}[] = [
-  {lang: PHP, re: /\$_(?:GET|POST|REQUEST|COOKIE|FILES)\b/},
-  {lang: GO, re: /\.(?:FormValue|PostFormValue|FormFile)\s*\(|\.URL\.(?:Query\s*\(|RawQuery\b)|\b(?:r|req|request)\.(?:Form|PostForm|Header\.Get\s*\(|Cookie\s*\()|\bmux\.Vars\s*\(|\.ByName\s*\(|\bc\.(?:Query|DefaultQuery|PostForm|Param|GetHeader|Cookie)\s*\(/},
-  {lang: CS, re: /\bRequest\s*(?:\.\s*(?:QueryString|Form|Params|Query|Cookies|Headers|ServerVariables|RouteValues|Files))?\s*\[|\bRequest\.(?:QueryString|Form|Params|Query|Cookies|Headers|Files|InputStream|Body|RawUrl)\b|\b(?:txt|tb)[A-Z]\w*\.Text\b/},
-  {lang: RB, re: /\bparams\b(?:\s*\[|\.(?:require|fetch|permit|to_unsafe_h|dig|values_at)\b)|\bcookies\s*\[|\brequest\.(?:env|raw_post_data|body|query_string|referer|user_agent|query_parameters|request_parameters)\b/},
-  // Zip Slip: an archive entry's name is attacker-chosen.
-  {lang: JS, re: /\bentry\.(?:path|entryName|fileName)\b/, scope: /\b(?:unzipper|adm-zip|AdmZip|yauzl|decompress|jszip|JSZip)\b/}
-];
 /** The per-language source pattern for a file, or undefined. */
 function langSource(path: string, text: string): RegExp | undefined {
   const all = LANG_SOURCES.filter(s => s.lang.test(path) && (!s.scope || s.scope.test(text)));
@@ -133,12 +40,6 @@ const PATH_METHOD = /\b([A-Za-z_]\w*)\.(?:exists|is_file|is_dir|read_text|read_b
 const SHELL = /^(?:(?:\/(?:usr\/)?bin\/)?(?:ba|z|da|k)?sh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh)$/i;
 /** Common method names that are not followed into same-named project functions on an untyped Python receiver. */
 const PY_BUILTIN = /^(?:get|set|read|write|join|split|format|append|pop|items|keys|values|update|encode|decode|strip|replace|lower|upper|open|close|execute|run|find|search|match|load|loads|dump|dumps|copy|add|remove|insert|extend|index|count|sort|parse|send|call|__\w+__)$/;
-// Request accessors, including wrapper/helper getters such as getRequestParameter or getCustomHeader (init parameters are trusted config).
-const SOURCE = /\b(?:req|request)\.(?:query|params|body|headers|cookies|args|form|values|json|GET|POST|FILES|data|query_string|get_json|get_data|files|stream|COOKIES|META)\b|\b(?:get(?!Init)\w*?(?:Parameter|Header|Cookie)s?(?:Values|Map|Names)?|getQueryString)\s*\(/;
-/** Output encoders only neutralise markup; the value stays dangerous for queries, commands, paths and sessions. */
-const HTML_ESCAPE = /\b(?:escapeHtml\w*|escapeXml\w*|htmlEscape\w*|encodeForHTML\w*|encodeForXML\w*|encodeForJavaScript|escapeEcmaScript|(?:html|markupsafe|cgi|xml\.sax\.saxutils)\.escape|escape_\w*html\w*|html_escape\w*|htmlspecialchars|htmlentities|strip_tags|HtmlEncode|HtmlAttributeEncode|JavaScriptStringEncode|HTMLEscapeString|EscapeString|JSEscapeString|ERB::Util\.h)\s*\(/;
-const SANITIZER = /\b(?:parseInt|parseFloat|Number|Integer\.parseInt|Long\.parseLong|int|float|bool|escape\w*|encodeURIComponent|encodeFor\w*|htmlEscape\w*|sanitize\w*|quote|basename|UUID\.fromString|isValid\w*|validate\w*|clean\w*|intval|floatval|boolval|ctype_digit|is_numeric|filter_var|\w+_escape_string|escapeshellarg|Atoi|ParseInt|ParseFloat|ParseBool|QueryEscape|PathEscape|(?:int|long|Guid|decimal|double)\.(?:Try)?Parse|Convert\.ToInt\d*|Path\.GetFileName|Integer|Float|sanitize_sql\w*|md5|sha1|crc32|hash_hmac)\s*\(|\.to_(?:i|f|sym)\b/;
-const ANNOTATED = /@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam)\b|\[\s*From(?:Query|Body|Form|Route|Header)\b/;
 const ROUTE = /^\s*@\w+(?:\.\w+)*\.(?:route|get|post|put|delete|patch)\s*\(/;
 const ASSIGN = /^\s*((?:(?:const|let|var|final|val|auto|static)\s+)*(?:[\w$.]+(?:\s*<[^=]*>)?(?:\s*\[\s*\])*\s+)?)([A-Za-z_$][\w$]*)\s*(\+?=|\.=|:=|\|\|=)(?!=)\s*([\s\S]+)$/;
 /** Go and Ruby multiple assignment (rows, err := db.Query(q)): the first name takes the value. */
@@ -149,18 +50,6 @@ const PY_MUTATOR = /^(?:append|extend|insert|pop|update|setdefault|write|writeli
 const MUTATOR = /^(?:add|addAll|addElement|addFirst|addLast|append|insert|offer|push|put|putAll|putIfAbsent|set|setProperty|remove|clear|merge|compute\w*)$/;
 const CONTAINER = /^new\s+[\w$.]*(?:List|Map|Set|Vector|Stack|Queue|Deque)\s*(?:<[^()]*>)?\s*\(\s*\)$/;
 const MAX_FILES = 3000;
-/** API types whose methods are the sinks; a typed receiver of any other type (a project class, an executor, an HTTP client) is not the sink. */
-const RECEIVER: Partial<Record<SinkKind, RegExp>> = {
-  sql: /^(?:Statement|PreparedStatement|CallableStatement|Connection|\w*Jdbc\w*|EntityManager|\w*Session|Query|TypedQuery|NativeQuery|SQLiteDatabase|DSLContext|Handle|DatabaseClient)$/,
-  command: /^(?:Runtime|ProcessBuilder)$/,
-  ldap: /^(?:\w*DirContext|\w*LdapContext|LdapTemplate|LdapOperations)$/,
-  xpath: /^(?:XPath|XPathExpression)$/,
-  "trust-boundary": /^\w*Session$/
-};
-/** Database handle types of JS/TS drivers and ORMs (pg Pool/Client, mysql Connection, Knex, Sequelize, TypeORM, Prisma) and of Go
- * (database/sql, sqlx, gorm); a typed receiver of any other type (CommandBus, HttpService, redis.Client) is not a SQL sink. */
-const JS_SQL_RECEIVER = /^(?:Pool|PoolClient|Client|Connection|PoolConnection|Knex|Sequelize|DataSource|EntityManager|QueryRunner|Repository|Database|Db|Transaction|Prisma\w*|\w*(?:Sql|SQL|Pg|Postgres|Mysql|MySql|MySQL|Sqlite|SQLite|Mssql|Oracle|Db|DB|Database|Repository|Connection)\w*)$/;
-const GO_SQL_RECEIVER = /^(?:DB|Tx|Conn|Stmt|\w*(?:Sql|SQL|Db|DB|Repo|Repository|Store)\w*)$/;
 /** A method or constructor head (Java, C#, Kotlin, JS/TS functions); calls end with ";" and control statements are excluded. */
 const DECL = /^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async|internal|open|suspend)\s+)*(?:fun\s+|function\s*\*?\s*|func\s+|(?!(?:return|new|else|throw|await|yield|case|typeof|delete|if|for|while|switch|catch)\b)[\w$.]+(?:<[^()]*>)?(?:\[\s*\])*\s+)(?!(?:if|for|while|switch|catch|synchronized)\b)[A-Za-z_$][\w$]*\s*\([^;]*\)\s*(?:throws\s+[\w$.,\s]+?)?(?::\s*[\w$.<>[\]?, ]+)?\s*\{/;
 
