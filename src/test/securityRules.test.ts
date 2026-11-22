@@ -29,3 +29,17 @@ test("flags weak Python hashes, insecure random for tokens and cookies without s
   "resp.set_cookie('session', token,","    httponly=True,","    secure=False)","resp.set_cookie('session', token,","    secure=True)"].join("\n");
  assert.deepEqual(scanSecurity("app.py",py).map(x=>[x.line,x.rule]),[[1,"Weak cryptographic hash"],[4,"Insecure random number generator"],[7,"Insecure cookie"]]);
 });
+test("detects XXE, sanitizer bypass and vm misuse in JS/TS",()=>{
+ const found=scanSecurity("x.ts","libxml.parseXml(data, {noent: true})\nthis.sanitizer.bypassSecurityTrustHtml(html)\nthis.sanitizer.bypassSecurityTrustHtml('<b>x</b>')\nvm.runInContext(code, ctx)");
+ assert.deepEqual(found.map(x=>[x.line,x.rule]),[[1,"XML external entities enabled"],[2,"Angular sanitizer bypass"],[4,"Node vm is not a sandbox"]]);
+});
+test("detects Go, C#, PHP and Ruby weaknesses",()=>{
+ assert.equal(scanSecurity("a.go","q := fmt.Sprintf(\"SELECT * FROM t WHERE id = %s\", id)")[0]?.rule,"SQL string concatenation");
+ assert.equal(scanSecurity("a.cs","var f = new BinaryFormatter();")[0]?.rule,"Unsafe .NET deserialization");
+ assert.equal(scanSecurity("a.php","extract($_GET);")[0]?.rule,"PHP variable overwrite");
+ assert.equal(scanSecurity("a.rb","skip_before_action :verify_authenticity_token")[0]?.rule,"CSRF protection disabled");
+});
+test("C# SQL concatenation of constants or continued literals is not flagged",()=>{
+ assert.deepEqual(scanSecurity("a.cs","cmd.CommandText = \"INSERT INTO \" + ROLE_TB_NAME + \" VALUES ($a)\";\ncmd.CommandText = \"SELECT a,\" +"),[]);
+ assert.equal(scanSecurity("a.cs","cmd.CommandText = \"SELECT * FROM t WHERE n = '\" + name + \"'\";").length,1);
+});

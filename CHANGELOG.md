@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.5
+- **PHP, Go, C# and Ruby data-flow tracking:** request input (`$_GET`, `r.FormValue`, `Request.Form`, `params[...]`) is followed to SQL, command, file, URL, redirect, XSS, LDAP, XPath, code and deserialization sinks, including string interpolation (`"$id"`, `"#{id}"`, `$"{id}"`), Go `:=` and prepared statements, and Rails hash conditions as safe.
+- **JS/TS gaps closed:** MongoDB `$where` NoSQL injection, Zip Slip, XXE (`noent`, `XML_PARSE_NOENT`), Angular `bypassSecurityTrust*`, `node:vm` as a sandbox, `res.redirect`.
+- **New rules for Go, C#, PHP and Ruby:** `fmt.Sprintf` and C# SQL concatenation, `BinaryFormatter`/`TypeNameHandling`, weak hashes, ciphers and random numbers, `extract($_GET)`, `[ValidateInput(false)]`, disabled Rails CSRF checks and `permit!`.
+- **Real-world benchmarks:** results on Juice Shop, WebGoat, DVWA, RailsGoat, GoVWA and WebGoat.NET in [docs/real-world-benchmarks.md](docs/real-world-benchmarks.md). OWASP Benchmark unchanged: Java 97.2%, Python 100%, 0% false positives.
 - **Less noise on real repos:** translations in non-Latin scripts (e.g. `"LABEL_PASSWORD": "パスワード"`) are no longer reported as credentials; the CLI/SARIF reports credentials in tests, fixtures and docs as `warning`, as the editor already did. On OWASP Juice Shop HIGH findings went from 220 to 35, 34 of them real ([report](docs/juice-shop-benchmark.md)).
 
 ## 1.0.4

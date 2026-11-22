@@ -36,7 +36,11 @@ What changed after the first run:
 
 SSRF in `routes/profileImageUrlUpload.ts`, path traversal in `routes/vulnCodeSnippet.ts` and `vulnCodeFixes.ts`, MD5 in `lib/insecurity.ts`, `innerHTML` in the hacking instructor. Noise: `eval` of a server-generated captcha sum, MD5 used as a file checksum in `scripts/package.mjs`, `innerHTML` in the vendored `three.js`, and test passwords.
 
-## Known misses
+## Since 1.0.5
+
+Most misses above are now caught: NoSQL `$where` injection (`trackOrder.ts`, `showProductReviews.ts`), Angular `bypassSecurityTrust*`, `vm` used as a sandbox, XXE (`XML_PARSE_NOENT` in `lib/xml.ts`) and Zip Slip (`fileUpload.ts`). HIGH findings are now 38, 37 of them real. Still missed: the open-redirect allow-list bypass in `routes/redirect.ts`. Results for WebGoat, DVWA, RailsGoat, GoVWA and WebGoat.NET are in [real-world-benchmarks.md](real-world-benchmarks.md).
+
+## Known misses (1.0.4)
 
 The built-in rules do not catch these Juice Shop vulnerabilities yet. Semgrep, the local AI review (`/review`, `/scan`) or a manual check are needed:
 

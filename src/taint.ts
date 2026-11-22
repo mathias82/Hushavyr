@@ -19,15 +19,23 @@ void initJavaParser();
  * constant branches, match cases and dict/list slots work there too; an if block that always leaves validates what its
  * condition checks (if "../" in name: return), and a Flask route's return value is its HTML response.
  */
-export type SinkKind = "sql" | "command" | "code" | "path" | "ssrf" | "xss" | "ldap" | "xpath" | "trust-boundary" | "redirect" | "xxe" | "deserialization";
+export type SinkKind = "sql" | "nosql" | "command" | "code" | "path" | "ssrf" | "xss" | "ldap" | "xpath" | "trust-boundary" | "redirect" | "xxe" | "deserialization";
 export interface TaintFile { path: string; text: string }
 export interface TaintFlow { kind: SinkKind; source: {path: string; line: number}; sink: {path: string; line: number}; via: string[] }
 
 const JAVA = /\.(?:java|kt)$/i;
 const PY = /\.py$/i;
+const JS = /\.(?:[cm]?js|jsx|tsx?)$/i;
+const GO = /\.go$/i;
+const CS = /\.cs$/i;
+const PHP = /\.php$/i;
+const RB = /\.rb$/i;
 const BRACES = /\.(?:java|kt|js|jsx|mjs|cjs|ts|tsx|cs|php|go|rs|scala|swift)$/i;
-/** arg: which argument is the tainted one (default the first; all: any); unless: a statement that makes the call safe. */
-interface Sink { kind: SinkKind; call: RegExp; when?: RegExp; unless?: RegExp; lang?: RegExp; scope?: RegExp; all?: boolean; arg?: number }
+/** arg: which argument is the tainted one (default the first; all: any); unless: a statement that makes the call safe.
+ * recv: the tainted value is the receiver before the call (value.constantize); skip: an argument shape that is safe (a Rails
+ * hash condition); lit: the argument's first string literal must match (header("Location: " . $url)); shell: when the first
+ * argument is a shell (exec.Command("sh", "-c", cmd)), every argument counts. */
+interface Sink { kind: SinkKind; call: RegExp; when?: RegExp; unless?: RegExp; lang?: RegExp; scope?: RegExp; all?: boolean; arg?: number; recv?: boolean; skip?: RegExp; lit?: RegExp; shell?: boolean }
 const SINKS: Sink[] = [
   {kind: "sql", call: /(?:^|[^\w$])(?:executeQuery|executeUpdate|execute|executemany|query|raw|createQuery|createNativeQuery|prepareStatement|exec_driver_sql)\s*\(/g},
   {kind: "sql", call: /\.(?:prepareCall|addBatch|batchUpdate|queryFor\w+)\s*\(/g, lang: JAVA},
@@ -51,8 +59,71 @@ const SINKS: Sink[] = [
   {kind: "ldap", call: /\.(?:search|search_s|search_st|search_ext|search_ext_s|paged_search)\s*\(/g, lang: PY, all: true, scope: /\bldap3?\b/},
   {kind: "xpath", call: /(?:\.xpath|\bXPath|\bETXPath)\s*\(/g, lang: PY},
   {kind: "xpath", call: /\belementpath\.(?:select|iter_select|Selector)\s*\(/g, lang: PY, arg: 1},
-  {kind: "path", call: /\b(?:codecs\.open|io\.open|os\.path\.(?:exists|lexists|isfile|isdir|getsize|getmtime)|os\.(?:remove|unlink|listdir|scandir|stat|makedirs|mkdir|rmdir|rename|replace|chmod)|shutil\.\w+|send_file|FileResponse)\s*\(/g, lang: PY}
+  {kind: "path", call: /\b(?:codecs\.open|io\.open|os\.path\.(?:exists|lexists|isfile|isdir|getsize|getmtime)|os\.(?:remove|unlink|listdir|scandir|stat|makedirs|mkdir|rmdir|rename|replace|chmod)|shutil\.\w+|send_file|FileResponse)\s*\(/g, lang: PY},
+  // JavaScript / TypeScript: MongoDB $where runs JavaScript on the server; vm is not a sandbox; writes; Express redirects.
+  {kind: "nosql", call: /\.(?:find|findOne|findOneAndUpdate|findOneAndDelete|update|updateOne|updateMany|deleteOne|deleteMany|remove|count|countDocuments|aggregate)\s*\(/g, lang: JS, when: /\$where\b/},
+  {kind: "code", call: /\bvm\.(?:runIn(?:New|This)?Context|compileFunction)\s*\(|\bnew\s+vm\.Script\s*\(|(?:^|[^\w$.])(?:safeEval|notevil)\s*\(/g, lang: JS},
+  {kind: "path", call: /\b(?:createWriteStream|writeFile|writeFileSync|appendFile|appendFileSync)\s*\(/g, lang: JS},
+  {kind: "redirect", call: /\bres\.redirect\s*\(/g, lang: JS, all: true},
+  // PHP
+  {kind: "sql", call: /\b(?:mysqli_query|mysql_query|mysqli_multi_query|mysqli_real_query|pg_query|sqlite_query|odbc_exec|db2_exec)\s*\(/g, lang: PHP, all: true},
+  {kind: "command", call: /(?:^|[^\w$>:])(?:shell_exec|passthru|proc_open|pcntl_exec)\s*\(/g, lang: PHP},
+  {kind: "code", call: /(?:^|[^\w$>:])(?:assert|create_function)\s*\(/g, lang: PHP, all: true},
+  {kind: "path", call: /(?:^|[^\w$>:])(?:include|include_once|require|require_once)\b\s*\(?/g, lang: PHP},
+  {kind: "path", call: /(?:^|[^\w$>:])(?:file_get_contents|file_put_contents|fopen|readfile|file|unlink|copy|rename|opendir|scandir|highlight_file|show_source|parse_ini_file)\s*\(/g, lang: PHP},
+  {kind: "ssrf", call: /\bcurl_init\s*\(/g, lang: PHP},
+  {kind: "xss", call: /(?:^|[^\w$>:])(?:echo|print)\b\s*\(?/g, lang: PHP, all: true},
+  {kind: "redirect", call: /\bheader\s*\(/g, lang: PHP, lit: /^\s*location\s*:/i},
+  {kind: "deserialization", call: /\bunserialize\s*\(/g, lang: PHP},
+  {kind: "ldap", call: /\bldap_search\s*\(/g, lang: PHP, arg: 2},
+  // Go
+  {kind: "sql", call: /\.(?:Query|QueryRow|Exec|Prepare|Raw)\s*\(/g, lang: GO},
+  {kind: "sql", call: /\.(?:QueryContext|QueryRowContext|ExecContext|PrepareContext)\s*\(/g, lang: GO, arg: 1},
+  {kind: "command", call: /\bexec\.Command\s*\(/g, lang: GO, shell: true},
+  {kind: "path", call: /\b(?:os\.(?:Open|OpenFile|ReadFile|Create|Remove|RemoveAll|WriteFile|ReadDir|Mkdir|MkdirAll)|ioutil\.(?:ReadFile|WriteFile|ReadDir))\s*\(/g, lang: GO},
+  {kind: "path", call: /\bhttp\.ServeFile\s*\(/g, lang: GO, arg: 2},
+  {kind: "ssrf", call: /\bhttp\.(?:Get|Post|Head|PostForm)\s*\(/g, lang: GO},
+  {kind: "ssrf", call: /\bhttp\.NewRequest\s*\(/g, lang: GO, arg: 1},
+  {kind: "redirect", call: /\bhttp\.Redirect\s*\(/g, lang: GO, arg: 2},
+  {kind: "xss", call: /\btemplate\.(?:HTML|JS|HTMLAttr|URL)\s*\(|\bw\.Write\s*\(/g, lang: GO},
+  {kind: "xss", call: /\b(?:fmt\.Fprint(?:f|ln)?|io\.WriteString)\s*\(\s*w\s*,/g, lang: GO, all: true},
+  // C#
+  {kind: "sql", call: /\bnew\s+(?:Sql|SqlCe|Sqlite|SQLite|MySql|Npgsql|OleDb|Odbc|Oracle)(?:Command|DataAdapter)\s*\(|\.CommandText\s*=(?!=)/g, lang: CS},
+  {kind: "sql", call: /\.(?:ExecuteSqlRaw|ExecuteSqlCommand|FromSqlRaw|SqlQuery|ExecuteQuery|ExecuteCommand)\s*\(/g, lang: CS},
+  {kind: "command", call: /\bProcess\.Start\s*\(|\bnew\s+ProcessStartInfo\s*\(/g, lang: CS, all: true},
+  {kind: "command", call: /\.(?:FileName|Arguments)\s*=(?!=)/g, lang: CS, scope: /\bProcessStartInfo\b/},
+  {kind: "path", call: /\b(?:File\.(?:ReadAllText|ReadAllBytes|ReadAllLines|ReadLines|OpenRead|OpenText|OpenWrite|Open|Delete|WriteAllText|WriteAllBytes|Copy|Move|AppendAllText|Create)|Directory\.(?:GetFiles|Delete|CreateDirectory|EnumerateFiles)|new\s+(?:FileStream|StreamReader|StreamWriter|FileInfo|DirectoryInfo)|Response\.(?:WriteFile|TransmitFile)|PhysicalFile)\s*\(/g, lang: CS},
+  {kind: "xss", call: /\bResponse\.Write\s*\(|\bnew\s+HtmlString\s*\(|\bHtml\.Raw\s*\(|\.InnerHtml\s*\+?=(?!=)|\blbl\w*\.Text\s*\+?=(?!=)/g, lang: CS},
+  {kind: "redirect", call: /\b(?:Response\.)?Redirect(?:Permanent)?\s*\(/g, lang: CS},
+  {kind: "ldap", call: /\bnew\s+DirectorySearcher\s*\(|\.Filter\s*=(?!=)/g, lang: CS, scope: /\bDirectorySearcher\b/},
+  {kind: "xpath", call: /\.(?:SelectNodes|SelectSingleNode)\s*\(/g, lang: CS},
+  {kind: "deserialization", call: /\.Deserialize\s*\(/g, lang: CS, scope: /\b(?:BinaryFormatter|LosFormatter|SoapFormatter|NetDataContractSerializer|ObjectStateFormatter)\b|TypeNameHandling\.(?:All|Objects|Auto|Arrays)\b/},
+  // Ruby (Rails): a hash or an array with placeholders is a bound condition, not SQL text.
+  {kind: "sql", call: /\.(?:where|not|find_by_sql|count_by_sql|find_by|order|reorder|group|having|joins|pluck|select|from|exists\?|delete_all|update_all|calculate|exec_query|select_all|select_one|select_value|select_rows)\s*\(/g, lang: RB, skip: /^\s*(?:\w+:\s|:\w+\s*=>|\{|\[)/},
+  {kind: "command", call: /(?:^|[^\w$.:])(?:system|exec|spawn)\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\b(?:IO\.popen|Open3\.(?:capture2e?|capture3|popen2e?|popen3)|Kernel\.(?:system|exec|spawn))(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|%x[({[]|`/g, lang: RB},
+  {kind: "code", call: /(?:^|[^\w$.:])(?:eval|instance_eval|class_eval|module_eval)\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\.(?:send|public_send|__send__)\s*\(/g, lang: RB},
+  {kind: "code", call: /\.(?:constantize|safe_constantize)\b/g, lang: RB, recv: true},
+  {kind: "deserialization", call: /\b(?:Marshal\.(?:load|restore)|YAML\.(?:load|unsafe_load|load_documents)|Psych\.(?:load|unsafe_load)|Oj\.load)\s*\(/g, lang: RB},
+  {kind: "redirect", call: /\bredirect_to\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))/g, lang: RB},
+  {kind: "path", call: /\b(?:File\.(?:read|open|new|readlines|binread|write|delete|unlink)|IO\.(?:read|readlines|binread)|FileUtils\.\w+)\s*\(|\bsend_file\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))/g, lang: RB},
+  {kind: "xss", call: /\.html_safe\b/g, lang: RB, recv: true},
+  {kind: "xss", call: /(?:^|[^\w$.:])raw\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\brender\s*\(?\s*(?:inline|html):/g, lang: RB}
 ];
+/** Request input per language, beyond the shared SOURCE; scope limits a source to files that use a library (zip entries). */
+const LANG_SOURCES: {lang: RegExp; re: RegExp; scope?: RegExp}[] = [
+  {lang: PHP, re: /\$_(?:GET|POST|REQUEST|COOKIE|FILES)\b/},
+  {lang: GO, re: /\.(?:FormValue|PostFormValue|FormFile)\s*\(|\.URL\.(?:Query\s*\(|RawQuery\b)|\b(?:r|req|request)\.(?:Form|PostForm|Header\.Get\s*\(|Cookie\s*\()|\bmux\.Vars\s*\(|\.ByName\s*\(|\bc\.(?:Query|DefaultQuery|PostForm|Param|GetHeader|Cookie)\s*\(/},
+  {lang: CS, re: /\bRequest\s*(?:\.\s*(?:QueryString|Form|Params|Query|Cookies|Headers|ServerVariables|RouteValues|Files))?\s*\[|\bRequest\.(?:QueryString|Form|Params|Query|Cookies|Headers|Files|InputStream|Body|RawUrl)\b|\b(?:txt|tb)[A-Z]\w*\.Text\b/},
+  {lang: RB, re: /\bparams\b(?:\s*\[|\.(?:require|fetch|permit|to_unsafe_h|dig|values_at)\b)|\bcookies\s*\[|\brequest\.(?:env|raw_post_data|body|query_string|referer|user_agent|query_parameters|request_parameters)\b/},
+  // Zip Slip: an archive entry's name is attacker-chosen.
+  {lang: JS, re: /\bentry\.(?:path|entryName|fileName)\b/, scope: /\b(?:unzipper|adm-zip|AdmZip|yauzl|decompress|jszip|JSZip)\b/}
+];
+/** The per-language source pattern for a file, or undefined. */
+function langSource(path: string, text: string): RegExp | undefined {
+  const all = LANG_SOURCES.filter(s => s.lang.test(path) && (!s.scope || s.scope.test(text)));
+  return all.length ? new RegExp(all.map(s => s.re.source).join("|")) : undefined;
+}
+const hasSource = (path: string, text: string) => SOURCE.test(text) || !!langSource(path, text)?.test(text);
 /** Path objects carry the path they were built from; their file methods are path sinks (Path(base) / name). */
 const PATH_METHOD = /\b([A-Za-z_]\w*)\.(?:exists|is_file|is_dir|read_text|read_bytes|write_text|write_bytes|open|unlink|touch|mkdir|rmdir|stat|iterdir|rename|replace)\s*\(/g;
 /** A command list run without a shell is only a shell command when it starts a shell (["sh", "-c", ...]). */
@@ -62,11 +133,15 @@ const PY_BUILTIN = /^(?:get|set|read|write|join|split|format|append|pop|items|ke
 // Request accessors, including wrapper/helper getters such as getRequestParameter or getCustomHeader (init parameters are trusted config).
 const SOURCE = /\b(?:req|request)\.(?:query|params|body|headers|cookies|args|form|values|json|GET|POST|FILES|data|query_string|get_json|get_data|files|stream|COOKIES|META)\b|\b(?:get(?!Init)\w*?(?:Parameter|Header|Cookie)s?(?:Values|Map|Names)?|getQueryString)\s*\(/;
 /** Output encoders only neutralise markup; the value stays dangerous for queries, commands, paths and sessions. */
-const HTML_ESCAPE = /\b(?:escapeHtml\w*|escapeXml\w*|htmlEscape\w*|encodeForHTML\w*|encodeForXML\w*|encodeForJavaScript|escapeEcmaScript|(?:html|markupsafe|cgi|xml\.sax\.saxutils)\.escape|escape_\w*html\w*|html_escape\w*)\s*\(/;
-const SANITIZER = /\b(?:parseInt|parseFloat|Number|Integer\.parseInt|Long\.parseLong|int|float|bool|escape\w*|encodeURIComponent|encodeFor\w*|htmlEscape\w*|sanitize\w*|quote|basename|UUID\.fromString|isValid\w*|validate\w*|clean\w*)\s*\(/;
-const ANNOTATED = /@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam)\b/;
+const HTML_ESCAPE = /\b(?:escapeHtml\w*|escapeXml\w*|htmlEscape\w*|encodeForHTML\w*|encodeForXML\w*|encodeForJavaScript|escapeEcmaScript|(?:html|markupsafe|cgi|xml\.sax\.saxutils)\.escape|escape_\w*html\w*|html_escape\w*|htmlspecialchars|htmlentities|strip_tags|HtmlEncode|HtmlAttributeEncode|JavaScriptStringEncode|HTMLEscapeString|EscapeString|JSEscapeString|ERB::Util\.h)\s*\(/;
+const SANITIZER = /\b(?:parseInt|parseFloat|Number|Integer\.parseInt|Long\.parseLong|int|float|bool|escape\w*|encodeURIComponent|encodeFor\w*|htmlEscape\w*|sanitize\w*|quote|basename|UUID\.fromString|isValid\w*|validate\w*|clean\w*|intval|floatval|boolval|ctype_digit|is_numeric|filter_var|\w+_escape_string|escapeshellarg|Atoi|ParseInt|ParseFloat|ParseBool|QueryEscape|PathEscape|(?:int|long|Guid|decimal|double)\.(?:Try)?Parse|Convert\.ToInt\d*|Path\.GetFileName|Integer|Float|sanitize_sql\w*|md5|sha1|crc32|hash_hmac)\s*\(|\.to_(?:i|f|sym)\b/;
+const ANNOTATED = /@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam)\b|\[\s*From(?:Query|Body|Form|Route|Header)\b/;
 const ROUTE = /^\s*@\w+(?:\.\w+)*\.(?:route|get|post|put|delete|patch)\s*\(/;
-const ASSIGN = /^\s*((?:(?:const|let|var|final|val|auto|static)\s+)*(?:[\w$.]+(?:\s*<[^=]*>)?(?:\s*\[\s*\])*\s+)?)([A-Za-z_$][\w$]*)\s*(\+?=)(?!=)\s*([\s\S]+)$/;
+const ASSIGN = /^\s*((?:(?:const|let|var|final|val|auto|static)\s+)*(?:[\w$.]+(?:\s*<[^=]*>)?(?:\s*\[\s*\])*\s+)?)([A-Za-z_$][\w$]*)\s*(\+?=|\.=|:=|\|\|=)(?!=)\s*([\s\S]+)$/;
+/** Go and Ruby multiple assignment (rows, err := db.Query(q)): the first name takes the value. */
+const MULTI = /^\s*(?:var\s+)?([A-Za-z_$][\w$]*)\s*,\s*[A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*\s*:?=(?!=)\s*([\s\S]+)$/;
+/** A Go function or method head: func (r *T) Name(args) (results) {. */
+const GO_DECL = /^\s*func\s+(?:\([^)]*\)\s*)?[A-Za-z_]\w*\s*\([^)]*\)\s*(?:\([^)]*\)|[\w.*[\]]+)?\s*\{/;
 const PY_MUTATOR = /^(?:append|extend|insert|pop|update|setdefault|write|writelines|add|set)$/;
 const MUTATOR = /^(?:add|addAll|addElement|addFirst|addLast|append|insert|offer|push|put|putAll|putIfAbsent|set|setProperty|remove|clear|merge|compute\w*)$/;
 const CONTAINER = /^new\s+[\w$.]*(?:List|Map|Set|Vector|Stack|Queue|Deque)\s*(?:<[^()]*>)?\s*\(\s*\)$/;
@@ -82,10 +157,22 @@ const RECEIVER: Partial<Record<SinkKind, RegExp>> = {
 /** A method or constructor head (Java, C#, Kotlin, JS/TS functions); calls end with ";" and control statements are excluded. */
 const DECL = /^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async|internal|open|suspend)\s+)*(?:fun\s+|function\s*\*?\s*|func\s+|(?!(?:return|new|else|throw|await|yield|case|typeof|delete|if|for|while|switch|catch)\b)[\w$.]+(?:<[^()]*>)?(?:\[\s*\])*\s+)(?!(?:if|for|while|switch|catch|synchronized)\b)[A-Za-z_$][\w$]*\s*\([^;]*\)\s*(?:throws\s+[\w$.,\s]+?)?(?::\s*[\w$.<>[\]?, ]+)?\s*\{/;
 
-/** Code with comments removed and plain string contents replaced by "@n" (n indexes lits); template literals and f-strings keep their interpolations. */
-function code(line: string, lits: string[]): string {
-  return line.replace(/(?<![fF\w])"(?:[^"\x5c]|\x5c.)*"|(?<![fF\w])'(?:[^'\x5c]|\x5c.)*'/g, s => "\"@" + (lits.push(s.slice(1, -1)) - 1) + "\"")
-    .replace(/\/\/.*$|(?:^|\s)#.*$/, "");
+/** Code with comments removed and plain string contents replaced by "@n" (n indexes lits); template literals and f-strings keep their interpolations.
+ * Interpolating strings (PHP "$id", Ruby "#{id}", C# $"{id}") become the literal followed by their interpolated expressions. */
+function code(line: string, lits: string[], path = ""): string {
+  const php = PHP.test(path), rb = RB.test(path), cs = CS.test(path);
+  const out = line.replace(/(?<![fF\w])"(?:[^"\x5c]|\x5c.)*"|(?<![fF\w])'(?:[^'\x5c]|\x5c.)*'/g, (s, at: number) => {
+    const body = s.slice(1, -1), lit = "\"@" + (lits.push(body) - 1) + "\"";
+    // Quotes inside a JS template literal (`id = '${id}'`) are text, so the interpolations still count.
+    if (!php && !rb && (line.slice(0, at).match(/(?<!\x5c)`/g)?.length ?? 0) % 2 === 1)
+      return lit + [...body.matchAll(/\$\{([^}]*)\}/g)].map(m => " + (" + m[1] + ")").join("");
+    if (s[0] !== "\"") return lit;
+    const parts = php ? [...body.matchAll(/\{?(\$[A-Za-z_]\w*(?:->\w+|\[[^\]]*\])*)\}?/g)].map(m => m[1])
+      : rb ? [...body.matchAll(/#\{([^}]*)\}/g)].map(m => m[1])
+      : cs && /\$@?$|\$$/.test(line.slice(Math.max(0, at - 2), at)) ? [...body.matchAll(/(?<!\{)\{([^{}:]+)(?::[^{}]*)?\}/g)].map(m => m[1]) : [];
+    return lit + parts.map(p => " + (" + p + ")").join("");
+  }).replace(/\/\/.*$|(?:^|\s)#.*$/, "");
+  return rb ? out.replace(/(?<![\w@])@@?(?=[A-Za-z_])/g, "") : out;
 }
 
 /** Index of the bracket closing the one at open, or text.length. */
@@ -129,13 +216,13 @@ function topLevelSplit(text: string, sep: string): string[] {
 const depth = (text: string) => (text.match(/[([]/g)?.length ?? 0) - (text.match(/[)\]]/g)?.length ?? 0);
 
 /** Statements: physical lines joined while brackets are open or an operator continues them, then split at top-level ";". */
-function statements(lines: readonly string[], lits: string[]): {text: string; index: number; end: number}[] {
+function statements(lines: readonly string[], lits: string[], path = ""): {text: string; index: number; end: number}[] {
   const out: {text: string; index: number; end: number}[] = [];
   for (let i = 0; i < lines.length; i++) {
     const index = i;
-    let text = code(lines[i], lits);
+    let text = code(lines[i], lits, path);
     while (i + 1 < lines.length && i - index < 12 && !/[{};]\s*$/.test(text) &&
-      (depth(text) > 0 || /(?:[=+,?([]|&&|\|\|)\s*$/.test(text) || /^\s*(?:\.(?!\.)|\+(?!\+)|\?|:(?!:)|&&|\|\|)/.test(lines[i + 1]))) text += " " + code(lines[++i], lits);
+      (depth(text) > 0 || /(?:[=+,?([]|&&|\|\|)\s*$/.test(text) || /^\s*(?:\.(?!\.)|\+(?!\+)|\?|:(?!:)|&&|\|\|)/.test(lines[i + 1]))) text += " " + code(lines[++i], lits, path);
     let level = 0, start = 0;
     for (let k = 0; k < text.length; k++) {
       if ("([".includes(text[k])) level++;
@@ -188,12 +275,12 @@ function evaluate(expr: string, consts: ReadonlyMap<string, Value>, lits: readon
 
 interface Param { name: string; annotated: boolean }
 function params(snippet: string, path: string): Param[] {
-  const open = snippet.indexOf("(");
+  const go = GO.test(path), receiver = go ? /^\s*func\s*\([^)]*\)\s*\w+\s*\(/.exec(snippet) : null;
+  const open = receiver ? receiver[0].length - 1 : snippet.indexOf("(");
   if (open < 0) return [];
-  const go = /\.go$/i.test(path);
   return splitArgs(snippet, open).map(part => {
     const annotated = ANNOTATED.test(part);
-    const bare = part.replace(/@\w+(?:\([^)]*\))?/g, "").replace(/=[\s\S]*$/, "").replace(/^\s*(?:\.\.\.|\*\*|\*)/, "").trim();
+    const bare = part.replace(/@\w+(?:\([^)]*\))?|\[\s*\w+(?:\([^)]*\))?\s*\]\s*(?=\w)/g, "").replace(/=[\s\S]*$/, "").replace(/^\s*(?:\.\.\.|\*\*|\*)/, "").trim();
     if (/^[{[]/.test(bare)) return {name: "", annotated};
     const name = bare.includes(":") ? bare.split(":")[0].trim() : go ? (/^([A-Za-z_]\w*)/.exec(bare)?.[1] ?? "") : (/([A-Za-z_]\w*)\s*$/.exec(bare)?.[1] ?? "");
     return {name, annotated};
@@ -209,7 +296,7 @@ const FAMILY: [RegExp, string][] = [[/\.(?:java|kt|scala|groovy)$/i, "jvm"], [/\
 const family = (path: string) => FAMILY.find(([re]) => re.test(path))?.[1] ?? path;
 /** Summaries for a called name; a definition in the calling file shadows same-named ones elsewhere.
  * Without types a call is matched by name only, so other languages never match, and a name defined
- * in more than two other files (execute, run, handle) is too ambiguous to follow. A parsed Java call site narrows the
+ * in more than two other files (execute, run, handle) is too ambiguous to follow; a name of 15+ characters may have up to six implementations. A parsed Java call site narrows the
  * candidates to overloads taking its argument count and, when its receiver type is known, to that type's hierarchy. */
 function lookup(summaries: Summaries, name: string, path: string, site?: Site, project?: JavaProject): Summary[] {
   let all = summaries.get(name) ?? [];
@@ -221,7 +308,8 @@ function lookup(summaries: Summaries, name: string, path: string, site?: Site, p
   const own = all.filter(s => s.path === path);
   if (own.length) return own;
   const lang = family(path), same = all.filter(s => family(s.path) === lang);
-  return new Set(same.map(s => s.path)).size > 2 ? [] : same;
+  // A long, specific name (GetSecurityQuestionAndAnswer) is an interface method with a few implementations, not a common verb.
+  return new Set(same.map(s => s.path)).size > (name.length >= 15 ? 6 : 2) ? [] : same;
 }
 
 interface Fn { name: string; path: string; startLine: number; lines: string[]; params: Param[]; route: boolean; summary: Summary; skipHead: boolean }
@@ -264,13 +352,14 @@ const PY_CONTAINER = /^(?:\{\s*\}|\[\s*\]|dict\(\s*\)|list\(\s*\)|(?:configparse
 /** Flask/Django responses whose first argument (or first tuple element) is the body; headers and status are not markup. */
 const RESPONSE_CALL = /^(?:[\w.]*\.)?(?:make_response|Response|HttpResponse)\s*\(/;
 const NOT_MARKUP = /^(?:[\w.]*\.)?(?:redirect|jsonify|send_file|send_from_directory|abort|url_for|render_template|JsonResponse|HttpResponseRedirect|FileResponse)\s*\(/;
-const ALL_KINDS: SinkKind[] = ["sql", "command", "code", "path", "ssrf", "xss", "ldap", "xpath", "trust-boundary", "redirect", "xxe", "deserialization"];
+const ALL_KINDS: SinkKind[] = ["sql", "nosql", "command", "code", "path", "ssrf", "xss", "ldap", "xpath", "trust-boundary", "redirect", "xxe", "deserialization"];
 
 /** Follows tainted variables through one body; returns every sink reached (directly or through summarised calls) and whether taint is returned. */
 function analyse(lines: readonly string[], firstLine: number, path: string, initial: ReadonlyMap<string, number>, summaries: Summaries, skipFirst: boolean, project?: JavaProject, isRoute = false): {hits: Hit[]; returned?: number; markup?: number} {
   const tainted = new Map(initial), htmlSafe = new Set<string>(), writers = new Set<string>(), consts = new Map<string, Value>(), slots = new Map<string, Slots>();
   const lits: string[] = [], hits: Hit[] = [], stack: Ctx[] = [], ifs = new Map<number, boolean | undefined>();
-  const py = PY.test(path), body = lines.join("\n"), braces = py || BRACES.test(path);
+  const py = PY.test(path), go = GO.test(path), rb = RB.test(path), body = lines.join("\n"), braces = py || BRACES.test(path), extra = langSource(path, body);
+  const declOf = go ? GO_DECL : DECL;
   // Python only: kinds a variable was validated for by a guard, the tainted variables each one was derived from, names assigned so far.
   const safeFor = new Map<string, Set<SinkKind>>(), derived = new Map<string, string[]>(), seen = new Set<string>(), lists = new Map<string, string[]>();
   let returned: number | undefined, markup: number | undefined, pending: Ctx | undefined, span = [0, 0], index = 0, route = isRoute;
@@ -305,6 +394,19 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
     }
     return expr;
   };
+  /** The two arms of a top-level cond ? a : b whose condition is not constant (not Python). */
+  const arms = (expr: string): [string, string] | undefined => {
+    if (py) return undefined;
+    let level = 0, q = -1, nested = 0;
+    for (let i = 0; i < expr.length; i++) {
+      const ch = expr[i];
+      if ("([{".includes(ch)) level++;
+      else if (")]}".includes(ch)) level--;
+      else if (level === 0 && ch === "?" && !/[?.]/.test(expr[i + 1] ?? "") && expr[i - 1] !== "?") { if (q < 0) q = i; else nested++; }
+      else if (level === 0 && ch === ":" && q >= 0 && expr[i + 1] !== ":" && expr[i - 1] !== ":" && nested-- === 0) return [expr.slice(q + 1, i), expr.slice(i + 1)];
+    }
+    return undefined;
+  };
   /** The body argument of make_response(...)/Response(...): the first argument, or the first element of a tuple argument. */
   const body1 = (text: string, open: number): string => {
     const first = splitArgs(text, open)[0] ?? "";
@@ -312,9 +414,12 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
   };
   const origin = (input: string, line: number, kind?: SinkKind): number | undefined => {
     let expr = ternary(input), found: number | undefined;
+    const both = arms(expr);
+    // Either arm may be the value: a sanitised arm does not clean the other one.
+    if (both) return origin(both[0], line, kind) ?? origin(both[1], line, kind);
     const xss = kind === "xss";
     if ((xss && HTML_ESCAPE.test(expr)) || (!HTML_ESCAPE.test(expr) && SANITIZER.test(expr))) return undefined;
-    if (SOURCE.test(expr)) return line;
+    if (SOURCE.test(expr) || extra?.test(expr)) return line;
     // XPath has no escape sequence: a value with its quote character replaced cannot leave a quoted XPath literal.
     if (py && kind === "xpath") expr = expr.replace(/\b[A-Za-z_]\w*(?:\.\w+)*\.replace\(\s*"@(\d+)"\s*,\s*"@(\d+)"\s*\)/g, (m, a: string, b: string) => {
       const q = lits[+a].replace(/\\/g, "");
@@ -402,11 +507,21 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
         // Python's exec runs code, not a command.
         if (py && sink.kind === "command" && /(?:^|[^\w$.])exec\s*\($/.test(m[0])) continue;
         // Database handles are objects (stmt.execute, cursor.execute); Helper.execute(...) is a static call into application code.
-        if (sink.kind === "sql" && /(?<![\w$.])[A-Z][\w$]*\.$/.test(text.slice(0, m.index! + 1))) continue;
+        // Go package-level handles are exported names (DB.Query), so the heuristic does not apply there.
+        if (sink.kind === "sql" && !go && !rb && /(?<![\w$.])[A-Z][\w$]*\.$/.test(text.slice(0, m.index! + 1))) continue;
         const method = /(?<!\bnew\s+)\b([A-Za-z_$][\w$]*)\s*\($/.exec(m[0])?.[1], types = method && RECEIVER[sink.kind] ? site(method)?.types : undefined;
         if (types && project && ![...types].some(t => [...project.ancestors(t)].some(a => RECEIVER[sink.kind]!.test(a)))) continue;
+        // A Go prepared statement (stmt, err := db.Prepare(q)) takes bind values, not SQL.
+        if (go && sink.kind === "sql") {
+          const recv = /([A-Za-z_]\w*)\.$/.exec(text.slice(0, m.index! + 1))?.[1];
+          if (recv && new RegExp("\\b" + recv + "\\s*(?:,\\s*\\w+\\s*)?:?=\\s*[\\w.]+\\.Prepare(?:Context)?\\s*\\(").test(body)) continue;
+        }
         const end = m.index! + m[0].length, args = m[0].endsWith("(") ? splitArgs(text, end - 1) : [text.slice(end)];
-        const arg = sink.all ? args.join(",") : args[sink.arg ?? 0] ?? "";
+        const first = (args[0] ?? "").trim(), shell = sink.shell && /^"@\d+"$/.test(first) && SHELL.test(lits[+first.slice(2, -1)] ?? "");
+        const arg = sink.recv ? text.slice(0, m.index).replace(/^\s*[A-Za-z_$][\w$]*\s*(?:\|\|)?=(?!=)/, "") : sink.all || shell ? args.join(",") : args[sink.arg ?? 0] ?? "";
+        if (sink.skip?.test(arg)) continue;
+        const lit = /"@(\d+)"/.exec(arg);
+        if (sink.lit && !(lit && sink.lit.test(lits[+lit[1]] ?? ""))) continue;
         if (sink.kind === "redirect" && /^\s*(?:[\w.]*\.)?url_for\s*\(/.test(arg)) continue;
         const from = origin(arg, line, sink.kind);
         if (from !== undefined) hits.push({kind: sink.kind, path, line, via: [], origin: from});
@@ -499,13 +614,18 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
     // Whole-file passes meet every method in turn: locals of one method must not taint a same-named variable or parameter of the next.
     // A function's own head (int execute(Connection c)) names it; it is not a call of the sink with that name.
     if (first && !braces && /^\s*(?:async\s+)?(?:def|fn|func|function)\b/.test(text)) return;
-    const head = first && braces ? DECL.exec(text) : null;
+    const head = first && braces ? declOf.exec(text) : null;
     if (head) {
       stack.push({kind: "plain"});
       const rest = text.slice(head[0].length);
       return rest.trim() ? step(rest, line, first) : undefined;
     }
-    const decl = braces && !first && initial.size === 0 ? DECL.exec(text) : null;
+    const decl = braces && !first && initial.size === 0 ? declOf.exec(text) : null;
+    // Ruby has no braces: a def starts the next method in a whole-file pass.
+    if (rb && /^\s*def\s/.test(text)) {
+      if (!first && initial.size === 0) { tainted.clear(); htmlSafe.clear(); consts.clear(); slots.clear(); }
+      return;
+    }
     if (decl) {
       tainted.clear(); htmlSafe.clear(); writers.clear(); consts.clear(); slots.clear(); safeFor.clear(); derived.clear(); seen.clear(); lists.clear();
       route = py && lines.slice(Math.max(0, index - 3), index).some(l => ROUTE.test(l));
@@ -544,7 +664,7 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       calls(text, line);
       const isWeak = weak();
       const ret = /^\s*return\b([\s\S]*)$/.exec(text), destructure = /^\s*(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(.+)$/.exec(text);
-      const assignment = ASSIGN.exec(text), mutation = /^\s*([A-Za-z_$][\w$]*)\.(\w+)\s*\(/.exec(text), element = /^\s*([A-Za-z_$][\w$]*)\s*\[[^\]]*\]\s*=(?!=)([\s\S]+)$/.exec(text);
+      const multi = !py ? MULTI.exec(text) : null, assignment = multi ? null : ASSIGN.exec(text), mutation = /^\s*([A-Za-z_$][\w$]*)\.(\w+)\s*\(/.exec(text), element = /^\s*([A-Za-z_$][\w$]*)\s*\[[^\]]*\]\s*=(?!=)([\s\S]+)$/.exec(text);
       // Python: nothing after a return or raise in the same block runs.
       if (py && /^\s*(?:return|throw)\b/.test(text) && stack.length && stack[stack.length - 1].kind !== "switch") stack[stack.length - 1] = {kind: "dead"};
       if (ret && ret[1].trim()) {
@@ -558,7 +678,8 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       else if (destructure) {
         const from = origin(destructure[2], line);
         if (from !== undefined) for (const name of destructure[1].split(",")) { const n = name.split(":").pop()!.trim(); if (n) tainted.set(n, from); }
-      } else if (assignment) assign(assignment[2], assignment[3], assignment[4], line, isWeak && !assignment[1].trim() && !(py && !seen.has(assignment[2])));
+      } else if (multi) assign(multi[1], "=", multi[2], line, isWeak);
+      else if (assignment) assign(assignment[2], assignment[3] === ":=" ? "=" : assignment[3] === "+=" || assignment[3] === "=" ? assignment[3] : "+=", assignment[4], line, isWeak && !assignment[1].trim() && !(py && !seen.has(assignment[2])));
       else if (mutation && (MUTATOR.test(mutation[2]) || (py && PY_MUTATOR.test(mutation[2])))) mutate(mutation[1], mutation[2], splitArgs(text, mutation.index + mutation[0].length - 1), line, isWeak);
       else if (element) {
         const from = origin(element[2], line), s = py ? slots.get(element[1]) : undefined, key = /^\s*[A-Za-z_]\w*\s*\[\s*("@\d+"|\d+)\s*\]/.exec(text)?.[1];
@@ -572,7 +693,7 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
       for (const ch of text) if (ch === "{") { stack.push({kind: "plain"}); level++; } else if (ch === "}" && level-- > 0) stack.pop(); else if (ch === "}") stack.pop();
     }
   };
-  for (const s of statements(lines, lits)) { span = [firstLine + s.index, firstLine + s.end]; index = s.index; step(s.text, firstLine + s.index, skipFirst && s.index === 0); }
+  for (const s of statements(lines, lits, path)) { span = [firstLine + s.index, firstLine + s.end]; index = s.index; step(s.text, firstLine + s.index, skipFirst && s.index === 0); }
   return {hits, returned, markup};
 }
 
@@ -626,14 +747,14 @@ export function taintFlows(files: readonly TaintFile[]): TaintFlow[] {
     // A Python route reads the request through globals or helpers, so it is an entry point even without parameters.
     if (entry.length || (fn.route && PY.test(fn.path))) add(fn.path, analyse(fn.lines, fn.startLine, fn.path, new Map(entry.map(p => [p.name, fn.startLine])), summaries, fn.skipHead, project, fn.route).hits);
   }
-  for (const file of sources) if (SOURCE.test(text(file))) add(file.path, analyse(text(file).split(/\r?\n/), 1, file.path, new Map(), summaries, false, project).hits);
+  for (const file of sources) if (hasSource(file.path, text(file))) add(file.path, analyse(text(file).split(/\r?\n/), 1, file.path, new Map(), summaries, false, project).hits);
   return [...flows.values()].sort((a, b) => a.sink.path.localeCompare(b.sink.path) || a.sink.line - b.sink.line);
 }
 
-const LABEL: Record<SinkKind, string> = {sql: "SQL injection", command: "Command injection", code: "Code injection", path: "Path traversal", ssrf: "Server-side request forgery",
+const LABEL: Record<SinkKind, string> = {sql: "SQL injection", nosql: "NoSQL injection", command: "Command injection", code: "Code injection", path: "Path traversal", ssrf: "Server-side request forgery",
   xss: "Cross-site scripting", ldap: "LDAP injection", xpath: "XPath injection", "trust-boundary": "Trust boundary violation", redirect: "Open redirect",
   xxe: "XML external entity injection", deserialization: "Unsafe deserialization"};
 export function flowTitle(flow: TaintFlow): string {
   return LABEL[flow.kind] + ": request input reaches this sink" + (flow.via.length ? " through " + flow.via.join(" → ") : "");
 }
-export const flowSeverity = (flow: TaintFlow): "high" | "medium" => ["sql", "command", "code", "ldap", "xpath", "xxe", "deserialization"].includes(flow.kind) ? "high" : "medium";
+export const flowSeverity = (flow: TaintFlow): "high" | "medium" => ["sql", "nosql", "command", "code", "ldap", "xpath", "xxe", "deserialization"].includes(flow.kind) ? "high" : "medium";
