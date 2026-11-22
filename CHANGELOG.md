@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.9
+- **Setup repairs Ollama's missing key:** if `~/.ollama` was deleted while Ollama kept running, every model download failed until a restart. Setup now writes a fresh key and retries the download.
+- **Setup errors say what went wrong:** a failed model download shows Ollama's own error instead of "Check Ollama and disk space".
+- **Fewer false setup failures:** the OSV database step succeeds when the database was downloaded, even if the project has vulnerabilities (osv-scanner exits non-zero then). A failed model download no longer skips the analyzer installs.
+
 ## 1.0.8
 - **Every finding can be fixed or dismissed:** after `/scan`, `/security`, `/secrets`, `/dependencies` and `/gitleaks`, **Fix or dismiss a finding** lets you pick one, then fix it with local AI (diff to approve), explain it, or dismiss it. Dismissed findings (`.hushavyr/dismissed.json`) are now hidden from scans and dependency reports as well, not only from reviews.
 - **Dependency CVEs get a concrete fix:** each row shows the exact command or edit per ecosystem (npm, yarn, pnpm, pip, Poetry, uv, Go, Cargo, Composer, Bundler, Maven, Gradle, .NET); transitive packages get an override or constraint instead of a direct install. **Fix with local AI** upgrades the package in the manifest behind a diff: an exact bump when the version is declared, otherwise an override written by the local model and checked (valid JSON, fixed version present).

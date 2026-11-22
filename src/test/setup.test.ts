@@ -3,7 +3,9 @@ import { strict as assert } from "node:assert";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Module } from "node:module";
-import { LocalOllama } from "../ollama";
+import { LocalOllama, repairOllamaKey } from "../ollama";
+import { mkdtempSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { modelHint } from "../review";
 
 const stub = {window: undefined, workspace: undefined} as Record<string, unknown>;
@@ -45,6 +47,17 @@ test("ensureInstalled does not pull when the server is unreachable", async () =>
   await assert.rejects(client.ensureInstalled(), /unavailable/);
   assert.equal(pulls, 0);
   assert.equal(await client.isRunning(), false);
+});
+test("repairOllamaKey writes a missing Ollama key once, only at the expected path", () => {
+  const home = mkdtempSync(join(tmpdir(), "hush-home-"));
+  const key = join(home, ".ollama", "id_ed25519");
+  const missing = new Error("open " + key + ": no such file or directory");
+  assert.equal(repairOllamaKey(new Error("open /etc/id_ed25519: no such file or directory"), "http://127.0.0.1:11434", home), false);
+  assert.equal(repairOllamaKey(new Error("disk full"), "http://127.0.0.1:11434", home), false);
+  assert.equal(repairOllamaKey(missing, "http://127.0.0.1:11434", home), true);
+  assert.match(readFileSync(key, "utf8"), /BEGIN PRIVATE KEY/);
+  if (process.platform !== "win32") assert.equal(statSync(key).mode & 0o777, 0o600);
+  assert.equal(repairOllamaKey(missing, "http://127.0.0.1:11434", home), false);
 });
 test("recommendedModel scales with memory", () => {
   const gb = 1024 ** 3;

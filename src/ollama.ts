@@ -1,3 +1,7 @@
+import {generateKeyPairSync} from "node:crypto";
+import {existsSync, mkdirSync, writeFileSync} from "node:fs";
+import {homedir} from "node:os";
+import {join, resolve} from "node:path";
 export interface LocalModelConfig { model: string; timeoutMs?: number; endpoint?: string; /** Context window; smaller is faster and uses less memory. */ contextTokens?: number }
 export interface OllamaTransport { (url: string, init: RequestInit): Promise<Response> }
 export interface GenerateOptions { json?: boolean; schema?: object; signal?: AbortSignal; maxTokens?: number;
@@ -12,6 +16,22 @@ export function localEndpoint(value = "http://127.0.0.1:11434"): string {
   }
   if (url.hostname === "localhost") url.hostname = "127.0.0.1";
   return url.origin;
+}
+
+/**
+ * Deleting ~/.ollama while the server runs leaves it without its signing key, so every pull fails until a restart.
+ * Writes a fresh key where the local server looks for it (only that exact path, never overwriting) so the pull can be retried.
+ */
+export function repairOllamaKey(error: unknown, base: string, home = homedir()): boolean {
+  const missing = error instanceof Error ? /open (.+id_ed25519): no such file/.exec(error.message)?.[1] : undefined;
+  const expected = join(home, ".ollama", "id_ed25519");
+  if (!missing || resolve(missing) !== expected || existsSync(expected) || !/^http:\/\/127\.0\.0\.1:/.test(base)) return false;
+  try {
+    mkdirSync(join(home, ".ollama"), {recursive: true, mode: 0o700});
+    const {privateKey} = generateKeyPairSync("ed25519");
+    writeFileSync(expected, privateKey.export({type: "pkcs8", format: "pem"}), {mode: 0o600, flag: "wx"});
+    return true;
+  } catch { return false; }
 }
 
 function pullReason(error: unknown): string {
@@ -81,7 +101,7 @@ export class LocalOllama {
     if (signal?.aborted) abort();
     signal?.addEventListener("abort", abort, {once: true});
     const timeout = setTimeout(abort, 60 * 60 * 1000);
-    try {
+    const pull = async (): Promise<void> => {
       const response = await this.transport(this.base + "/api/pull", {
         method: "POST", headers: {"Content-Type": "application/json"}, redirect: "error", signal: controller.signal,
         body: JSON.stringify({model: this.config.model, stream: true})
@@ -110,6 +130,12 @@ export class LocalOllama {
       }
       handle(buffer);
       if (!success) throw new Error("pull failed");
+    };
+    try {
+      try { await pull(); } catch (error) {
+        if (!repairOllamaKey(error, this.base)) throw error;
+        await pull();
+      }
     } catch (error) {
       throw new Error("Could not download the local model" + pullReason(error) + ". No cloud fallback.");
     } finally {

@@ -93,13 +93,13 @@ export async function terminalSetup(io: SetupIO, endpoint: string, model: string
         io.out("\r  " + model + ": downloaded      ");
       } catch (error) {
         failed.push("downloading " + model + ": " + (error as Error).message.replace(/\.$/, ""));
-        break;
       }
     } else {
       io.suspend();
       const code = await run(step.command);
       io.resume();
-      if (code !== 0) {
+      // osv-scanner exits non-zero when the project has vulnerabilities; the step succeeded if the database is there.
+      if (step.kind === "osv-database" ? !await hasOsvDatabase() : code !== 0) {
         failed.push(step.label + " (exit code " + (code ?? "unknown") + ")");
         if (step.kind === "ollama-install") break;
       }

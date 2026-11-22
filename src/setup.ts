@@ -189,11 +189,11 @@ export async function runSetup(): Promise<void> {
           });
         } catch (error) {
           failed.push(model + " " + tr(language, "setupFailed") + " (" + (error as Error).message.replace(/\.$/, "") + ")");
-          return;
         }
       } else {
         const code = await runTask("Hushavyr setup: " + step.label, step.command);
-        if (code !== 0) {
+        // osv-scanner exits non-zero when the project has vulnerabilities; the step succeeded if the database is there.
+        if (step.kind === "osv-database" ? !await hasOsvDatabase() : code !== 0) {
           failed.push(step.label + " (exit code " + (code ?? "unknown") + ")");
           // Nothing else works without Ollama; analyzers are independent of each other.
           if (step.kind === "ollama-install") return;
