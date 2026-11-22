@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.8
 - **Every finding can be fixed or dismissed:** after `/scan`, `/security`, `/secrets`, `/dependencies` and `/gitleaks`, **Fix or dismiss a finding** lets you pick one, then fix it with local AI (diff to approve), explain it, or dismiss it. Dismissed findings (`.hushavyr/dismissed.json`) are now hidden from scans and dependency reports as well, not only from reviews.
 - **Dependency CVEs get a concrete fix:** each row shows the exact command or edit per ecosystem (npm, yarn, pnpm, pip, Poetry, uv, Go, Cargo, Composer, Bundler, Maven, Gradle, .NET); transitive packages get an override or constraint instead of a direct install. **Fix with local AI** upgrades the package in the manifest behind a diff: an exact bump when the version is declared, otherwise an override written by the local model and checked (valid JSON, fixed version present).
 - **Setup installs the `hushavyr` terminal command** (checked by default) so it also works in Terminal.app, iTerm and Windows Terminal, not only in VS Code terminals.
