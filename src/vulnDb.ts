@@ -1,11 +1,10 @@
 // Freshness of the offline CVE databases (Trivy, OSV). Only public vulnerability data is downloaded; no code or dependency list leaves the machine.
 import * as vscode from "vscode";
-import {exec} from "./exec";
 import {dbIsStale, formatDbAge, trivyDbAgeHours} from "./dependencyAudit";
-import {downloadOsvDatabase, osvDbAgeHours} from "./codeScanners";
+import {osvDbAgeHours} from "./codeScanners";
+import {downloadVulnDatabases, vulnDbsStale} from "./vulnDbDownload";
 
 export const UPDATE_VULN_DBS = "aiPrivacyRouter.updateVulnDbs";
-const missing = (e: unknown) => (e as {code?: unknown}).code === "ENOENT";
 let prompted = false;
 
 export async function vulnDbAges(): Promise<{trivy?: number; osv?: number}> {
@@ -25,24 +24,16 @@ export async function updateVulnerabilityDatabases(consented = false): Promise<b
       {modal: true}, "Download");
     if (choice !== "Download") return false;
   }
-  const done: string[] = [], failed: string[] = [];
+  let result = {done: [] as string[], failed: [] as string[]};
   await vscode.window.withProgress({location: vscode.ProgressLocation.Notification, title: "Hushavyr: updating CVE databases", cancellable: true}, async (progress, token) => {
     const controller = new AbortController();
     const subscription = token.onCancellationRequested(() => controller.abort());
     try {
-      progress.report({message: "Trivy"});
-      try {
-        await exec("trivy", ["image", "--download-db-only", "--quiet"], {timeout: 600000, windowsHide: true, signal: controller.signal});
-        await exec("trivy", ["image", "--download-java-db-only", "--quiet"], {timeout: 600000, windowsHide: true, signal: controller.signal});
-        done.push("Trivy");
-      } catch (e) { if (!missing(e)) failed.push("Trivy"); }
-      progress.report({message: "OSV"});
-      try {
-        for (const folder of vscode.workspace.workspaceFolders ?? []) if (folder.uri.scheme === "file") await downloadOsvDatabase(folder.uri.fsPath, controller.signal);
-        if (vscode.workspace.workspaceFolders?.length) done.push("OSV");
-      } catch (e) { if (!missing(e)) failed.push("OSV"); }
+      const roots = (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === "file").map(f => f.uri.fsPath);
+      result = await downloadVulnDatabases(roots, controller.signal, name => progress.report({message: name}));
     } finally { subscription.dispose(); }
   });
+  const {done, failed} = result;
   if (failed.length) void vscode.window.showErrorMessage("Hushavyr: " + failed.join(", ") + " database update failed. Check your network and that the scanner is installed.");
   else if (done.length) void vscode.window.showInformationMessage("Hushavyr: CVE databases updated (" + done.join(", ") + ").");
   else void vscode.window.showWarningMessage("Hushavyr: neither Trivy nor OSV-Scanner is installed. Run Hushavyr: Setup.");
@@ -52,8 +43,7 @@ export async function updateVulnerabilityDatabases(consented = false): Promise<b
 /** Before a dependency audit: update silently when autoUpdateVulnDb is on and a database is over a day old. */
 export async function autoUpdateIfStale(): Promise<void> {
   if (!vscode.workspace.getConfiguration("aiPrivacyRouter").get<boolean>("autoUpdateVulnDb", false)) return;
-  const ages = await vulnDbAges();
-  if (dbIsStale(ages.trivy) || dbIsStale(ages.osv)) await updateVulnerabilityDatabases(true);
+  if (await vulnDbsStale()) await updateVulnerabilityDatabases(true);
 }
 
 /** After a dependency audit: offer an update once per session when a database is over a day old. */

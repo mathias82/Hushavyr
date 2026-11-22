@@ -20,6 +20,7 @@ import {staticReview} from "../staticReview";
 import {addDismissal, dismissalText, fingerprint, loadDismissals, loadTeamRules, withTeamRules} from "../teamMemory";
 import {chatPrompt, chooseModel, COMMANDS, completeCommand, diffLines, languageOf, mentionedFiles, parseLine, replaceLines} from "./helpers";
 import {terminalSetup} from "./setup";
+import {downloadVulnDatabases, vulnDbsStale} from "../vulnDbDownload";
 import {runScanner} from "../externalScanners";
 import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../pullRequest";
 import {projectRootFor, runnerFor} from "../proofTarget";
@@ -40,7 +41,7 @@ const red = paint("31"), green = paint("32"), yellow = paint("33"), cyan = paint
 const out = (text = ""): void => { process.stdout.write(text + "\n"); };
 
 interface Stored {path: string; display: string; line: number; message: string; level: string; title?: string; fix?: string; evidence?: string}
-interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>}
+interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>; autoUpdateVulnDb?: boolean}
 const configDir = (): string => process.env.HUSHAVYR_CONFIG_DIR ?? join(homedir(), ".hushavyr");
 async function loadConfig(): Promise<Config> {
   try { return JSON.parse(await readFile(join(configDir(), "config.json"), "utf8")) as Config; } catch { return {}; }
@@ -86,9 +87,12 @@ class Session {
     this.wake = undefined;
     return this.queue.shift();
   }
-  private async ask(question: string): Promise<boolean> {
-    const answer = await this.read(bold(question) + " [y/N] ");
-    if (!this.interactive) out(question + " [y/N] " + (answer ?? ""));
+  private async ask(question: string, yes = false): Promise<boolean> {
+    const hint = yes ? " [Y/n] " : " [y/N] ";
+    const answer = await this.read(bold(question) + hint);
+    if (!this.interactive) out(question + hint + (answer ?? ""));
+    // Enter takes the default; closed input (undefined) never counts as yes.
+    if (yes && answer !== undefined && !answer.trim()) return true;
     return /^\s*(?:y|yes|ναι|nai)\s*$/i.test(answer ?? "");
   }
 
@@ -125,6 +129,7 @@ class Session {
         case "undo": return await this.undo();
         case "model": return await this.switchModel(rest, signal);
         case "setup": return await this.setup(signal);
+        case "update-db": return await this.updateDb(rest, signal);
         case "gitleaks": return await this.gitleaks(rest, signal);
         case "pr": return await this.pullRequest(rest);
         case "prove": return await this.prove(rest, signal);
@@ -204,6 +209,7 @@ class Session {
   private async scan(kind: "scan" | "security" | "secrets", arg: string): Promise<void> {
     const {abs, display} = this.path(arg || ".");
     if (!(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(display + " is not a folder.");
+    if (kind === "scan") await this.autoUpdateDb(abs);
     out(dim((kind === "scan" ? "Scanning " : kind === "secrets" ? "Looking for hardcoded secrets in " : "Security scan (no AI) of ") + display + " … nothing leaves this machine"));
     const results = await scanFolder(abs, RULES, line => out(dim("  " + line)), kind !== "scan");
     const kept = kind === "secrets" ? results.filter(r => r.ruleId === "hardcoded-credential") : results;
@@ -215,6 +221,7 @@ class Session {
 
   private async dependencies(arg: string, signal: AbortSignal): Promise<void> {
     const {abs, display} = this.path(arg || ".");
+    await this.autoUpdateDb(abs, signal);
     out(dim("Checking dependencies of " + display + " for CVEs with Trivy and OSV-Scanner (offline databases)…"));
     const {audit, vulnerabilities, totals} = await auditDependenciesWithOsv(abs, signal, true);
     for (const total of totals) out(dim("  " + total));
@@ -578,11 +585,40 @@ class Session {
     else out("Nothing was sent: " + (result.reason ?? result.outcome) + ".");
   }
 
+  private async updateDb(arg: string, signal?: AbortSignal): Promise<void> {
+    const auto = /^auto\s+(on|off)$/i.exec(arg);
+    if (auto) {
+      this.config.autoUpdateVulnDb = auto[1].toLowerCase() === "on";
+      await saveConfig(this.config);
+      out(this.config.autoUpdateVulnDb ? green("CVE databases will update before /scan and /dependencies when over a day old.") : "Automatic CVE database updates are off.");
+      return;
+    }
+    const {abs, display} = this.path(arg || ".");
+    out(dim("Downloading the latest public CVE databases (Trivy, OSV.dev) for " + (display === "." ? "this folder" : display) + "… no code or dependency list leaves this machine"));
+    const {done, failed} = await downloadVulnDatabases([abs], signal, name => out(dim("  " + name)));
+    if (signal?.aborted) return;
+    if (failed.length) out(yellow(failed.join(", ") + " database update failed. Check your network."));
+    if (done.length) out(green("CVE databases updated (" + done.join(", ") + ")."));
+    else if (!failed.length) out(yellow("Neither Trivy nor OSV-Scanner is installed: type /setup."));
+  }
+
+  private async autoUpdateDb(root: string, signal?: AbortSignal): Promise<void> {
+    if (!this.config.autoUpdateVulnDb || !await vulnDbsStale()) return;
+    out(dim("CVE databases are over a day old; updating first (/update-db auto off turns this off)…"));
+    const {failed} = await downloadVulnDatabases([root], signal);
+    if (failed.length) out(yellow(failed.join(", ") + " database update failed; scanning with the existing data."));
+  }
+
   private async setup(signal: AbortSignal): Promise<void> {
     await terminalSetup({out, dim, ask: q => this.ask(q), signal,
       // Piped input may already have closed readline.
       suspend: () => { if (!this.ended) this.rl.pause(); if (process.stdin.isTTY) process.stdin.setRawMode(false); },
       resume: () => { if (this.interactive) process.stdin.setRawMode(true); if (!this.ended) this.rl.resume(); }}, this.endpoint, this.model, this.cwd);
+    if (!this.config.autoUpdateVulnDb && !signal.aborted && await this.ask("Update the CVE databases automatically (daily, before /scan and /dependencies)?", true)) {
+      this.config.autoUpdateVulnDb = true;
+      await saveConfig(this.config);
+      out(green("On.") + dim(" /update-db auto off turns it off."));
+    }
   }
 }
 

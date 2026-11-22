@@ -144,17 +144,23 @@ export async function runSetup(): Promise<void> {
   let chosenTools: InstallableTool[] = [];
   // The `hushavyr` command for terminals outside VS Code (Terminal.app, iTerm, Windows Terminal).
   const shimMissing = !existsSync(shimPath(platform, homedir(), process.env));
-  let terminalCommand = false;
-  if (missing.length || shimMissing) {
+  const autoUpdateOff = !config.get<boolean>("autoUpdateVulnDb", false);
+  let terminalCommand = false, autoUpdate = false;
+  if (missing.length || shimMissing || autoUpdateOff) {
     const picked = await vscode.window.showQuickPick([
-      ...missing.map(tool => ({label: installCommands[tool].label, description: installCommands[tool].purpose, picked: true, tool: tool as InstallableTool | "terminal"})),
-      ...(shimMissing ? [{label: "hushavyr terminal command", description: "use Hushavyr in every terminal, not only in VS Code", picked: true, tool: "terminal" as const}] : [])],
+      ...missing.map(tool => ({label: installCommands[tool].label, description: installCommands[tool].purpose, picked: true, tool: tool as InstallableTool | "terminal" | "auto-update"})),
+      ...(shimMissing ? [{label: "hushavyr terminal command", description: "use Hushavyr in every terminal, not only in VS Code", picked: true, tool: "terminal" as const}] : []),
+      ...(autoUpdateOff ? [{label: "Update CVE databases daily", description: "before a dependency scan, download the latest public Trivy and OSV data when over a day old", picked: true, tool: "auto-update" as const}] : [])],
       {canPickMany: true, placeHolder: "What to install (uncheck any you do not want)"});
     if (!picked) return;
-    chosenTools = picked.flatMap(item => item.tool === "terminal" ? [] : [item.tool]);
+    chosenTools = picked.flatMap(item => item.tool === "terminal" || item.tool === "auto-update" ? [] : [item.tool]);
     terminalCommand = picked.some(item => item.tool === "terminal");
+    autoUpdate = picked.some(item => item.tool === "auto-update");
   }
-  const installTerminal = () => terminalCommand ? vscode.commands.executeCommand(INSTALL_TERMINAL_COMMAND) : undefined;
+  const installTerminal = async () => {
+    if (autoUpdate) await config.update("autoUpdateVulnDb", true, vscode.ConfigurationTarget.Global);
+    if (terminalCommand) await vscode.commands.executeCommand(INSTALL_TERMINAL_COMMAND);
+  };
 
   const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosenTools, osvInstalled: tools["osv-scanner"], osvDatabase, installers});
   const summary = () => "Ollama: " + (ollama || steps.some(s => s.kind === "ollama-install") ? "installed" : "missing") + " · model " + model +

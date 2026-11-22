@@ -33,7 +33,7 @@ export const osvDatabaseCommand = (root: string): string =>
 export const installCommands: Record<InstallableTool, {label: string; purpose: string; darwin: string; other: string}> = {
   semgrep: {label: "Semgrep", purpose: "additional offline security checks", darwin: "brew install semgrep", other: "pipx install semgrep"},
   gitleaks: {label: "Gitleaks", purpose: "offline secret scanning", darwin: "brew install gitleaks", other: "go install github.com/gitleaks/gitleaks/v8@latest"},
-  trivy: {label: "Trivy", purpose: "offline dependency vulnerability audits", darwin: "brew install trivy && trivy image --download-db-only", other: "See https://trivy.dev/latest/getting-started/installation/ then run: trivy image --download-db-only"},
+  trivy: {label: "Trivy", purpose: "offline dependency vulnerability audits", darwin: "brew install trivy && trivy image --download-db-only && trivy image --download-java-db-only", other: "See https://trivy.dev/latest/getting-started/installation/ then run: trivy image --download-db-only"},
   findsecbugs: {label: "FindSecBugs (SpotBugs)", purpose: "bytecode security analysis of compiled Java and Kotlin classes", darwin: "brew install spotbugs && " + pluginDownload, other: "See https://spotbugs.readthedocs.io/en/latest/installing.html then run: " + pluginDownload},
   bandit: {label: "Bandit", purpose: "offline Python security checks", darwin: "brew install bandit", other: "pipx install bandit"},
   gosec: {label: "gosec", purpose: "offline Go security checks", darwin: "brew install gosec", other: "go install github.com/securego/gosec/v2/cmd/gosec@latest"},

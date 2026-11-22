@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.11
+- **CVE databases stay current:** Setup offers **Update CVE databases daily** (checked by default). Before a dependency scan, Hushavyr then downloads the latest public Trivy and OSV data when it is over a day old. No code or dependency list leaves the machine.
+- **Terminal `/update-db`:** downloads the databases now. `/update-db auto on|off` controls the daily update, and `/setup` asks about it (Enter means yes).
+- **Trivy Java database:** Setup and every update also download it, so CVEs inside `.jar` files are found.
+
 ## 1.0.10
 - **Setup works the same on Linux and Windows:** analyzers are only offered when this machine can install them (Homebrew on macOS or Linux, otherwise pipx or go). The rest are listed with an install link instead of failing as a setup step. On Windows, setup installs Ollama and the model only.
 - **Ollama key repair on Windows too:** the missing-key case is recognized from the Windows error text. On Linux, the hint says `sudo systemctl restart ollama`.

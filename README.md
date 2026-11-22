@@ -71,6 +71,7 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/escalate <file>[:from-to] [question]` | Shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit` |
 | `/model [name]` | List installed models, or switch to another one |
 | `/setup` | Install and start Ollama, download the model and install the analyzers (asks first) |
+| `/update-db [auto on\|off]` | Download the latest public CVE databases (Trivy, OSV); `auto on` updates them daily before scans |
 | `/clear` | Forget the conversation so far |
 | `/help` | List the commands |
 | `/exit` | Quit (also Ctrl+D) |
@@ -143,7 +144,7 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 
 **Explain a finding with local AI:** after `/security` or `/secrets` (or their palette commands), click **Explain a finding**, or use the 💡 quick fix on any Hushavyr finding. The scanner result stays unchanged; the local model explains what it means in that exact code, whether it looks real, and suggests a minimal fix.
 
-**Fresh CVE data:** every dependency report shows how old the Trivy and OSV databases are. If one is over a day old, Hushavyr offers **Update now**; **Hushavyr: Update Vulnerability Databases** updates both. Turn on `aiPrivacyRouter.autoUpdateVulnDb` to update daily before audits. Only the public CVE database is downloaded; your code and dependency list never leave the machine.
+**Fresh CVE data:** every dependency report shows how old the Trivy and OSV databases are. If one is over a day old, Hushavyr offers **Update now**; **Hushavyr: Update Vulnerability Databases** updates both. **Hushavyr: Setup** turns on the daily update (`aiPrivacyRouter.autoUpdateVulnDb`, checked by default); in the terminal use `/update-db`, or `/update-db auto on`. Only the public CVE database is downloaded; your code and dependency list never leave the machine.
 
 Quick fixes on findings:
 - **Explain this finding (local AI):** context-aware explanation and a suggested fix, next to the original scanner result.

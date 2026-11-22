@@ -13,6 +13,7 @@ export const COMMANDS: readonly TerminalCommand[] = [
   {name: "security", usage: "/security [folder]", help: "Fast security scan without AI or external tools: rules, data flow, secrets"},
   {name: "secrets", usage: "/secrets [folder]", help: "Hardcoded passwords, keys and tokens (values are hidden)"},
   {name: "dependencies", usage: "/dependencies [folder]", help: "Dependency CVEs with Trivy and OSV-Scanner"},
+  {name: "update-db", usage: "/update-db [auto on|off]", help: "Download the latest public CVE databases (Trivy, OSV); auto on updates them daily before scans"},
   {name: "gitleaks", usage: "/gitleaks [history] [folder]", help: "Secrets with Gitleaks; history also checks every past commit"},
   {name: "prove", usage: "/prove <N|file bug>", help: "Red/green proof in offline Docker: a failing test, then a fix that makes it pass"},
   {name: "pr", usage: "/pr [title]", help: "Commit the changes, push a branch and open a pull request (asks first, blocks secrets)"},

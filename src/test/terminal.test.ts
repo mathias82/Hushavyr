@@ -142,6 +142,14 @@ test("hushavyr without Ollama: scans still work and AI commands say how to set u
   assert.equal(await readFile(join(dir, "books.js"), "utf8"), BOOKS);
 });
 
+test("hushavyr /update-db: auto on is saved, and missing scanners are reported instead of failing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+  const output = await session(dir, "http://127.0.0.1:9", ["/update-db auto on", "/update-db"], {PATH: join(dir, "no-tools")});
+  assert.match(output, /CVE databases will update before \/scan and \/dependencies/);
+  assert.equal((JSON.parse(await readFile(join(dir, ".config", "config.json"), "utf8")) as {autoUpdateVulnDb?: boolean}).autoUpdateVulnDb, true);
+  assert.match(output, /Neither Trivy nor OSV-Scanner is installed: type \/setup\./);
+});
+
 test("hushavyr /dismiss hides a finding for the team, also in later scans", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
   await mkdir(join(dir, ".git"));
