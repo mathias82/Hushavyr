@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.13
+- **`/escalate on|off` in VS Code chat:** turns cloud escalation on or off after a confirmation, saved to the open workspace (or User settings with no folder). Previously only the terminal understood it.
+- **Clear reason when blocked:** a blocked `/escalate` names what blocks it (setting off, `mandatoryLocalOnly`, untrusted or remote workspace) and offers an **Open setting** button.
+- **README:** how to turn escalation on, and the recommended per-workspace use.
+
 ## 1.0.12
 - **Terminal `/review` on a folder:** `/review`, `/review all` or `/review <folder>` scan the whole folder (as `/scan`) instead of failing with "is not a file".
 - **The chat knows where it is:** the local model is told the folder name and the Hushavyr commands. "Review this folder" gets "type /scan" instead of "I can't access your files".
