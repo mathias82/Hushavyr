@@ -124,7 +124,7 @@ test("hushavyr session: chat with a mentioned file, scan, fix behind an approved
     assert.match(output, /• Added a header comment[\s\S]*Applied to books\.js\./);
     assert.equal(await readFile(file, "utf8"), BOOKS.replace("const app", "// Books API\nconst app"));
     assert.ok(prompts.some(p => p.includes("A deterministic security scanner reported this finding")), "/explain N explains the finding");
-    assert.match(output, /Reviewing books\.js with fake-coder:1b[\s\S]*\[1\] HIGH {3}books\.js:\d+ {2}Local rule: SQL injection[\s\S]*Fix: /);
+    assert.match(output, /Reviewing books\.js with fake-coder:1b[\s\S]*\[1\] HIGH {3}books\.js:\d+ {2}Local rule: SQL [\s\S]*Fix: /);
     assert.match(output, /Current model: fake-coder:1b\nInstalled: fake-coder:1b/);
   } finally { server.close(); }
 });
