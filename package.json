@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, fixes them behind a diff you approve, also from the terminal (`hushavyr`). Your code never leaves your machine.",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -354,6 +354,15 @@
           "type": "boolean",
           "default": false,
           "description": "Allow /escalate to send a selected, pseudonymized function to a Copilot model after you preview and approve the exact payload. Off by default; secrets, PII, sensitive and ignored files are always blocked."
+        },
+        "aiPrivacyRouter.suggestEscalation": {
+          "type": "string",
+          "enum": [
+            "when-unsure",
+            "never"
+          ],
+          "default": "when-unsure",
+          "description": "When the local model looks unsure (second pass disagrees, unusable or hedging answer, no findings in complex code), offer an 'Ask Copilot' button. Nothing is sent unless you click it, allow /escalate and approve the exact pseudonymized text. Never shown when local-only is mandatory."
         },
         "aiPrivacyRouter.findSecBugsPlugin": {
           "type": "string",

@@ -4,8 +4,12 @@ import type * as vscode from "vscode";
 class Uri {
   constructor(readonly value: string, readonly scheme = "file") {}
   toString() { return this.value; }
+  static parse(value: string) { return new Uri(value); }
 }
 class Location {}
+class Position { constructor(readonly line: number, readonly character: number) {} }
+class Range { constructor(...args: unknown[]) { void args; } }
+class Diagnostic { constructor(...args: unknown[]) { void args; } }
 class TabInputText {}
 const disposable = {dispose() {}};
 let handler: (request: any, context: any, stream: any, token: any) => Promise<unknown>;
@@ -16,7 +20,7 @@ const registeredCommands = new Set<string>();
 const configUpdates: unknown[][] = [];
 let copilotLookups = 0, participantRegistrations = 0;
 const fake = {
-  Uri, Location, TabInputText, ConfigurationTarget: {Global: 1, Workspace: 2},
+  Uri, Location, TabInputText, Position, Range, Diagnostic, ConfigurationTarget: {Global: 1, Workspace: 2},
   languages: {createDiagnosticCollection: () => ({clear() {}, set() {}, dispose() {}}), registerCodeActionsProvider: () => disposable},
   CodeActionKind: {QuickFix: "quickfix"},
   DiagnosticSeverity: {Error: 0, Warning: 1, Information: 2},
@@ -206,4 +210,20 @@ test("chat /escalate on asks first, turns the setting on, and a blocked escalati
     await chat({}, [], "off", false, "escalate");
     assert.deepEqual(configUpdates[1], ["cloudEscalation", false, 1]);
   } finally { fake.window.showWarningMessage = warn; configuration.cloudEscalation = undefined; }
+});
+
+test("an unsure local review offers Ask Copilot; a confident one and a mandatory local-only workspace do not", async () => {
+  // A different trailing comment per call, so the review cache never answers.
+  const code = (n: number) => ({"file:///Pay.java": "class Pay {\n  long total(int q, int c) {\n    return q * c;\n  }\n}\n// " + n});
+  const candidate = JSON.stringify({findings: [{title: "Integer overflow", severity: "medium", path: "file:///Pay.java", startLine: 3, endLine: 3, fix: "Use long", regressionTest: "Large values"}]});
+  const rejected = await chat(code(1), [candidate, '{"verdicts":[{"index":0,"supported":false}]}']);
+  assert.match(rejected.output, /The local model may be wrong here: the second local pass rejected 1 finding\(s\)/);
+  assert.match(rejected.output, /\[button\] Ask Copilot \(pseudonymized, needs approval\)/);
+  const confident = await chat(code(2), [candidate, '{"verdicts":[{"index":0,"supported":true}]}']);
+  assert.doesNotMatch(confident.output, /Ask Copilot|may be wrong/);
+  configuration.mandatoryLocalOnly = true;
+  try {
+    const locked = await chat(code(3), [candidate, '{"verdicts":[{"index":0,"supported":false}]}']);
+    assert.doesNotMatch(locked.output, /Ask Copilot|may be wrong/);
+  } finally { configuration.mandatoryLocalOnly = undefined; }
 });

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { runLocalReview } from "./localReview";
 import { staticReview } from "./staticReview";
 import { join } from "node:path";
+import { reviewDifficulty } from "./difficulty";
 
 export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; mechanism: RegExp} }
 // Synthetic, public examples. Scores measure this small fixture set only.
@@ -301,6 +302,8 @@ async function main(args: string[]) {
   const useStatic = process.env.REVIEW_STATIC !== "0";
   let tp = 0, fp = 0, fn = 0, errors = 0, verifierFailures = 0;
   const cases: object[] = [];
+  // How well "the local model is unsure" predicts its own mistakes (the escalation suggestion).
+  const unsure = {mistakes: 0, onMistakes: 0, correct: 0, onCorrect: 0};
   for (const fixture of benchmarkCases) {
     const started = Date.now();
     try {
@@ -310,15 +313,21 @@ async function main(args: string[]) {
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;
       if (result.verifierFailed) verifierFailures++;
-      cases.push({id: fixture.id, ...score, verifierFailed: !!result.verifierFailed, durationMs: Date.now() - started});
+      const difficulty = reviewDifficulty(result, fixture.sources.map(s => s.text).join("\n"));
+      const wrong = score.falsePositive > 0 || score.falseNegative > 0;
+      unsure[wrong ? "onMistakes" : "onCorrect"] += difficulty.hard ? 1 : 0;
+      unsure[wrong ? "mistakes" : "correct"]++;
+      cases.push({id: fixture.id, ...score, verifierFailed: !!result.verifierFailed, unsure: difficulty.reasons, durationMs: Date.now() - started});
     } catch {
       errors++; if (fixture.expected) fn++;
+      unsure.mistakes++; unsure.onMistakes++;
       cases.push({id: fixture.id, error: true, durationMs: Date.now() - started});
     }
   }
   console.log(JSON.stringify({model, verifierModel, depth, staticAnalysis: useStatic, fixtureCount: benchmarkCases.length, cases,
     truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures,
     precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null,
+    escalationSuggested: {onMistakes: unsure.onMistakes + "/" + unsure.mistakes, onCorrect: unsure.onCorrect + "/" + unsure.correct},
     limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. No raw source or model response is included."}, null, 2));
   if (errors || verifierFailures || fp || fn) process.exitCode = 1;
 }

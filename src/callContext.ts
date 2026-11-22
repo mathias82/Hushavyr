@@ -91,6 +91,13 @@ export function callContext(source: ReviewSource, files: readonly CodeFile[], ma
     bytes += size;
     result.push({path: file.path, text: snippet.text, startLine: snippet.startLine});
   };
+  // The reviewed code's own tests show its intended behavior; one snippet, before definitions and callers.
+  const stem = fileStem(source.path);
+  const test = stem ? others.find(f => isTestFileOf(f.path, stem)) : undefined;
+  if (test) for (const name of definedNames(source.text)) {
+    const snippet = callerSnippet(test.text, name);
+    if (snippet) { add(test, snippet); break; }
+  }
   for (const name of calledNames(source.text)) {
     const file = others.find(f => definedNames(f.text).has(name));
     if (file) add(file, definitionSnippet(file.text, name));
@@ -102,4 +109,14 @@ export function callContext(source: ReviewSource, files: readonly CodeFile[], ma
     if (result.length >= maxFiles) break;
   }
   return result;
+}
+
+function fileStem(path: string): string {
+  return (path.split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "").toLowerCase();
+}
+
+/** FooTest.java, FooTests.cs, foo.test.ts, foo.spec.js, test_foo.py, foo_test.py/go for the stem "foo". */
+export function isTestFileOf(path: string, stem: string): boolean {
+  const name = fileStem(path);
+  return name !== stem && [stem + "test", stem + "tests", stem + "spec", stem + ".test", stem + ".spec", "test_" + stem, stem + "_test"].includes(name);
 }

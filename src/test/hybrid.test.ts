@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { staticReview, semgrepToFindings } from "../staticReview";
 import { mergeFindings, runLocalReview, LENSES } from "../localReview";
-import { callContext, definitionSnippet } from "../callContext";
+import { callContext, definitionSnippet, isTestFileOf } from "../callContext";
+import { reviewPrompt } from "../review";
 import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../reachability";
 import { toSarif, sarifLevel } from "../sarif";
 import { ResultCache } from "../reviewCache";
@@ -73,6 +74,18 @@ test("call context pulls the callee definition from another file", () => {
   assert.equal(extra[0].startLine, 2);
   assert.match(extra[0].text, /query\(id\)/);
   assert.equal(definitionSnippet("def other():\n  pass", "missing"), undefined);
+});
+
+test("call context adds the reviewed file's own test first, and the prompt gets checklists only for the reviewed languages", () => {
+  const source = {path: "file:///src/Price.java", text: "class Price {\n  long total(int q, int c) {\n    return q * c;\n  }\n}"};
+  const files = [{path: "file:///src/Other.java", text: "class Other { void x() { new Price().total(1, 2); } }"},
+    {path: "file:///test/PriceTest.java", text: "class PriceTest {\n  @Test void big() {\n    assertEquals(4_000_000_000L, new Price().total(2, 2_000_000_000));\n  }\n}"}];
+  assert.equal(callContext(source, files)[0].path, "file:///test/PriceTest.java");
+  assert.ok(["foo.test.ts", "test_foo.py", "foo_test.go", "FooTests.cs", "foo.spec.js"].every(p => isTestFileOf(p, "foo")));
+  assert.ok(!isTestFileOf("foo.ts", "foo") && !isTestFileOf("bar.test.ts", "foo"));
+  const prompt = reviewPrompt("review", [source]);
+  assert.match(prompt, /Java\/Kotlin checklist: int overflow/);
+  assert.doesNotMatch(prompt, /Python checklist|Go checklist/);
 });
 
 test("reachability separates imported from transitive dependencies", () => {

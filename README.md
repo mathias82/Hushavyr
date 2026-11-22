@@ -68,6 +68,7 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
 | `/pr [title]` | Commit, push a branch and open a pull request with `gh`, after you confirm. Stops if a changed file looks like it has a secret |
 | `/escalate on\|off` | Allow or block sending code to GitHub Copilot. Off by default |
+| `/escalate suggest on\|off` | Offer `/escalate` when the local model may be wrong (on by default; asks first, default No) |
 | `/escalate <file>[:from-to] [question]` | Shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit` |
 | `/model [name]` | List installed models, or switch to another one |
 | `/setup` | Install and start Ollama, download the model and install the analyzers (asks first) |
@@ -230,6 +231,7 @@ Yes. Install it from [Open VSX](https://open-vsx.org/extension/mathias82/hushavy
   - You see the exact text before anything is sent, and every send is written to a local audit log.
   - The answer is a suggestion: verify it locally.
 - To turn it on, type `@ai-privacy /escalate on` in chat and confirm (`/escalate off` turns it off). It is saved to the open workspace's settings, or to your User settings if no folder is open. You can also tick `aiPrivacyRouter.cloudEscalation` in Settings (`Cmd+,` / `Ctrl+,`). In the `hushavyr` terminal, use `/escalate on`. It stays blocked while `aiPrivacyRouter.mandatoryLocalOnly` or `chat.disableAIFeatures` is on, in untrusted workspaces and in remote (SSH, container) sessions; the chat lists which of these applies.
+- **When the local model may be wrong**, Hushavyr says so and offers to ask Copilot about that exact code. This happens when the second check rejects findings, findings have no matching code, complex code (concurrency, deep nesting, 120+ lines) gets a clean review, the answer hedges ("I'm not sure"), you ask "are you sure?", or the model fails. In chat you get an **Ask Copilot (pseudonymized, needs approval)** button; in the terminal a `y/N` question (default No). Both go through the same preview and approval as `/escalate`. Nothing is suggested while escalation is blocked (see the previous point). Turn suggestions off with `aiPrivacyRouter.suggestEscalation: "never"`, or `/escalate suggest off` in the terminal.
 - Recommended: keep it off in **User** settings and turn it on per project in **Workspace** settings, only for code you may share (your own or open source). For company or client code, set `aiPrivacyRouter.mandatoryLocalOnly` to `true` in that workspace so it can never be turned on there.
 - Findings are potential issues. Check them before acting.
 - No telemetry. **Hushavyr: Report an Issue** shows a redacted report (versions, OS, settings without endpoints or paths) and opens a GitHub issue only if you click it.

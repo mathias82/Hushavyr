@@ -5,6 +5,8 @@ import * as vscode from "vscode";
 import {classifyInput} from "./classifier";
 import {confirmPublicPayload, createAutoPrompt, formatRouted, pickCopilotModel} from "./autoPrompt";
 import {escalate} from "./escalation";
+import {escalationBlockers, offerEscalation, setCloudEscalation} from "./escalateSuggest";
+import {answerDifficulty, escalationFragment, reviewDifficulty} from "./difficulty";
 import {EditTarget, runEdit} from "./editFlow";
 import {improveInstruction, isEditRequest} from "./codeEdit";
 import {openPullRequest} from "./prFlow";
@@ -155,12 +157,9 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       const toggle = /^\s*(on|enable|off|disable)\s*$/i.exec(request.prompt)?.[1].toLowerCase();
       if (toggle) {
         const on = toggle === "on" || toggle === "enable";
-        const scope = vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-        const where = scope === vscode.ConfigurationTarget.Workspace ? "this workspace" : "all windows";
-        if (on && await vscode.window.showWarningMessage("Allow /escalate in " + where + "? It can send a selected, pseudonymized fragment to a Copilot model, only after you approve the exact text.",
-          {modal: true}, "Allow") !== "Allow") { stream.markdown("Cloud escalation stays off."); return; }
-        await config.update("cloudEscalation", on, scope);
-        const blockers = escalationBlockers(config);
+        const {changed, where} = await setCloudEscalation(on);
+        if (!changed) { stream.markdown("Cloud escalation stays off."); return; }
+        const blockers = escalationBlockers(vscode.workspace.getConfiguration("aiPrivacyRouter"));
         stream.markdown(on ? "Cloud escalation is on for " + where + ". Select code and ask `@ai-privacy /escalate <question>`."
           + (blockers.length ? "\n\nStill blocked: " + blockers.join(", ") + "." : "") : "Cloud escalation is off for " + where + ".");
         return;
@@ -424,6 +423,12 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       stream.markdown("Select code or attach local files first. Nothing was sent.");
       return;
     }
+    // The code offered to Copilot when the local model is unsure: the reviewed fragment, or a window around a finding.
+    const unsureFragment = (line?: number) => {
+      const first = sources[0];
+      const part = first && escalationFragment(first.text, first.startLine ?? 1, line);
+      return part && {uri: first.path.startsWith("file:") ? first.path : undefined, path: relativeLocation(first.path), code: part.code, question: instruction};
+    };
     const controller = new AbortController();
     const subscription = token.onCancellationRequested(() => controller.abort());
     try {
@@ -450,7 +455,9 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       }
       if (!isReview) {
         // Prose answers stream as the local model writes them.
-        await client.generate(prompt, {signal: controller.signal, onText: chunk => { if (!token.isCancellationRequested) stream.markdown(chunk); }});
+        let answer = "";
+        await client.generate(prompt, {signal: controller.signal, onText: chunk => { answer += chunk; if (!token.isCancellationRequested) stream.markdown(chunk); }});
+        if (!token.isCancellationRequested) offerEscalation(stream, answerDifficulty(answer, instruction), unsureFragment());
         if (!token.isCancellationRequested && explains && request.command === "review")
           stream.markdown("\n\n_/review looks for bugs and security issues only; for explanations use `@ai-privacy /explain`._");
       } else {
@@ -493,9 +500,14 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
           if (hidden) stream.markdown("\n\n_" + hidden + " finding(s) hidden: dismissed by your team in `.hushavyr/dismissed.json`._");
           if (!validated.error) publishFindings(reviewDiagnostics, kept);
         }
+        if (!token.isCancellationRequested) offerEscalation(stream, reviewDifficulty(validated, sources[0].text),
+          unsureFragment(validated?.findings.find(f => f.verification !== "supported")?.line ?? validated?.findings[0]?.line));
       }
     } catch {
-      if (!token.isCancellationRequested) stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");
+      if (!token.isCancellationRequested) {
+        stream.markdown("Local request failed. Check the Ollama endpoint and installed model with `npm run ai:serve`. **No cloud fallback.**");
+        offerEscalation(stream, {hard: true, reasons: ["the local model failed"]}, unsureFragment());
+      }
     } finally { subscription.dispose(); }
 
   };
@@ -505,12 +517,3 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
   return handler;
 }
 
-function escalationBlockers(config: vscode.WorkspaceConfiguration): string[] {
-  const reasons: string[] = [];
-  if (!config.get<boolean>("cloudEscalation", false)) reasons.push("`aiPrivacyRouter.cloudEscalation` is off");
-  if (config.get<boolean>("mandatoryLocalOnly", false)) reasons.push("`aiPrivacyRouter.mandatoryLocalOnly` is on");
-  if (vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false)) reasons.push("`chat.disableAIFeatures` is on");
-  if (!vscode.workspace.isTrusted) reasons.push("the workspace is not trusted");
-  if (vscode.env?.remoteName) reasons.push("this is a remote session");
-  return reasons;
-}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.14
+- **Suggests Copilot when the local model may be wrong:** after a review, explanation or chat answer, Hushavyr names why the answer may be wrong (second check rejected findings, findings without matching code, clean review of complex code, hedging, "are you sure?", model failure) and offers to ask Copilot about that exact code. Chat shows a button, the terminal asks `y/N`. Nothing is sent without the usual preview and approval, and nothing is offered while policy blocks escalation. Setting `aiPrivacyRouter.suggestEscalation` (`when-unsure` or `never`); terminal `/escalate suggest on|off`.
+- **Reviews see the file's own tests:** when reviewing `Foo.java`, `foo.ts` or `foo.py`, the matching test (`FooTest.java`, `foo.test.ts`, `test_foo.py`, `foo_test.go`…) that calls its code is added as context.
+- **Per-language checklists:** the review prompt adds a short list of common bugs only for the languages being reviewed (Java/Kotlin, JS/TS, Python, Go, C#, PHP, Ruby).
+- **Benchmark:** reports how often an escalation would be suggested on wrong vs. correct reviews.
+
 ## 1.0.13
 - **`/escalate on|off` in VS Code chat:** turns cloud escalation on or off after a confirmation, saved to the open workspace (or User settings with no folder). Previously only the terminal understood it.
 - **Clear reason when blocked:** a blocked `/escalate` names what blocks it (setting off, `mandatoryLocalOnly`, untrusted or remote workspace) and offers an **Open setting** button.

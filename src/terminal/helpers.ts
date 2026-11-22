@@ -17,7 +17,7 @@ export const COMMANDS: readonly TerminalCommand[] = [
   {name: "gitleaks", usage: "/gitleaks [history] [folder]", help: "Secrets with Gitleaks; history also checks every past commit"},
   {name: "prove", usage: "/prove <N|file bug>", help: "Red/green proof in offline Docker: a failing test, then a fix that makes it pass"},
   {name: "pr", usage: "/pr [title]", help: "Commit the changes, push a branch and open a pull request (asks first, blocks secrets)"},
-  {name: "escalate", usage: "/escalate <on|off|file[:a-b] [q]>", help: "Opt-in: send an approved, pseudonymized fragment to GitHub Copilot (Copilot CLI)"},
+  {name: "escalate", usage: "/escalate <on|off|suggest on|off|file[:a-b] [q]>", help: "Opt-in: send an approved, pseudonymized fragment to GitHub Copilot (Copilot CLI); offered when the local model looks unsure"},
   {name: "findings", usage: "/findings", help: "Show the findings of the last report again"},
   {name: "model", usage: "/model [name]", help: "Show the installed models, or switch to another one"},
   {name: "setup", usage: "/setup", help: "Install and start Ollama, download the model and install the analyzers"},

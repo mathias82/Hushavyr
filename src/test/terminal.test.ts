@@ -75,7 +75,11 @@ async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts:
       if (req.url === "/api/show") return res.end(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
       const request = JSON.parse(body || "{}") as {prompt: string; stream?: boolean};
       prompts.push(request.prompt);
-      if (request.stream) return res.end(JSON.stringify({response: "Local "}) + "\n" + JSON.stringify({response: "answer.", done: true}) + "\n");
+      if (request.stream) return res.end(JSON.stringify({response: request.prompt.includes("are you sure") ? "I'm not sure without more context. " : "Local "}) + "\n" + JSON.stringify({response: "answer.", done: true}) + "\n");
+      if (request.prompt.includes("skeptical second reviewer")) {
+        const candidates = JSON.parse(request.prompt.slice(request.prompt.indexOf("UNTRUSTED CANDIDATES:\n") + 22)) as unknown[];
+        return res.end(JSON.stringify({response: JSON.stringify({verdicts: candidates.map((_, index) => ({index, supported: true}))})}));
+      }
       if (request.prompt.includes("Apply ONE minimal fix")) {
         const excerpt = request.prompt.slice(request.prompt.indexOf("\n", request.prompt.indexOf("FILE ")) + 1).split("\n").map(l => l.replace(/^\d+: /, ""));
         const replacement = excerpt.join("\n").replace('"SELECT * FROM books WHERE id = " + id,', '"SELECT * FROM books WHERE id = ?", [id],');
@@ -203,4 +207,24 @@ test("Copilot CLI runs without a shell: winget copilot.exe directly, the npm .cm
   assert.equal(resolveCopilot(undefined, "win32", "C:/empty", exists, "node"), undefined);
   assert.equal(resolveCopilot("C:/x/copilot.cmd", "win32", "", exists, "node"), undefined);
   assert.deepEqual(resolveCopilot(undefined, "darwin", "/usr/bin", exists, "node"), {file: "copilot", args: []});
+});
+
+test("hushavyr offers /escalate only when the local model is unsure, asks first, and /escalate suggest off stops it", async () => {
+  const {server, endpoint} = await fakeOllama();
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+    await writeFile(join(dir, "books.js"), BOOKS);
+    const fake = join(dir, "fake-copilot.js"), sent = join(dir, "sent.txt");
+    await writeFile(fake, "require('fs').writeFileSync(" + JSON.stringify(sent) + ", process.argv[3]); console.log('Copilot says hi.');\n");
+    const output = await session(dir, endpoint, ["what does books.js do?", "are you sure about books.js?", "n", "are you sure about books.js?", "y", "y",
+      "/escalate suggest off", "are you sure about books.js?"], {HUSHAVYR_COPILOT: fake});
+    const [first, ...rest] = output.split("The local model may be wrong here");
+    assert.doesNotMatch(first, /Turn on \/escalate/, "a confident answer offers nothing");
+    assert.equal(rest.length, 2, "suggested twice, not after suggest off");
+    assert.match(rest[0], /you doubted the previous answer[\s\S]*Turn on \/escalate and ask GitHub Copilot about books\.js:1-\d+\? .*\[y\/N\] n/);
+    assert.match(rest[1], /Exact text to send to GitHub Copilot[\s\S]*Send exactly this text\? \[y\/N\] y[\s\S]*Copilot says hi\.[\s\S]*No more \/escalate suggestions\./);
+    assert.ok(!(await readFile(sent, "utf8")).includes("SELECT"), "sent pseudonymized");
+    const config = JSON.parse(await readFile(join(dir, ".config", "config.json"), "utf8")) as {cloudEscalation?: boolean; suggestEscalation?: boolean};
+    assert.deepEqual([config.cloudEscalation, config.suggestEscalation], [true, false]);
+  } finally { server.close(); }
 });

@@ -5,6 +5,7 @@ import {registerVerifiedFix} from "./fixAgent";
 import {registerVerifiedFixPr} from "./fixPrAgent";
 import {createAutoPrompt} from "./autoPrompt";
 import {registerEditCommands} from "./editFlow";
+import {registerEscalationCommands} from "./escalateSuggest";
 import {registerPullRequestCommand} from "./prFlow";
 import {addDismissal, dismissalText, fingerprint} from "./teamMemory";
 import {runSetup} from "./setup";
@@ -54,6 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerDependencyQuickFix(context);
   registerApplyFix(context);
   registerEditCommands(context);
+  registerEscalationCommands(context);
   registerPullRequestCommand(context);
   registerOllamaCommands(context);
   registerReportIssue(context);
