@@ -78,7 +78,7 @@ test("computes vulnerability database age in whole days", () => {
   assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
   assert.equal(dbAgeDays("not json", now), undefined);
 });
-import {fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix} from "../fixEdit";
+import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix} from "../fixEdit";
 import {parseChangedFiles} from "../changedFiles";
 test("fix window stays inside the file", () => {
   assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});
@@ -126,4 +126,13 @@ test("CVE database age uses the download time and flags anything over a day as s
   await mkdir(join(dir, "npm"));
   await writeFile(join(dir, "npm", "all.zip"), "x");
   assert.equal(await osvDbAgeHours([dir], Date.now() + 3.5 * 3_600_000), 3);
+});
+
+test("findingFix gives scanner, data-flow and secret findings a fix by kind; dependency CVEs are left to the upgrade quick fix", () => {
+  assert.match(findingFix("HIGH · SQL injection: request input reaches this sink · sink src/books.js:9 · input src/books.js:8")!.fix, /parameterized query/);
+  assert.equal(findingFix("HIGH · SQL injection: request input reaches this sink · sink src/books.js:9 · input src/books.js:8")!.title, "SQL injection: request input reaches this sink");
+  assert.match(findingFix("MEDIUM · Open redirect: request input reaches this sink")!.fix, /relative path/);
+  assert.match(findingFix("Potential hardcoded credential (AWS key); value redacted")!.fix, /environment variable/);
+  assert.equal(findingFix("Null check\nFix: guard the value")!.fix, "guard the value");
+  assert.equal(findingFix("CVE-2018-1000656 in flask 0.12.2 (HIGH). Fixed in 0.12.3."), undefined);
 });

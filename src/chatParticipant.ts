@@ -23,6 +23,7 @@ import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./
 import {lowMemoryWarning} from "./setup";
 import {runWorkspaceScan, isScanCommand} from "./workspaceScan";
 import {EXPLAIN_FINDING, rememberReport} from "./explainFinding";
+import {FIX_FINDING} from "./applyFix";
 import {formatTestReceipt} from "./regression";
 import {runWorkspaceTests} from "./localCommands";
 
@@ -198,8 +199,10 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
         ? (value: string | vscode.MarkdownString) => { report += typeof value === "string" ? value : value.value; return stream.markdown(value); }
         : (v => typeof v === "function" ? v.bind(stream) : v)(Reflect.get(stream, key))});
       await runWorkspaceScan(context, request, recording, token);
-      if (!token.isCancellationRequested && rememberReport(report))
+      if (!token.isCancellationRequested && rememberReport(report)) {
         stream.button({command: EXPLAIN_FINDING, title: "Explain a finding (local AI)"});
+        if (request.command !== "dependencies") stream.button({command: FIX_FINDING, title: "Fix a finding (local AI, diff to approve)"});
+      }
       return;
     }
     // VS Code may change editor focus when Chat opens. Use the last non-empty selection.

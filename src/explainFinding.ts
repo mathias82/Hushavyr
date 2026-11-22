@@ -5,7 +5,7 @@ import {configuredClient} from "./model";
 import {classifyInput} from "./classifier";
 
 export const EXPLAIN_FINDING = "aiPrivacyRouter.explainFinding";
-interface FindingArg { uri: string; line: number; message: string }
+export interface FindingArg { uri: string; line: number; message: string }
 let lastFindings: ReportFinding[] = [];
 
 /** Keeps the findings of the latest security/dependency/secrets report for the "Explain finding" picker. */
@@ -32,7 +32,7 @@ export function registerExplainFinding(context: vscode.ExtensionContext): void {
     }, {providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]}));
 }
 
-async function pickFinding(): Promise<FindingArg | undefined> {
+export async function pickFinding(placeHolder = "Which finding should local AI explain?", accept: (finding: FindingArg) => boolean = () => true): Promise<FindingArg | undefined> {
   const editor = vscode.window.activeTextEditor;
   const here = editor ? vscode.languages.getDiagnostics(editor.document.uri)
     .filter(d => d.source === "Hushavyr" && d.range.start.line === editor.selection.active.line) : [];
@@ -40,13 +40,13 @@ async function pickFinding(): Promise<FindingArg | undefined> {
     ...here.map(d => ({label: d.message.split("\n")[0], description: vscode.workspace.asRelativePath(editor!.document.uri, false) + ":" + (d.range.start.line + 1),
       finding: {uri: editor!.document.uri.toString(), line: d.range.start.line + 1, message: d.message}})),
     ...lastFindings.map(f => ({label: f.message, description: vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri), false) + ":" + f.line, finding: f as FindingArg}))
-  ];
+  ].filter(item => accept(item.finding));
   if (!items.length) {
-    void vscode.window.showInformationMessage("Hushavyr: run Security Scan, Find Hardcoded Secrets or Check Dependencies first, then pick a finding to explain.");
+    void vscode.window.showInformationMessage("Hushavyr: run Security Scan, Find Hardcoded Secrets or Check Dependencies first, then pick a finding.");
     return;
   }
   if (items.length === 1) return items[0].finding;
-  return (await vscode.window.showQuickPick(items, {placeHolder: "Which finding should local AI explain?", matchOnDescription: true}))?.finding;
+  return (await vscode.window.showQuickPick(items, {placeHolder, matchOnDescription: true}))?.finding;
 }
 
 async function explain(context: vscode.ExtensionContext, finding: FindingArg): Promise<void> {

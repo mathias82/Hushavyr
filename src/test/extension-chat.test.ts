@@ -33,6 +33,7 @@ const fake = {
     textDocuments: [] as any[],
     getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback}),
     findFiles: async () => [],
+    registerTextDocumentContentProvider: () => disposable,
     asRelativePath: (uri: Uri) => uri.toString().replace("file:///", ""),
     openTextDocument: async (uri: Uri) => ({getText: () => docs.get(uri.toString()) ?? ""})
   },
