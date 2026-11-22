@@ -5,6 +5,9 @@ class Uri {
   constructor(readonly value: string, readonly scheme = "file") {}
   toString() { return this.value; }
   static parse(value: string) { return new Uri(value); }
+  static joinPath(base: Uri, ...parts: string[]) { return new Uri(base.value.replace(/\/$/, "") + "/" + parts.join("/")); }
+  get fsPath() { return this.value.replace(/^file:\/\//, ""); }
+  with(change: {fragment?: string}) { return new Uri(this.value + "#" + (change.fragment ?? "")); }
 }
 class Location {}
 class Position { constructor(readonly line: number, readonly character: number) {} }
@@ -34,7 +37,9 @@ const fake = {
   lm: {selectChatModels: async () => {copilotLookups++; throw new Error("Unexpected cloud discovery");}},
   workspace: {
     isTrusted: true,
-    workspaceFolders: undefined,
+    workspaceFolders: undefined as undefined | {uri: Uri; name: string}[],
+    getWorkspaceFolder: () => fake.workspace.workspaceFolders?.[0],
+    fs: {readFile: async (uri: Uri) => require("node:fs").readFileSync(uri.fsPath)},
     textDocuments: [] as any[],
     getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback,
       update: async (key: string, value: unknown, target: unknown) => {configUpdates.push([key, value, target]); configuration[key] = value;}}),
@@ -226,4 +231,21 @@ test("an unsure local review offers Ask Copilot; a confident one and a mandatory
     const locked = await chat(code(3), [candidate, '{"verdicts":[{"index":0,"supported":false}]}']);
     assert.doesNotMatch(locked.output, /Ask Copilot|may be wrong/);
   } finally { configuration.mandatoryLocalOnly = undefined; }
+});
+
+test("Chat finds code by name in the workspace folder: /find with a typo, and a question that names a method gets only that method", async () => {
+  const {mkdtempSync, mkdirSync, writeFileSync} = require("node:fs") as typeof import("node:fs");
+  const root = mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "hush-chat-"));
+  mkdirSync(root + "/src", {recursive: true});
+  writeFileSync(root + "/src/OrderService.java", "public class OrderService {\n  public double total(double p) {\n    return p * 2;\n  }\n\n  public void place(String email) {\n    System.out.println(email);\n  }\n}\n");
+  fake.workspace.workspaceFolders = [{uri: new Uri("file://" + root), name: "shop"}];
+  try {
+    const found = await chat({}, [], "order servce", [], "find");
+    assert.match(found.output, /1\. \[`OrderService`\]\(file:\/\/.*\/src\/OrderService\.java#L1\) src\/OrderService\.java:1-9/);
+    assert.equal(found.requests.filter(r => r.payload?.prompt).length, 0, "a clear name needs no model");
+    const asked = await chat({}, ["It prints the email."], "what does OrderService.place do?", [], "");
+    const prompt = asked.requests.map(r => r.payload?.prompt ?? "").join("\n");
+    assert.match(asked.output, /Using `OrderService\.place\(\)` from `shop`/);
+    assert.ok(prompt.includes("System.out.println(email)") && !prompt.includes("return p * 2"), "only the named method is sent to the local model");
+  } finally { fake.workspace.workspaceFolders = undefined; }
 });

@@ -47,9 +47,25 @@ rules:
       - pattern-either:
           - pattern: $DB.$M(fmt.Sprintf(...), ...)
           - pattern: $DB.$M("..." + $X, ...)
+          - pattern: $DB.$M($A + $X, ...)
       - metavariable-regex:
           metavariable: $M
           regex: ^(Query|QueryRow|Exec|QueryContext|QueryRowContext|ExecContext)$
+  - id: hushavyr.csharp-sql-concatenation
+    languages: [csharp]
+    severity: ERROR
+    message: SQL injection - query built by concatenation or interpolation reaches an ADO.NET command
+    metadata: {fix: "Use @name placeholders and cmd.Parameters.AddWithValue(\"@name\", value).", test: "Call with a value containing a single quote (O'Brien) and assert the query is parameterized and returns the matching row."}
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: new $CMD($A + $X, ...)
+              - pattern: new $CMD($"...", ...)
+          - metavariable-regex:
+              metavariable: $CMD
+              regex: ^(SqlCommand|NpgsqlCommand|MySqlCommand|SqliteCommand|SQLiteCommand|OracleCommand|OleDbCommand|OdbcCommand)$
+      - pattern: $C.CommandText = $A + $X
+      - pattern: $C.CommandText = $"..."
   # ---------- Command injection ----------
   - id: hushavyr.python-shell-execution
     languages: [python]

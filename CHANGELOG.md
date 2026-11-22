@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.16
+- **Find code by name or description, everywhere:** `/find` in the terminal and in VS Code Chat. `/review`, `/explain` and `/edit` accept a class or method name (`OrderService.place`, typos like `order servce` are fine) or a description (`the code that sends the confirmation email`). `/edit` on a method changes only that method. Free questions that name code include it; "describe the project" uses a local overview (README, build files, folders, main types). The terminal reads only the folder it was started in.
+- **Search by meaning (optional):** with the local `nomic-embed-text` model (the terminal asks once). The index lives in `~/.hushavyr/index`, never in the repository.
+- **Fewer false alarms:** precision 0.95 and recall 0.73 on 51 fixtures in six languages (was 0.86 / 0.73 on the same fixtures before this release). Same finding within one line is reported once; `yaml.safe_load` and Python `None` defaults are no longer flagged. New Semgrep rule for C# SQL concatenation; Go SQL concatenation with quotes is caught.
+- **Benchmark:** 51 fixtures (Go and C# added), results per language, and `benchmarks/cloud-reference.mjs` to compare with cloud models on the same fixtures only.
+- **Terminal:** plain `exit` or `quit` quits.
+- **No more review timeouts on looping answers:** each review pass is capped at 2048 tokens, and a cut-off answer keeps its complete findings instead of failing.
+
 ## 1.0.15
 - **Fewer, more useful Copilot suggestions:** a finding dropped by the second check gets one narrow recheck of the lines around it. Only when the two local checks disagree does the review name it ("possible issue the local checks disagree on … at line N") and offer `/escalate` for that line. Benchmark (qwen2.5-coder:14b): suggestions on correct reviews fell from 11/26 to 3/26; precision and recall unchanged (0.76 / 0.72).
 

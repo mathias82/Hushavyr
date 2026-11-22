@@ -49,7 +49,9 @@ hushavyr
 
 ▶️ [Watch the terminal demo in HD (MP4)](https://github.com/mathias82/Hushavyr/releases/download/v1.0.6/hushavyr-terminal.mp4)
 
-Ask anything in plain language. If you mention a file (`why does books.js leak memory?`), it is included. All commands:
+Ask anything in plain language. If you mention a file (`why does books.js leak memory?`), it is included. Ask about the project (`describe the project`) and Hushavyr reads its README, build files, folders and main types. Name a class or method (`why does OrderService.place send two mails?`) or describe the code (`where do we compute the loyalty discount?`) and Hushavyr finds it in the folder you started it in. It reads only that folder and its subfolders, never a parent folder.
+
+All commands:
 
 | Command | What it does |
 | --- | --- |
@@ -58,12 +60,13 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/dependencies [folder]` | CVEs in your libraries with Trivy and OSV-Scanner |
 | `/scan [folder]` | Full project scan: built-in rules, data flow, secrets, Semgrep, Gitleaks, Trivy if installed |
 | `/gitleaks [history] [folder]` | Secrets with Gitleaks; `history` checks every past commit, so a deleted password is still found |
-| `/review <file\|folder>` | Local AI review of a file for bugs and security issues, together with the static rules; a folder runs `/scan` |
+| `/find <name or description>` | Find a class or method: by name, with typos allowed (`/find order servce`), or by description (`/find where the discount is computed`) |
+| `/review <file\|name\|folder>` | Local AI review of a file, class or method for bugs and security issues, together with the static rules; a folder runs `/scan` |
 | `/findings` | Show the last report again |
-| `/explain <N\|file> [question]` | Explain finding N in your code, or a whole file |
+| `/explain <N\|file\|name\|description>` | Explain finding N, a file, a class or method, or the code you describe |
 | `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y`. For a dependency CVE it upgrades the package in the manifest (`package.json`, `pom.xml`, `go.mod`, …) |
 | `/dismiss <N> [reason]` | Hide finding N as not a real issue; saved in `.hushavyr/dismissed.json` and hidden for the whole team, in VS Code too |
-| `/edit <file> <request>` | Change a file as you ask, behind the same diff and approval |
+| `/edit <file\|name> <request>` | Change a file, or only one method (`/edit OrderService.place add input checks`), behind the same diff and approval |
 | `/undo` | Restore the file changed by the last `/fix` or `/edit` |
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
 | `/pr [title]` | Commit, push a branch and open a pull request with `gh`, after you confirm. Stops if a changed file looks like it has a secret |
@@ -75,7 +78,7 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/update-db [auto on\|off]` | Download the latest public CVE databases (Trivy, OSV); `auto on` updates them daily before scans |
 | `/clear` | Forget the conversation so far |
 | `/help` | List the commands |
-| `/exit` | Quit (also Ctrl+D) |
+| `/exit` | Quit (also `exit`, `quit` or Ctrl+D) |
 
 Tab completes commands, and Ctrl+C cancels a running request. `hushavyr /security` runs one command and exits; `hushavyr --model qwen2.5-coder:14b` starts with a specific model.
 
@@ -116,6 +119,8 @@ Setup picks the model for your machine and also lists the models you already hav
 
 **How a review is checked:** each finding must point at real lines of your code, and the file's own test (`FooTest.java`, `foo.test.ts`, `test_foo.py`…) and the callers of its functions are added as context. A second local pass then checks every finding and drops the ones it finds unsupported. A dropped finding gets one more narrow check of the lines around it; if the two checks disagree, the finding is not counted, but the review names it as a possible issue and may suggest `/escalate` for that line.
 
+**Finding code:** names are matched first (typos and swapped letters are fine). If no name matches, the local model searches the code for you. Optionally, Hushavyr also searches by meaning with the small local model `nomic-embed-text` (about 270 MB). The terminal asks once whether to download it; in VS Code, run `ollama pull nomic-embed-text`. Its index is kept in `~/.hushavyr/index` (VS Code: the extension's storage), never in your repository, and is updated only for changed files.
+
 **Hushavyr: Start Ollama** turns on flash attention and an 8-bit KV cache, which roughly halves context memory. The deterministic commands (`/security`, `/secrets`, `/dependencies`) need no model at all, `/review` results are cached, and `/scan-changed` skips files that did not change.
 
 ## VS Code Chat commands
@@ -124,9 +129,10 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 
 | Command | What it does |
 | --- | --- |
-| `/review` | Finds bugs and security issues in the open file, and checks your team rules |
-| `/explain` | Explains the open or selected code |
-| `/edit` | Changes the open or selected code with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
+| `/review` | Finds bugs and security issues in the open file, or in a class or method you name, and checks your team rules |
+| `/explain` | Explains the open or selected code, a class or method you name, or the code you describe |
+| `/find` | Finds a class or method in the workspace by name (typos are fine) or by description, with links to the lines |
+| `/edit` | Changes the open or selected code, or a method you name (`/edit OrderService.place add input checks`), with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
 | `/improve` | Asks the local model for real improvements to the open file (bugs, safety, clarity), shows a diff and a summary, and after **Apply** offers to open a pull request |
 | `/pr` | Commits your changes to a new branch, pushes it and opens a pull request (`gh`, or a GitHub link). Asks first and stops if it finds credentials. |
 | `/review-changes` | Reviews your uncommitted changes |
@@ -191,6 +197,16 @@ Patterns are regular expressions on code (string literals are blanked); `call` a
 | Proves a fix with a failing test | Yes, in an offline Docker sandbox | Rarely |
 | Output for CI | SARIF, CLI exit codes, PR comments | Varies |
 
+**Measured:** on Hushavyr's 51 benchmark fixtures (bugs and clean twins in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects), with the same instruction for every model:
+
+| Reviewer | Precision | Recall |
+| --- | --- | --- |
+| Hushavyr, `qwen2.5-coder:14b` on a laptop | 0.95 | 0.73 |
+| GPT 6.1 (cloud) | 0.81 | 0.96 |
+| Claude Sonnet 5.5 (cloud) | 0.72 | 1.00 |
+
+Hushavyr reports fewer false alarms; the cloud models miss fewer bugs. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
+
 ## FAQ
 
 **Is Hushavyr a free GitHub Copilot alternative for code review?**
@@ -225,7 +241,7 @@ Yes. Install it from [Open VSX](https://open-vsx.org/extension/mathias82/hushavy
 
 ## Privacy
 
-- Review and scanning run only on your machine. There is no automatic cloud fallback.
+- Review, scanning and code search run only on your machine. There is no automatic cloud fallback. The search index stays outside your repository.
 - `/escalate` is off unless you turn on `aiPrivacyRouter.cloudEscalation`. When it is on:
   - It sends only the selection, up to 4,000 characters.
   - Names, strings and comments are replaced with tokens such as `id1` or `s1`. The mapping stays on your machine.

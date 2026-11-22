@@ -44,6 +44,29 @@ export function reviewPrompt(instruction: string, code: ReviewInput): string {
     sourcePrompt(code)
   ].join("\n\n");
 }
+/**
+ * Findings from an answer cut off mid-way (token limit): every complete finding object, plus the
+ * fields of the last one that were complete. Undefined when nothing is recoverable.
+ */
+export function salvageFindings(raw: string): {findings: unknown[]} | undefined {
+  const key = raw.indexOf('"findings"'), start = key < 0 ? -1 : raw.indexOf("[", key);
+  if (start < 0) return undefined;
+  const findings: unknown[] = [];
+  let depth = 0, inString = false, escaped = false, objectStart = -1, lastPair = -1;
+  for (let i = start + 1; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) { if (escaped) escaped = false; else if (ch === "\x5c") escaped = true; else if (ch === '"') inString = false; continue; }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") { if (depth === 0) { objectStart = i; lastPair = -1; } depth++; }
+    else if (ch === "}" || ch === "]") {
+      if (depth === 0) break;
+      if (--depth === 0) { try { findings.push(JSON.parse(raw.slice(objectStart, i + 1))); } catch { /* skip */ } objectStart = -1; }
+    } else if (ch === "," && depth === 1) lastPair = i;
+  }
+  if (objectStart >= 0 && lastPair > objectStart) { try { findings.push(JSON.parse(raw.slice(objectStart, lastPair) + "}")); } catch { /* unrecoverable */ } }
+  return findings.length ? {findings} : undefined;
+}
+
 export function validateReview(raw: string, source: ReviewInput): ReviewResult {
   const sources = reviewSources(source);
   const combined = sources.map(s => s.text).join("\n");
@@ -51,7 +74,10 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
   try {
     const match = raw.match(codeFence);
     parsed = JSON.parse(match ? match[1] : raw);
-  } catch { return {findings:[],rejected:0,error:"Model did not return valid JSON"}; }
+  } catch {
+    parsed = salvageFindings(raw);
+    if (!parsed) return {findings:[],rejected:0,error:"Model did not return valid JSON"};
+  }
   const obj = record(parsed);
   if (!obj || !Array.isArray(obj.findings)) return {findings:[],rejected:0,error:"Missing findings array"};
   const findings: Finding[] = [];
@@ -81,6 +107,9 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
     const exactEvidence = evidence.length >= 8 && normalizedSource.includes(evidence.replace(/\r\n/g,"\n"));
     const hasSqlSink = /\b(?:prepareStatement|createStatement|executeQuery|executeUpdate|EntityManager|createNativeQuery|JdbcTemplate)\b|\b(?:SELECT|INSERT|UPDATE|DELETE)\s/i.test(combined);
     const unsupportedSql = /sql\s*injection/i.test(title) && !hasSqlSink;
+    const unsupportedMutableDefault = /mutable|shared default|default (?:arg|param|value)/i.test(title) && /\.py$/i.test(path || eligible[0]?.path || "") &&
+      !/\bdef\s+\w+\s*\([^)]*=\s*(?:\[|\{|(?:set|list|dict)\s*\()/.test(combined);
+    const unsupportedYaml = /yaml|deserializ/i.test(title) && /\byaml\b/i.test(combined) && !/\byaml\.(?:load|load_all|unsafe_load|full_load)\s*\(/.test(combined);
     const unsupportedGetter = /(?:exception handling|unhandled exception)/i.test(title) && /getTenantId\(\)/.test(evidence) && !/throw\s+new/.test(combined);
     const reasons: string[] = [];
     if (!title || !fix || !regressionTest) reasons.push("Required title, fix or regressionTest is missing");
@@ -90,6 +119,8 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
     if (validRange && !rangeEvidence.includes(evidence.replace(/\r\n/g,"\n"))) reasons.push("Quoted evidence does not belong to the supplied line range");
     if (!eligible.length) reasons.push("Path must identify a supplied source file");
     if (unsupportedSql) reasons.push("SQL injection claim has no SQL sink in supplied source");
+    if (unsupportedMutableDefault) reasons.push("Mutable default claim but no def has a mutable default value");
+    if (unsupportedYaml) reasons.push("YAML deserialization claim but the code only uses yaml.safe_load");
     if (unsupportedGetter) reasons.push("Getter exception claim has no supporting throw in supplied source");
     if (reasons.length) { reject(reasons.join("; ")); continue; }
     const line = validRange ? start as number : normalizedSource.slice(0, normalizedSource.indexOf(evidence.replace(/\r\n/g,"\n"))).split("\n").length + (matched?.startLine ?? 1) - 1;

@@ -43,6 +43,12 @@ test("mergeFindings keeps the first finding per location", () => {
   assert.deepEqual(merged.map(f => f.title), ["model", "Issue 9"]);
 });
 
+test("mergeFindings treats the same mechanism one line apart as one finding, but keeps different bugs", () => {
+  const merged = mergeFindings([finding(6, "SQL Injection vulnerability")], [finding(7, "Local rule: SQL injection - query built by concatenation"),
+    finding(7, "Command injection via exec"), finding(9, "SQL injection in second query")]);
+  assert.deepEqual(merged.map(f => f.line + " " + f.title), ["6 SQL Injection vulnerability", "7 Command injection via exec", "9 SQL injection in second query"]);
+});
+
 test("thorough review runs the general pass plus each lens and merges static candidates", async () => {
   const prompts: string[] = [];
   const client = {generate: async (prompt: string) => { prompts.push(prompt); return '{"findings":[]}'; }};

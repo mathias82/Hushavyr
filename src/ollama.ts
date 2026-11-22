@@ -172,6 +172,15 @@ export class LocalOllama {
     if (!data || typeof data !== "object" || !("response" in data) || typeof data.response !== "string") throw new Error("Invalid local Ollama response. No cloud fallback.");
     return data.response;
   }
+  /** Embedding vectors from the local model (for search by meaning); one per input text. */
+  async embed(texts: string[], signal?: AbortSignal): Promise<number[][]> {
+    if (!texts.length) return [];
+    const data = await this.request("/api/embed", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({model: this.config.model, input: texts, keep_alive: "30m", truncate: true})}, signal) as {embeddings?: unknown};
+    if (!Array.isArray(data?.embeddings) || data.embeddings.length !== texts.length || !data.embeddings.every(v => Array.isArray(v) && v.every(n => typeof n === "number")))
+      throw new Error("Invalid local embedding response. No cloud fallback.");
+    return data.embeddings as number[][];
+  }
   private async streamGenerate(prompt: string, onText: (chunk: string) => void, signal?: AbortSignal): Promise<string> {
     const controller = new AbortController();
     const abort = (): void => controller.abort();

@@ -23,13 +23,19 @@ export const LENSES = [
   "FOCUS FOR THIS PASS: robustness only. Look for null/undefined dereferences, off-by-one and boundary errors, integer overflow, falsy-zero defaults, wrong comparators or sorting, shared mutable defaults, unclosed resources, swallowed errors and race conditions."
 ];
 
-/** Same location (path and overlapping line range) means the same finding; the first one wins. */
+const MECHANISMS: readonly RegExp[] = [/\bsql\b/i, /xss|cross.site|innerhtml/i, /command|shell|\bexec/i, /traversal/i, /deserializ|yaml|pickle/i,
+  /\btls\b|certificat/i, /\bmd5\b|\bsha-?1\b|weak hash/i, /random/i, /secret|password|credential/i, /\bnull\b|nil\b/i, /overflow/i, /out of bounds|off.by.one/i];
+const mechanisms = (f: Finding): number[] => MECHANISMS.flatMap((re, i) => re.test(f.title) ? [i] : []);
+
+/** Same location (path and overlapping line range) means the same finding; so does the same mechanism on the next line. The first one wins. */
 export function mergeFindings(...lists: readonly Finding[][]): Finding[] {
   const merged: Finding[] = [];
   for (const finding of lists.flat()) {
     const span = (f: Finding): [number, number] => [f.line ?? 0, (f.line ?? 0) + f.evidence.split("\n").length - 1];
     const [start, end] = span(finding);
-    if (merged.some(m => { const [a, b] = span(m); return m.path === finding.path && a <= end && start <= b; })) continue;
+    const kinds = mechanisms(finding);
+    if (merged.some(m => { const [a, b] = span(m); return m.path === finding.path &&
+      (a <= end && start <= b || a - 1 <= end && start <= b + 1 && mechanisms(m).some(k => kinds.includes(k))); })) continue;
     merged.push(finding);
     if (merged.length >= 20) break;
   }
@@ -46,7 +52,7 @@ async function lensFindings(client: Pick<LocalOllama, "generate">, prompt: strin
     if (cancelled()) break;
     onProgress?.(LENS_NAMES[i] + "...");
     try {
-      const result = validateReview(await client.generate(prompt + "\n\n" + lens, {schema: reviewSchema}), source);
+      const result = validateReview(await client.generate(prompt + "\n\n" + lens, {schema: reviewSchema, maxTokens: REVIEW_TOKENS}), source);
       results.push(result);
       onProgress?.(LENS_NAMES[i] + ": " + candidates(result));
     } catch { /* one failed lens must not discard the other passes */ }
@@ -54,6 +60,9 @@ async function lensFindings(client: Pick<LocalOllama, "generate">, prompt: strin
   return results;
 }
 
+// A model stuck repeating itself (e.g. endless asserts in regressionTest) is cut here, well before
+// Node's 300 s fetch header timeout; validateReview keeps the findings that were complete.
+const REVIEW_TOKENS = 2048;
 /** At most two local inference calls, plus model-metadata checks. Every attempt goes through the same evidence gate. */
 async function collectFindings(
   client: Pick<LocalOllama, "generate">,
@@ -66,7 +75,7 @@ async function collectFindings(
   if (cancelled()) return;
   const prompt = reviewPrompt(instruction, source);
   onProgress?.("General pass...");
-  const raw = await client.generate(prompt, depth === "light" ? {schema: reviewSchema, maxTokens: 1536} : {schema: reviewSchema});
+  const raw = await client.generate(prompt, depth === "light" ? {schema: reviewSchema, maxTokens: 1536} : {schema: reviewSchema, maxTokens: REVIEW_TOKENS});
   if (cancelled()) return;
   const first = validateReview(raw, source);
   onProgress?.("General pass: " + candidates(first));
@@ -88,7 +97,7 @@ async function collectFindings(
       "\n\nLOCAL VALIDATOR FEEDBACK: " + feedback +
       "\nReview the source again, inspecting boundary conditions, error handling, and any visible concrete failure mechanisms. Correct the response shape and choose a valid source path and line range. " +
       "Discard any unsupported claim; return an empty findings array if no concrete issue is supported.",
-      {schema: reviewSchema});
+      {schema: reviewSchema, maxTokens: REVIEW_TOKENS});
     if (cancelled()) return;
     const second = validateReview(repaired, source);
     // Do not hide the original useful validation feedback behind a new parser error.

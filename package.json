@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, fixes them behind a diff you approve, also from the terminal (`hushavyr`). Your code never leaves your machine.",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -382,15 +382,19 @@
         "commands": [
           {
             "name": "review",
-            "description": "Find bugs and security issues in the open code file locally; no prompt or selection needed"
+            "description": "Find bugs and security issues locally in the open file, or in a class or method you name (typos are fine)"
           },
           {
             "name": "explain",
-            "description": "Explain the open, selected or attached code locally (purpose, main flow, notable points)"
+            "description": "Explain code locally: the open or selected code, a class or method you name, or the code you describe"
+          },
+          {
+            "name": "find",
+            "description": "Find a class or method in this workspace by name (typos are fine) or by description; local search, nothing is sent"
           },
           {
             "name": "edit",
-            "description": "Change the open or selected code locally (e.g. \"add them\" after /explain); shows a diff, nothing changes until you apply"
+            "description": "Change code locally: the open or selected code, or a method you name (e.g. OrderService.place); shows a diff, nothing changes until you apply"
           },
           {
             "name": "improve",

@@ -17,6 +17,9 @@ const GB = 1024 ** 3;
 test("terminal lines: slash commands with aliases, chat text, and Tab completion", () => {
   assert.deepEqual(parseLine("  /fix 2 "), {command: "fix", rest: "2"});
   assert.deepEqual(parseLine("/quit"), {command: "exit", rest: ""});
+  assert.deepEqual(parseLine(" exit "), {command: "exit", rest: ""});
+  assert.deepEqual(parseLine("Quit"), {command: "exit", rest: ""});
+  assert.deepEqual(parseLine("exit the loop early in OrderService"), {rest: "exit the loop early in OrderService"});
   assert.deepEqual(parseLine("/deps ./api"), {command: "dependencies", rest: "./api"});
   assert.deepEqual(parseLine("what does src/app.ts do?"), {rest: "what does src/app.ts do?"});
   assert.deepEqual(completeCommand("/se"), ["/security", "/secrets", "/setup"]);
@@ -87,7 +90,8 @@ async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts:
       }
       if (request.prompt.includes("Change the code below exactly")) {
         const code = request.prompt.slice(request.prompt.indexOf("\n", request.prompt.indexOf("CODE ")) + 1);
-        return res.end(JSON.stringify({response: JSON.stringify({content: code.replace("const app", "// Books API\nconst app"), summary: ["Added a header comment"]})}));
+        const content = code.includes("const app") ? code.replace("const app", "// Books API\nconst app") : "// edited\n" + code.trimStart();
+        return res.end(JSON.stringify({response: JSON.stringify({content, summary: ["Added a header comment"]})}));
       }
       return res.end(JSON.stringify({response: JSON.stringify({findings: []})}));
     });
@@ -163,6 +167,31 @@ test("hushavyr: /review of a folder or 'all' scans it, the folder's own name mea
     assert.match(output, /for a whole folder this runs \/scan[\s\S]*SQL injection/);
     assert.doesNotMatch(output, /is not a (?:file|folder)/);
     assert.ok(prompts.some(p => p.includes(JSON.stringify(basename(dir))) && p.includes("Whole folder for bugs and security issues: /scan")), "chat prompt names the folder and the commands");
+  } finally { server.close(); }
+});
+
+const ORDERS = "package shop;\n\npublic class OrderService {\n  public double total(double price, int qty) {\n    return price * qty;\n  }\n\n" +
+  "  public void place(String email) {\n    System.out.println(email);\n  }\n}\n";
+
+test("hushavyr finds code by name with typos, edits only that method, describes only the folder it runs in, and asks once about meaning search", async () => {
+  const {server, endpoint, prompts} = await fakeOllama();
+  try {
+    const parent = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+    const dir = join(parent, "shop");
+    await mkdir(join(dir, "src", "shop"), {recursive: true});
+    await writeFile(join(parent, "Outside.java"), "class OutsideSecret { void leak() {} }\n");
+    await writeFile(join(dir, "README.md"), "# Shop\nOrders and confirmation mails.\n");
+    await writeFile(join(dir, "src", "shop", "OrderService.java"), ORDERS);
+    const output = await session(dir, endpoint, ["describe the project", "/find order servce", "where is the confirmation mail written?", "n",
+      "/find OutsideSecret", "where else do we mail?", "/edit OrderServce.place add a header comment", "y", "exit"]);
+    assert.ok(prompts.some(p => p.includes("PROJECT OVERVIEW") && p.includes("Orders and confirmation mails") && p.includes("OrderService")), "overview reaches the model");
+    assert.ok(!prompts.some(p => p.includes("void leak()") || p.includes("Outside.java")), "nothing outside the start folder is read");
+    assert.match(output, /\[1\] OrderService {2}src\/shop\/OrderService\.java:3-11/);
+    assert.doesNotMatch(output, /\] OutsideSecret/);
+    assert.match(output, /Using OrderService\.place\(\) {2}src\/shop\/OrderService\.java:8-10/);
+    assert.equal(await readFile(join(dir, "src", "shop", "OrderService.java"), "utf8"), ORDERS.replace("  public void place", "  // edited\n  public void place"));
+    assert.equal(output.match(/Search your code by meaning\?/g)?.length, 1);
+    assert.equal((JSON.parse(await readFile(join(dir, ".config", "config.json"), "utf8")) as {searchByMeaning?: boolean}).searchByMeaning, false);
   } finally { server.close(); }
 });
 

@@ -1,3 +1,4 @@
+import {keepIndent} from "./codeSearch";
 import * as vscode from "vscode";
 import {inlineText} from "./review";
 import {randomUUID} from "node:crypto";
@@ -24,7 +25,8 @@ async function generateLocal(target: EditTarget, model: string, signal: AbortSig
   await client.ensureInstalled(signal);
   const raw = await client.generate(editPrompt(target.path, target.languageId, target.original, target.instruction, target.previousAnswer),
     {schema: editSchema, signal, maxTokens: 12288});
-  const updated = parseEdit(raw, target.original);
+  const parsed = parseEdit(raw, target.original);
+  const updated = parsed && target.range ? keepIndent(target.original, parsed) : parsed;
   return {updated, summary: updated ? parseSummary(raw) : []};
 }
 

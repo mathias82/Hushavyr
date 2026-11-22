@@ -7,7 +7,8 @@ import { staticReview } from "./staticReview";
 import { join } from "node:path";
 import { reviewDifficulty } from "./difficulty";
 
-export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; mechanism: RegExp} }
+// alsoLines: other lines where the same bug is correctly reported (e.g. a declaration and its use).
+export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: RegExp} }
 // Synthetic, public examples. Scores measure this small fixture set only.
 export const benchmarkCases: BenchmarkCase[] = [
   {id: "json-escaping-bug", sources: [{path: "Mapper.java", text: String.raw`class Mapper {
@@ -89,10 +90,13 @@ class UserLookup {
 }`}], expected: {path: "UserLookup.java", line: 4, mechanism: /sql|inject|parameter|query/i}},
   {id: "java-sql-parameterized-clean", sources: [{path: "UserLookup.java", text: `import java.sql.*;
 class UserLookup {
-  ResultSet find(Connection connection, String user) throws SQLException {
-    PreparedStatement stmt = connection.prepareStatement("SELECT * FROM users WHERE name = ?");
-    stmt.setString(1, user);
-    return stmt.executeQuery();
+  String find(Connection connection, String user) throws SQLException {
+    try (PreparedStatement stmt = connection.prepareStatement("SELECT name FROM users WHERE name = ?")) {
+      stmt.setString(1, user);
+      try (ResultSet rs = stmt.executeQuery()) {
+        return rs.next() ? rs.getString(1) : null;
+      }
+    }
   }
 }`}]},
   {id: "javascript-tls-validation-disabled", sources: [{path: "client.js", text: `import https from "node:https";
@@ -103,9 +107,10 @@ export const agent = new https.Agent({rejectUnauthorized: true});`}]},
 def run(command):
     return subprocess.run(command, shell=True, check=True)`}], expected: {path: "runner.py", line: 3, mechanism: /shell|inject|command|subprocess/i}},
   {id: "python-shell-argument-list-clean", sources: [{path: "runner.py", text: `import subprocess
-def run(filename):
-    return subprocess.run(["cat", "--", filename], shell=False, check=True)`}]},
-  {id: "javascript-numeric-sort-clean", sources: [{path: "scores.js", text: `// Return a sorted copy in ascending numeric order.
+def show(filename):
+    """Print the file to the terminal."""
+    subprocess.run(["cat", "--", filename], shell=False, check=True)`}]},
+  {id: "javascript-numeric-sort-clean", sources: [{path: "scores.js", text: `/** Return a sorted copy in ascending numeric order. @param {number[]} scores */
 export function sortedScores(scores) {
   return [...scores].sort((a, b) => a - b);
 }`}]},
@@ -123,6 +128,7 @@ module.exports = function ping(host, done) {
 };`}], expected: {path: "ping.js", line: 3, mechanism: /command|inject|shell|exec/i}},
   {id: "javascript-execfile-clean", sources: [{path: "ping.js", text: `const {execFile} = require("child_process");
 module.exports = function ping(host, done) {
+  if (typeof host !== "string" || !/^[a-z0-9][a-z0-9.-]*$/i.test(host)) return done(new Error("invalid host"));
   execFile("ping", ["-c", "1", host], done);
 };`}]},
   {id: "javascript-dom-xss-bug", sources: [{path: "greet.js", text: `export function greet(element, name) {
@@ -150,45 +156,187 @@ class Checksums {
   }
 }`}]},
   {id: "java-off-by-one-bug", sources: [{path: "Totals.java", text: `class Totals {
-  int sum(int[] values) {
-    int total = 0;
+  long sum(int[] values) {
+    if (values == null) return 0;
+    long total = 0;
     for (int i = 0; i <= values.length; i++) total += values[i];
     return total;
   }
-}`}], expected: {path: "Totals.java", line: 4, mechanism: /bound|index|off.by.one|<=|ArrayIndexOutOfBounds|length/i}},
+}`}], expected: {path: "Totals.java", line: 5, mechanism: /bound|index|off.by.one|<=|ArrayIndexOutOfBounds|length/i}},
   {id: "java-loop-bounds-clean", sources: [{path: "Totals.java", text: `class Totals {
-  int sum(int[] values) {
-    int total = 0;
+  long sum(int[] values) {
+    if (values == null) return 0;
+    long total = 0;
     for (int i = 0; i < values.length; i++) total += values[i];
     return total;
   }
 }`}]},
   {id: "cross-file-sql-taint-bug", sources: [{path: "UserController.java", text: `class UserController {
-  private final UserRepository repository = new UserRepository();
+  private final UserRepository repository;
+  UserController(UserRepository repository) { this.repository = repository; }
   String show(javax.servlet.http.HttpServletRequest request) throws Exception {
     return repository.findName(request.getParameter("name"));
   }
 }`}, {path: "UserRepository.java", text: `import java.sql.*;
 class UserRepository {
-  private Connection connection;
+  private final Connection connection;
+  UserRepository(Connection connection) { this.connection = connection; }
   String findName(String name) throws SQLException {
-    Statement stmt = connection.createStatement();
-    ResultSet rs = stmt.executeQuery("SELECT name FROM users WHERE name = '" + name + "'");
-    return rs.next() ? rs.getString(1) : null;
+    try (Statement stmt = connection.createStatement();
+         ResultSet rs = stmt.executeQuery("SELECT name FROM users WHERE name = '" + name + "'")) {
+      return rs.next() ? rs.getString(1) : null;
+    }
   }
-}`}], expected: {path: "UserRepository.java", line: 6, mechanism: /sql|inject|parameter|query/i}}
+}`}], expected: {path: "UserRepository.java", line: 7, mechanism: /sql|inject|parameter|query/i}},
+  {id: "go-sql-concat-bug", sources: [{path: "users.go", text: `package users
+
+import "database/sql"
+
+func FindName(db *sql.DB, id string) (string, error) {
+    var name string
+    err := db.QueryRow("SELECT name FROM users WHERE id = '" + id + "'").Scan(&name)
+    return name, err
+}`}], expected: {path: "users.go", line: 7, mechanism: /sql|inject|parameter|query|placeholder/i}},
+  {id: "go-sql-placeholder-clean", sources: [{path: "users.go", text: `package users
+
+import "database/sql"
+
+func FindName(db *sql.DB, id string) (string, error) {
+    var name string
+    err := db.QueryRow("SELECT name FROM users WHERE id = $1", id).Scan(&name)
+    return name, err
+}`}]},
+  {id: "go-nil-map-bug", sources: [{path: "counts.go", text: `package text
+
+func CountWords(words []string) map[string]int {
+    var counts map[string]int
+    for _, w := range words {
+        counts[w]++
+    }
+    return counts
+}`}], expected: {path: "counts.go", line: 6, alsoLines: [4], mechanism: /nil|make|initiali|panic/i}},
+  {id: "go-nil-map-clean", sources: [{path: "counts.go", text: `package text
+
+func CountWords(words []string) map[string]int {
+    counts := make(map[string]int)
+    for _, w := range words {
+        counts[w]++
+    }
+    return counts
+}`}]},
+  {id: "go-index-bug", sources: [{path: "last.go", text: `package items
+
+// Last returns the last element, or "" for an empty slice.
+func Last(items []string) string {
+    if len(items) == 0 {
+        return ""
+    }
+    return items[len(items)]
+}`}], expected: {path: "last.go", line: 8, mechanism: /index|range|bound|len|off.by.one|panic/i}},
+  {id: "go-index-clean", sources: [{path: "last.go", text: `package items
+
+// Last returns the last element, or "" for an empty slice.
+func Last(items []string) string {
+    if len(items) == 0 {
+        return ""
+    }
+    return items[len(items)-1]
+}`}]},
+  {id: "csharp-sql-concat-bug", sources: [{path: "Users.cs", text: `using Microsoft.Data.SqlClient;
+
+class Users {
+  public string Find(SqlConnection conn, string name) {
+    using var cmd = new SqlCommand("SELECT Name FROM Users WHERE Name = '" + name + "'", conn);
+    return cmd.ExecuteScalar() as string;
+  }
+}`}], expected: {path: "Users.cs", line: 5, mechanism: /sql|inject|parameter|query/i}},
+  {id: "csharp-sql-parameter-clean", sources: [{path: "Users.cs", text: `using Microsoft.Data.SqlClient;
+
+class Users {
+  public string Find(SqlConnection conn, string name) {
+    using var cmd = new SqlCommand("SELECT Name FROM Users WHERE Name = @name", conn);
+    cmd.Parameters.AddWithValue("@name", name);
+    return cmd.ExecuteScalar() as string;
+  }
+}`}]},
+  {id: "csharp-firstordefault-null-bug", sources: [{path: "Accounts.cs", text: `using System.Collections.Generic;
+using System.Linq;
+
+record User(int Id, string Name);
+
+class Accounts {
+  public string NameOf(List<User> users, int id) {
+    return users.FirstOrDefault(u => u.Id == id).Name;
+  }
+}`}], expected: {path: "Accounts.cs", line: 8, mechanism: /null|FirstOrDefault|not found|missing/i}},
+  {id: "csharp-firstordefault-null-clean", sources: [{path: "Accounts.cs", text: `using System.Collections.Generic;
+using System.Linq;
+
+record User(int Id, string Name);
+
+class Accounts {
+  public string NameOf(List<User> users, int id) {
+    return users.FirstOrDefault(u => u.Id == id)?.Name ?? "";
+  }
+}`}]},
+  {id: "csharp-insecure-random-bug", sources: [{path: "Tokens.cs", text: `using System;
+
+class Tokens {
+  // Creates a password-reset token.
+  public string ResetToken() {
+    var bytes = new byte[32];
+    new Random().NextBytes(bytes);
+    return Convert.ToHexString(bytes);
+  }
+}`}], expected: {path: "Tokens.cs", line: 7, mechanism: /random|predict|crypto|secure/i}},
+  {id: "csharp-secure-random-clean", sources: [{path: "Tokens.cs", text: `using System;
+using System.Security.Cryptography;
+
+class Tokens {
+  // Creates a password-reset token.
+  public string ResetToken() {
+    var bytes = new byte[32];
+    RandomNumberGenerator.Fill(bytes);
+    return Convert.ToHexString(bytes);
+  }
+}`}]},
+  {id: "typescript-missing-await-bug", sources: [{path: "save.ts", text: `export async function saveAll(store: {write(item: string): Promise<void>}, items: string[]): Promise<number> {
+  for (const item of items) {
+    store.write(item);
+  }
+  return items.length;
+}`}], expected: {path: "save.ts", line: 3, mechanism: /await|promise|async|floating/i}},
+  {id: "typescript-await-clean", sources: [{path: "save.ts", text: `export async function saveAll(store: {write(item: string): Promise<void>}, items: string[]): Promise<number> {
+  for (const item of items) {
+    await store.write(item);
+  }
+  return items.length;
+}`}]},
+  {id: "typescript-indexof-bug", sources: [{path: "tags.ts", text: `export function hasTag(tags: string[], tag: string): boolean {
+  return tags.indexOf(tag) > 0;
+}`}], expected: {path: "tags.ts", line: 2, mechanism: /index|first|zero|0|off.by.one/i}},
+  {id: "typescript-includes-clean", sources: [{path: "tags.ts", text: `export function hasTag(tags: string[], tag: string): boolean {
+  return tags.includes(tag);
+}`}]}
 
 ];
+
+const LANGUAGES: Record<string, string> = {java: "java", py: "python", js: "javascript", ts: "typescript", go: "go", cs: "csharp"};
+export function language(fixture: BenchmarkCase): string {
+  const ext = fixture.sources[0].path.split(".").pop() ?? "";
+  return LANGUAGES[ext] ?? ext;
+}
 
 export function scoreCase(fixture: BenchmarkCase, findings: readonly Finding[]) {
   const expected = fixture.expected;
   const matched = expected ? findings.findIndex(f => f.path === expected.path && f.line !== undefined &&
-    f.line <= expected.line && f.line + f.evidence.split('\n').length > expected.line &&
+    [expected.line, ...expected.alsoLines ?? []].some(line => f.line! <= line && f.line! + f.evidence.split('\n').length > line) &&
     expected.mechanism.test(f.title + " " + f.fix)) : -1;
   return {truePositive: matched >= 0 ? 1 : 0, falseNegative: expected && matched < 0 ? 1 : 0,
     falsePositive: findings.length - (matched >= 0 ? 1 : 0), cleanPass: !expected && !findings.length};
 }
-const instruction = "Review for concrete correctness bugs. Input parameters may be null or any value of their declared type unless guarded in source.";
+// The same instruction as the terminal /review, so the benchmark measures what ships.
+const instruction = "Review this code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests.";
 
 export function scoreReviewResponses(responses: Record<string, unknown>) {
   const ids = benchmarkCases.map(fixture => fixture.id);
@@ -302,6 +450,7 @@ async function main(args: string[]) {
   const useStatic = process.env.REVIEW_STATIC !== "0";
   let tp = 0, fp = 0, fn = 0, errors = 0, verifierFailures = 0;
   const cases: object[] = [];
+  const byLanguage: Record<string, {truePositives: number; falsePositives: number; falseNegatives: number; cases: number}> = {};
   // How well "the local model is unsure" predicts its own mistakes (the escalation suggestion).
   const unsure = {mistakes: 0, onMistakes: 0, correct: 0, onCorrect: 0};
   for (const fixture of benchmarkCases) {
@@ -317,7 +466,11 @@ async function main(args: string[]) {
       const wrong = score.falsePositive > 0 || score.falseNegative > 0;
       unsure[wrong ? "onMistakes" : "onCorrect"] += difficulty.hard ? 1 : 0;
       unsure[wrong ? "mistakes" : "correct"]++;
-      cases.push({id: fixture.id, ...score, verifierFailed: !!result.verifierFailed, unsure: difficulty.reasons, durationMs: Date.now() - started});
+      const lang = language(fixture);
+      byLanguage[lang] ??= {truePositives: 0, falsePositives: 0, falseNegatives: 0, cases: 0};
+      byLanguage[lang].truePositives += score.truePositive; byLanguage[lang].falsePositives += score.falsePositive;
+      byLanguage[lang].falseNegatives += score.falseNegative; byLanguage[lang].cases++;
+      cases.push({id: fixture.id, ...score, verifierFailed: !!result.verifierFailed, findings: result.findings.map(f => f.line + " " + f.title), unsure: difficulty.reasons, durationMs: Date.now() - started});
     } catch {
       errors++; if (fixture.expected) fn++;
       unsure.mistakes++; unsure.onMistakes++;
@@ -325,10 +478,10 @@ async function main(args: string[]) {
     }
   }
   console.log(JSON.stringify({model, verifierModel, depth, staticAnalysis: useStatic, fixtureCount: benchmarkCases.length, cases,
-    truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures,
+    truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures, byLanguage,
     precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null,
     escalationSuggested: {onMistakes: unsure.onMistakes + "/" + unsure.mistakes, onCorrect: unsure.onCorrect + "/" + unsure.correct},
-    limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. No raw source or model response is included."}, null, 2));
+    limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. Finding titles are included; no raw source."}, null, 2));
   if (errors || verifierFailures || fp || fn) process.exitCode = 1;
 }
 if (require.main === module) main(process.argv.slice(2)).catch((error: Error) => {
