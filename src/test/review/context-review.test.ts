@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { sourcePrompt, validateContext } from "../context";
-import { validateReview } from "../review";
-import { verifyReview } from "../verifyReview";
-import { runLocalReview } from "../localReview";
+import { sourcePrompt, validateContext } from "../../review/context";
+import { validateReview } from "../../review/review";
+import { verifyReview } from "../../review/verifyReview";
+import { runLocalReview } from "../../review/localReview";
 const sources = [{path: "Mapper.java", text: 'public class Mapper {\n  return json + tenant.getId();\n}'},
   {path: "Tenant.java", text: 'public String getId() { return id; }'}];
 const candidate = {title: "Unescaped JSON input", path: "Mapper.java", startLine: 2, endLine: 2,

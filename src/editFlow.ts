@@ -1,6 +1,6 @@
 import {keepIndent} from "./search/codeSearch";
 import * as vscode from "vscode";
-import {inlineText} from "./review";
+import {inlineText} from "./review/review";
 import {randomUUID} from "node:crypto";
 import {configuredClient, configuredModel} from "./model/model";
 import {LocalOllama} from "./model/ollama";

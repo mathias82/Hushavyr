@@ -1,11 +1,11 @@
 import { LocalOllama } from "./model/ollama";
-import { ReviewSource } from "./context";
-import { Finding, reviewPrompt, validateReview } from "./review";
+import { ReviewSource } from "./review/context";
+import { Finding, reviewPrompt, validateReview } from "./review/review";
 import { readFileSync } from "node:fs";
-import { runLocalReview } from "./localReview";
+import { runLocalReview } from "./review/localReview";
 import { staticReview } from "./staticReview";
 import { join } from "node:path";
-import { reviewDifficulty } from "./difficulty";
+import { reviewDifficulty } from "./review/difficulty";
 
 // alsoLines: other lines where the same bug is correctly reported (e.g. a declaration and its use).
 export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: RegExp} }

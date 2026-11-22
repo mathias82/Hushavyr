@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { LocalOllama } from "../model/ollama";
-import { runLocalReview } from "../localReview";
-import { formatReview, reviewSchema } from "../review";
+import { LocalOllama } from "../../model/ollama";
+import { runLocalReview } from "../../review/localReview";
+import { formatReview, reviewSchema } from "../../review/review";
 
 // Same failure mechanism as the mapper in the reported VS Code example.
 const source = [

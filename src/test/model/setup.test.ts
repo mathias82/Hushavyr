@@ -6,7 +6,7 @@ import { Module } from "node:module";
 import { LocalOllama, repairOllamaKey } from "../../model/ollama";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { modelHint } from "../../review";
+import { modelHint } from "../../review/review";
 
 const stub = {window: undefined, workspace: undefined} as Record<string, unknown>;
 const load = (Module as unknown as {_load: (name: string, ...args: unknown[]) => unknown})._load;

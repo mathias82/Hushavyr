@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
-import {answerDifficulty, escalationFragment, reviewDifficulty} from "../difficulty";
+import {answerDifficulty, escalationFragment, reviewDifficulty} from "../../review/difficulty";
 
 const finding = {title: "t", severity: "high", evidence: "e", fix: "f", regressionTest: "r", status: "potential" as const};
 

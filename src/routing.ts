@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from "node:crypto";
 import {classifyInput} from "./classifier";
-import {validateContext} from "./context";
+import {validateContext} from "./review/context";
 import {AuditEvent} from "./audit";
 import {guardedCloudTransfer} from "./cloudTransfer";
 

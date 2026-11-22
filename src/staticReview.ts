@@ -2,8 +2,8 @@ import {execFile} from "node:child_process";
 import {mkdtemp, writeFile, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {Finding} from "./review";
-import {ReviewInput, reviewSources} from "./context";
+import {Finding} from "./review/review";
+import {ReviewInput, reviewSources} from "./review/context";
 import {scanSecurity} from "./securityRules";
 import {flowSeverity, flowTitle, taintFlows} from "./taint";
 

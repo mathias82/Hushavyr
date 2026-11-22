@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { validateReview, formatReview, reviewPrompt, inlineText, fenceLanguage, salvageFindings} from "../review";
+import { validateReview, formatReview, reviewPrompt, inlineText, fenceLanguage, salvageFindings} from "../../review/review";
 const source = 'return Response.status(404).entity("{\\"error\\":\\"" + e.getTenantId() + "\\"}").build();';
 function finding(title:string,evidence:string) { return {title,severity:"high",evidence,fix:"Use a JSON DTO",regressionTest:"Test tenant ID with a quote"}; }
 test("rejects SQL injection claim without SQL sink", () => {
@@ -43,7 +43,7 @@ test("review prompt covers language-specific correctness",()=>{
  for(const file of files)assert.ok(prompt.includes(file.path));
  assert.match(prompt,/A clean review is allowed/);
 });
-import { asksForExplanation} from "../review";
+import { asksForExplanation} from "../../review/review";
 test("explanation requests are not treated as bug reviews", () => {
   assert.equal(asksForExplanation("explain me the code"), true);
   assert.equal(asksForExplanation("τι κάνει αυτός ο κώδικας;"), true);

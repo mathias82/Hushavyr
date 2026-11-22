@@ -4,14 +4,14 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { staticReview, semgrepToFindings } from "../staticReview";
-import { mergeFindings, runLocalReview, LENSES } from "../localReview";
-import { callContext, definitionSnippet, isTestFileOf } from "../callContext";
+import { mergeFindings, runLocalReview, LENSES } from "../review/localReview";
+import { callContext, definitionSnippet, isTestFileOf } from "../review/callContext";
 import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../reachability";
 import { toSarif, sarifLevel } from "../sarif";
-import { ResultCache } from "../reviewCache";
+import { ResultCache } from "../review/reviewCache";
 import { scanFolder } from "../cli";
 import { staticGateProblems } from "../benchmark";
-import { reviewSummary, Finding } from "../review";
+import { reviewSummary, Finding } from "../review/review";
 
 const sqlSource = [{path: "file:///Repo.java", text: "class Repo {\n  void find(String id) {\n    stmt.executeQuery(\"SELECT * FROM t WHERE id=\" + id);\n  }\n}"}];
 const semgrepJson = JSON.stringify({results: [{path: "f0.java", start: {line: 3},

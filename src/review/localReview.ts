@@ -1,10 +1,10 @@
-import { LocalOllama } from "./model/ollama";
+import { LocalOllama } from "../model/ollama";
 import { ReviewResult, reviewPrompt, reviewSchema, validateReview } from "./review";
 import { ReviewInput, reviewSources, validateContext } from "./context";
 import { verifyReview } from "./verifyReview";
-import { scanSecurity } from "./securityRules";
+import { scanSecurity } from "../securityRules";
 import { Finding } from "./review";
-import { flowSeverity, flowTitle, taintFlows } from "./taint";
+import { flowSeverity, flowTitle, taintFlows } from "../taint";
 
 export type ReviewDepth = "fast" | "thorough" | "light";
 export interface ReviewOptions {

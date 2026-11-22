@@ -30,7 +30,7 @@ test("finds version properties that pin an inherited dependency", () => {
   assert.equal(findDependencyLine("<properties>\n <java>21</java>\n <opentelemetry.version>1.62.0</opentelemetry.version>\n</properties>", "io.opentelemetry:opentelemetry-api", "1.62.0"), 3);
 });
 import {bumpVersion, firstFixedVersion, parseMarkerMessage} from "../dependencyAudit";
-import {relatedScriptSources, localImportSpecifiers} from "../relatedJava";
+import {relatedScriptSources, localImportSpecifiers} from "../review/relatedJava";
 import {tr} from "../i18n";
 import {mkdtemp, mkdir, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";

@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {Finding} from "./review";
+import {Finding} from "./review/review";
 import {parseDependencyFinding} from "./dependencyAudit";
 
 /**

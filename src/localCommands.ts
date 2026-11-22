@@ -7,7 +7,7 @@ import {tr} from "./i18n";
 import {uiLanguage} from "./trivyCommands";
 import {reviewOverride} from "./overrideFlow";
 import {writeRetainedAuditEvent} from "./audit";
-import {validateContext} from "./context";
+import {validateContext} from "./review/context";
 import {runRegressionTests, testProfiles, detectTestProfiles, formatTestReceipt} from "./regression";
 
 /** Writes every Hushavyr marker (review, security, dependencies) to hushavyr.sarif in the first workspace folder. */

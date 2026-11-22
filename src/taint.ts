@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {definedNames, definitionSnippet} from "./callContext";
+import {definedNames, definitionSnippet} from "./review/callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./parsing/javaAst";
 import {pythonToBraces} from "./parsing/pythonBlocks";
 import {parseSyntax, SyntaxFile, typeOf} from "./parsing/syntax";

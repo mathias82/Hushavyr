@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { benchmarkCases, scoreCase, scoreReviewResponses, compareReviewResponses } from "../benchmark";
-import { validateReview } from "../review";
+import { validateReview } from "../review/review";
 
 test("benchmark scores mechanisms and locations without counting duplicate findings twice", () => {
   const fixture = benchmarkCases.find(c => c.id === "integer-overflow-bug")!;
