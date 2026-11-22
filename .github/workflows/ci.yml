@@ -72,6 +72,9 @@ jobs:
           key: benchmark-sources-${{ hashFiles('benchmarks/realworld.mjs') }}
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run build
+      # The cookie and part of the hash results come from the bundled Semgrep rule pack.
+      - name: Install Semgrep
+        run: pip install --quiet semgrep==1.186.0
       - name: OWASP Benchmark for Java (97.2%, 0% false positives)
         run: node benchmarks/owasp.mjs --min-score 97.2 --max-fpr 0
       - name: OWASP Benchmark for Python (100%, 0% false positives)
