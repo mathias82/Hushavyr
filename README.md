@@ -42,29 +42,34 @@ Hushavyr includes a **local AI coding assistant for the terminal**, a private, o
 hushavyr
 ```
 
-```text
-Hushavyr 1.0.6 · private AI code review in your terminal · nothing leaves this machine
-Folder: ~/projects/shop
-Model:  qwen2.5-coder:7b (ready)
-hushavyr › /security
-  [1] HIGH   books.js:5  Local rule: SQL injection - query built from string concatenation or a template literal reaches a database call
-hushavyr › /fix 1
--    5 │   db.query("SELECT * FROM books WHERE id = " + id, (err, rows) => res.json(rows));
-+    5 │   db.query("SELECT * FROM books WHERE id = ?", [id], (err, rows) => res.json(rows));
-Apply this fix? [y/N]
-```
+![Hushavyr terminal demo: hushavyr runs a security scan, fixes a SQL injection with local AI behind a diff you approve, and answers a question about a hardcoded password](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-terminal.gif)
 
-- **Chat about your code:** ask anything; mention a file (`why does books.js leak memory?`) and it is included.
-- **Scan:** `/security` (SQL injection, XSS, command injection, path traversal and more), `/secrets` (hardcoded passwords and API keys), `/dependencies` (CVEs in your libraries), `/scan` (with Semgrep, Gitleaks and Trivy if installed). No AI is needed for these.
-- **Review:** `/review [file]` runs the local AI review together with the static rules.
-- **Fix with local AI:** `/fix N` shows a colored diff and writes the file only if you answer `y`; `/edit <file> <request>` changes code the same way; `/undo` reverts the last change.
-- **Secrets in git history:** `/gitleaks history` scans every commit with Gitleaks (values redacted), so a password deleted later is still found.
-- **Prove a fix:** `/prove N` (or `/prove <file> <bug>`) writes a regression test, runs it in an offline Docker container to show it fails, then proposes a fix and shows the test passes. You approve the test and the fix; the verified patch reaches your files only if you say `y`.
-- **Pull request:** `/pr [title]` commits, pushes a branch and opens a pull request with `gh`, after you confirm. It stops if a changed file looks like it has a secret.
-- **Ask GitHub Copilot (opt-in, off by default):** `/escalate on`, then `/escalate <file>:<from>-<to> [question]` shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit`. `/escalate off` turns it off again.
-- **Explain:** `/explain N` explains finding N in your code; `/explain <file> [question]` explains a file.
-- **Set up and models:** `/setup` installs and starts Ollama, downloads the model and installs the analyzers (it asks first); `/model` lists and switches models. `/help` lists everything; Ctrl+C cancels a request.
-- **One-shot:** `hushavyr /security` runs one command and exits.
+Ask anything in plain language. If you mention a file (`why does books.js leak memory?`), it is included. All commands:
+
+| Command | What it does |
+| --- | --- |
+| `/security [folder]` | Fast security scan with no AI: SQL injection, XSS, command injection, path traversal, data flow and secrets |
+| `/secrets [folder]` | Hardcoded passwords, API keys and tokens (values are hidden) |
+| `/dependencies [folder]` | CVEs in your libraries with Trivy and OSV-Scanner |
+| `/scan [folder]` | Full project scan: built-in rules, data flow, secrets, Semgrep, Gitleaks, Trivy if installed |
+| `/gitleaks [history] [folder]` | Secrets with Gitleaks; `history` checks every past commit, so a deleted password is still found |
+| `/review <file>` | Local AI review of a file for bugs and security issues, together with the static rules |
+| `/findings` | Show the last report again |
+| `/explain <N\|file> [question]` | Explain finding N in your code, or a whole file |
+| `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y` |
+| `/edit <file> <request>` | Change a file as you ask, behind the same diff and approval |
+| `/undo` | Restore the file changed by the last `/fix` or `/edit` |
+| `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
+| `/pr [title]` | Commit, push a branch and open a pull request with `gh`, after you confirm. Stops if a changed file looks like it has a secret |
+| `/escalate on\|off` | Allow or block sending code to GitHub Copilot. Off by default |
+| `/escalate <file>[:from-to] [question]` | Shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit` |
+| `/model [name]` | List installed models, or switch to another one |
+| `/setup` | Install and start Ollama, download the model and install the analyzers (asks first) |
+| `/clear` | Forget the conversation so far |
+| `/help` | List the commands |
+| `/exit` | Quit (also Ctrl+D) |
+
+Tab completes commands, and Ctrl+C cancels a running request. `hushavyr /security` runs one command and exits; `hushavyr --model qwen2.5-coder:14b` starts with a specific model.
 
 **In VS Code terminals it works right after you install the extension**, with no Node.js needed (it uses the editor's own runtime). For other terminals (Terminal.app, iTerm, Windows Terminal), run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once from the Command Palette. It writes a small launcher to `~/.local/bin` (macOS, Linux) or your user `WindowsApps` folder (Windows), offers to add the folder to your shell profile if needed, and keeps pointing at the current extension version after updates. The terminal uses the same local Ollama as the extension; the model you pick with `/model` is saved in `~/.hushavyr/config.json`. Your code never leaves your machine.
 

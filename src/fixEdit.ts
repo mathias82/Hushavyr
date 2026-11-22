@@ -84,13 +84,16 @@ export function isPlausibleFix(original: readonly string[], replacement: string)
  * Which lines of the excerpt the replacement covers (0-based, inclusive). Models sometimes return only the corrected
  * marked line instead of the whole excerpt; that is applied to the marked line alone. Undefined when unusable.
  */
-export function fitFix(original: readonly string[], replacement: string, marked: number): {start: number; end: number} | undefined {
-  if (isPlausibleFix(original, replacement)) return {start: 0, end: original.length - 1};
+export function fitFix(original: readonly string[], replacement: string, marked: number): {start: number; end: number; text: string} | undefined {
+  if (isPlausibleFix(original, replacement)) return {start: 0, end: original.length - 1, text: replacement};
   const line = original[marked];
   if (line === undefined || original.length < 2 || replacement.split("\n").length > 3 || !isPlausibleFix([line], replacement)) return undefined;
   // It must be a rewrite of the marked line, not some other line of the excerpt.
   const words = line.match(/\w+/g) ?? [];
   const reused = new Set(replacement.match(/\w+/g) ?? []);
-  if (words.length && words.filter(w => reused.has(w)).length * 2 >= words.length) return {start: marked, end: marked};
-  return undefined;
+  if (!words.length || words.filter(w => reused.has(w)).length * 2 < words.length) return undefined;
+  // Models often drop the line's indentation when they return it alone.
+  const indent = /^\s*/.exec(line)![0];
+  const text = /^\s/.test(replacement) ? replacement : replacement.split("\n").map(l => l ? indent + l : l).join("\n");
+  return {start: marked, end: marked, text};
 }

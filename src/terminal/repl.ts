@@ -308,9 +308,9 @@ class Session {
     if (!replacement || !fit) { out(yellow("The local model did not produce a safe automatic fix. Suggested fix: ") + how.fix); return; }
     const start = window.start + fit.start, end = window.start + fit.end;
     out(bold("Proposed fix for " + f.display + ":"));
-    this.showDiff(original.slice(fit.start, fit.end + 1).join("\n"), replacement, start + 1);
+    this.showDiff(original.slice(fit.start, fit.end + 1).join("\n"), fit.text, start + 1);
     if (await this.ask("Apply this fix?")) {
-      await this.apply(f.path, f.display, text, replaceLines(text, start, end, replacement));
+      await this.apply(f.path, f.display, text, replaceLines(text, start, end, fit.text));
       this.prDraft = {title: ("Fix " + how.title.replace(/^Local rule:\s*/i, "")).slice(0, 72), body: "Fixes `" + f.display + ":" + f.line + "`: " + how.title + "."};
     }
     else out("Discarded. " + f.display + " is unchanged.");

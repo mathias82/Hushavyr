@@ -96,8 +96,10 @@ test("reads title and fix from review markers and rejects bad replacements", () 
   const excerpt = ["", "app.get(\"/books\", (req, res) => {", "  const id = req.query.id;", "  db.query(\"SELECT * FROM books WHERE id = \" + id, cb);", "});", "", "const adminPassword = \"x\";", "app.listen(3000);", ""];
   const fixed = "  db.query(\"SELECT * FROM books WHERE id = ?\", [id], cb);";
   assert.equal(isPlausibleFix(excerpt, fixed), false, "dropping the unrelated lines would delete code");
-  assert.deepEqual(fitFix(excerpt, fixed, 3), {start: 3, end: 3}, "a lone corrected line replaces only the marked line");
-  assert.deepEqual(fitFix(excerpt, excerpt.join("\n").replace("= \" + id, cb", "= ?\", [id], cb"), 3), {start: 0, end: 8});
+  assert.deepEqual(fitFix(excerpt, fixed, 3), {start: 3, end: 3, text: fixed}, "a lone corrected line replaces only the marked line");
+  assert.deepEqual(fitFix(excerpt, fixed.trim(), 3), {start: 3, end: 3, text: fixed}, "a lone line keeps the original indentation");
+  const whole = excerpt.join("\n").replace("= \" + id, cb", "= ?\", [id], cb");
+  assert.deepEqual(fitFix(excerpt, whole, 3), {start: 0, end: 8, text: whole});
   assert.equal(fitFix(excerpt, "app.listen(3000);", 3), undefined, "a line unrelated to the marked one is refused");
 });
 test("changed file list drops traversal, lockfiles and build output", () => {

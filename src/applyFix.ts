@@ -46,9 +46,9 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
   const start = window.start + fit.start, end = window.start + fit.end;
   const range = new vscode.Range(start, 0, end, original[fit.end].length);
   const edit = new vscode.WorkspaceEdit();
-  edit.replace(doc.uri, range, replacement);
+  edit.replace(doc.uri, range, fit.text);
   const full = doc.getText().split(/\r?\n/);
-  full.splice(start, fit.end - fit.start + 1, ...replacement.split("\n"));
+  full.splice(start, fit.end - fit.start + 1, ...fit.text.split("\n"));
   // A read-only virtual document: discarding the preview never asks to save an untitled file.
   const name = doc.uri.path.split("/").pop() ?? "file";
   const preview = vscode.Uri.from({scheme: PREVIEW_SCHEME, path: "/" + ++previewCount + "/" + name});
