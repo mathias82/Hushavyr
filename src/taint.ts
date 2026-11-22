@@ -3,7 +3,9 @@ import {definedNames, definitionSnippet} from "./callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
 import {pythonToBraces} from "./pythonBlocks";
 import {parseSyntax, SyntaxFile, typeOf} from "./syntax";
-import {ANNOTATED, CS, GO, GO_SQL_RECEIVER, HTML_ESCAPE, JAVA, JS, JS_SQL_RECEIVER, LANG_SOURCES, PHP, PY, RB, RECEIVER, SANITIZER, Sink, SINKS, SOURCE} from "./taintRules";
+import {ANNOTATED, CS, GO, GO_SQL_RECEIVER, HTML_ESCAPE, JAVA, JS, JS_SQL_RECEIVER, LANG_SOURCES, PHP, PY, RB, RECEIVER, SANITIZER, Sink, SINK_KINDS, SINKS, SOURCE, TaintRules, useTaintRules} from "./taintRules";
+export {loadTaintRules, parseTaintRules, TAINT_RULES_FILE} from "./taintRules";
+export type {TaintRules} from "./taintRules";
 
 export {initJavaParser};
 // Loading starts at import, so a scan that reads files first finds the parser ready; await initJavaParser() to be sure.
@@ -248,7 +250,7 @@ const PY_CONTAINER = /^(?:\{\s*\}|\[\s*\]|dict\(\s*\)|list\(\s*\)|(?:configparse
 /** Flask/Django responses whose first argument (or first tuple element) is the body; headers and status are not markup. */
 const RESPONSE_CALL = /^(?:[\w.]*\.)?(?:make_response|Response|HttpResponse)\s*\(/;
 const NOT_MARKUP = /^(?:[\w.]*\.)?(?:redirect|jsonify|send_file|send_from_directory|abort|url_for|render_template|JsonResponse|HttpResponseRedirect|FileResponse)\s*\(/;
-const ALL_KINDS: SinkKind[] = ["sql", "nosql", "command", "code", "path", "ssrf", "xss", "ldap", "xpath", "trust-boundary", "redirect", "xxe", "deserialization"];
+const ALL_KINDS = [...SINK_KINDS];
 
 /** Sink kinds an anchored validation regex rules out: none when it admits arbitrary text, fewer when it allows quotes, dots or slashes. */
 function regexKinds(source: string): SinkKind[] {
@@ -469,17 +471,18 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
         if (py && sink.kind === "command" && /(?:^|[^\w$.])exec\s*\($/.test(m[0])) continue;
         // Database handles are objects (stmt.execute, cursor.execute); Helper.execute(...) is a static call into application code.
         // Go package-level handles are exported names (DB.Query), so the heuristic does not apply there.
-        if (sink.kind === "sql" && !go && !rb && /(?<![\w$.])[A-Z][\w$]*\.$/.test(text.slice(0, m.index! + 1))) continue;
-        const method = /(?<!\bnew\s+)\b([A-Za-z_$][\w$]*)\s*\($/.exec(m[0])?.[1], types = method && RECEIVER[sink.kind] ? site(method)?.types : undefined;
+        // A team's own sink (sink.custom) is exact: none of the receiver heuristics below apply to it.
+        if (sink.kind === "sql" && !sink.custom && !go && !rb && /(?<![\w$.])[A-Z][\w$]*\.$/.test(text.slice(0, m.index! + 1))) continue;
+        const method = /(?<!\bnew\s+)\b([A-Za-z_$][\w$]*)\s*\($/.exec(m[0])?.[1], types = method && RECEIVER[sink.kind] && !sink.custom ? site(method)?.types : undefined;
         if (types && project && ![...types].some(t => [...project.ancestors(t)].some(a => RECEIVER[sink.kind]!.test(a)))) continue;
         // JS/TS and Go: a receiver declared with a non-database type (commandBus: CommandBus, cache *redis.Client) is not a SQL sink.
-        if (sink.kind === "sql" && (go || JS.test(path))) {
+        if (sink.kind === "sql" && !sink.custom && (go || JS.test(path))) {
           const recv = /([A-Za-z_$][\w$]*)\s*\.$/.exec(text.slice(0, m.index! + 1))?.[1], tree = syntaxFiles.get(path);
           const type = recv && tree ? typeOf(tree, recv, line - 1) : undefined;
           if (type && !(go ? GO_SQL_RECEIVER : JS_SQL_RECEIVER).test(type)) continue;
         }
         // A Go prepared statement (stmt, err := db.Prepare(q)) takes bind values, not SQL.
-        if (go && sink.kind === "sql") {
+        if (go && sink.kind === "sql" && !sink.custom) {
           const recv = /([A-Za-z_]\w*)\.$/.exec(text.slice(0, m.index! + 1))?.[1];
           if (recv && new RegExp("\\b" + recv + "\\s*(?:,\\s*\\w+\\s*)?:?=\\s*[\\w.]+\\.Prepare(?:Context)?\\s*\\(").test(body)) continue;
         }
@@ -689,7 +692,8 @@ function cachedParse<T extends JavaFile | SyntaxFile>(path: string, text: string
   return tree;
 }
 
-export function taintFlows(files: readonly TaintFile[]): TaintFlow[] {
+export function taintFlows(files: readonly TaintFile[], rules?: TaintRules): TaintFlow[] {
+  useTaintRules(rules);
   // Minified bundles (vendor libraries) define short, common names that would capture calls from the application's own code.
   const minified = (f: TaintFile) => /\.min\.[cm]?js$/i.test(f.path) || (JS.test(f.path) && f.text.length > 2000 && f.text.length / (f.text.split("\n").length) > 300);
   const sources = files.slice(0, MAX_FILES).filter(f => f.text.length <= 200_000 && !minified(f)).map(f => PY.test(f.path) ? {path: f.path, text: pythonToBraces(f.text)} : f);

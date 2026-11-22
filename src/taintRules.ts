@@ -1,3 +1,5 @@
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
 import type {SinkKind} from "./taint";
 
 /**
@@ -15,8 +17,8 @@ export const RB = /\.rb$/i;
  * recv: the tainted value is the receiver before the call (value.constantize); skip: an argument shape that is safe (a Rails
  * hash condition); lit: the argument's first string literal must match (header("Location: " . $url)); shell: when the first
  * argument is a shell (exec.Command("sh", "-c", cmd)), every argument counts. */
-export interface Sink { kind: SinkKind; call: RegExp; when?: RegExp; unless?: RegExp; lang?: RegExp; scope?: RegExp; all?: boolean; arg?: number; recv?: boolean; skip?: RegExp; lit?: RegExp; shell?: boolean }
-export const SINKS: Sink[] = [
+export interface Sink { custom?: boolean; kind: SinkKind; call: RegExp; when?: RegExp; unless?: RegExp; lang?: RegExp; scope?: RegExp; all?: boolean; arg?: number; recv?: boolean; skip?: RegExp; lit?: RegExp; shell?: boolean }
+const BASE_SINKS: Sink[] = [
   {kind: "sql", call: /(?:^|[^\w$])(?:executeQuery|executeUpdate|execute|executemany|query|raw|createQuery|createNativeQuery|prepareStatement|exec_driver_sql)\s*\(/g},
   {kind: "sql", call: /\.(?:prepareCall|addBatch|batchUpdate|queryFor\w+)\s*\(/g, lang: JAVA},
   {kind: "command", call: /(?:\bos\.(?:system|popen)|child_process\.(?:exec|execSync)|getRuntime\(\)\.exec|(?:^|[^\w$.])(?:exec|execSync|system|popen))\s*\(/g},
@@ -90,7 +92,7 @@ export const SINKS: Sink[] = [
   {kind: "xss", call: /(?:^|[^\w$.:])raw\b(?:\s*\(|\s+(?=[\w@$:"\x27\[]))|\brender\s*\(?\s*(?:inline|html):/g, lang: RB}
 ];
 /** Request input per language, beyond the shared SOURCE; scope limits a source to files that use a library (zip entries). */
-export const LANG_SOURCES: {lang: RegExp; re: RegExp; scope?: RegExp}[] = [
+const BASE_LANG_SOURCES: {lang: RegExp; re: RegExp; scope?: RegExp}[] = [
   {lang: PHP, re: /\$_(?:GET|POST|REQUEST|COOKIE|FILES)\b/},
   {lang: GO, re: /\.(?:FormValue|PostFormValue|FormFile)\s*\(|\.URL\.(?:Query\s*\(|RawQuery\b)|\b(?:r|req|request)\.(?:Form|PostForm|Header\.Get\s*\(|Cookie\s*\()|\bmux\.Vars\s*\(|\.ByName\s*\(|\bc\.(?:Query|DefaultQuery|PostForm|Param|GetHeader|Cookie)\s*\(/},
   {lang: CS, re: /\bRequest\s*(?:\.\s*(?:QueryString|Form|Params|Query|Cookies|Headers|ServerVariables|RouteValues|Files))?\s*\[|\bRequest\.(?:QueryString|Form|Params|Query|Cookies|Headers|Files|InputStream|Body|RawUrl)\b|\b(?:txt|tb)[A-Z]\w*\.Text\b/},
@@ -102,7 +104,7 @@ export const LANG_SOURCES: {lang: RegExp; re: RegExp; scope?: RegExp}[] = [
 export const SOURCE = /\b(?:req|request)\.(?:query|params|body|headers|cookies|args|form|values|json|GET|POST|FILES|data|query_string|get_json|get_data|files|stream|COOKIES|META)\b|\b(?:get(?!Init)\w*?(?:Parameter|Header|Cookie)s?(?:Values|Map|Names)?|getQueryString)\s*\(/;
 /** Output encoders only neutralise markup; the value stays dangerous for queries, commands, paths and sessions. */
 export const HTML_ESCAPE = /\b(?:escapeHtml\w*|escapeXml\w*|htmlEscape\w*|encodeForHTML\w*|encodeForXML\w*|encodeForJavaScript|escapeEcmaScript|(?:html|markupsafe|cgi|xml\.sax\.saxutils)\.escape|escape_\w*html\w*|html_escape\w*|htmlspecialchars|htmlentities|strip_tags|HtmlEncode|HtmlAttributeEncode|JavaScriptStringEncode|HTMLEscapeString|EscapeString|JSEscapeString|ERB::Util\.h)\s*\(/;
-export const SANITIZER = /\b(?:parseInt|parseFloat|Number|Integer\.parseInt|Long\.parseLong|int|float|bool|escape\w*|encodeURIComponent|encodeFor\w*|htmlEscape\w*|sanitize\w*|quote|basename|UUID\.fromString|isValid\w*|validate\w*|clean\w*|intval|floatval|boolval|ctype_digit|is_numeric|filter_var|\w+_escape_string|escapeshellarg|Atoi|ParseInt|ParseFloat|ParseBool|QueryEscape|PathEscape|(?:int|long|Guid|decimal|double)\.(?:Try)?Parse|Convert\.ToInt\d*|Path\.GetFileName|Integer|Float|sanitize_sql\w*|md5|sha1|crc32|hash_hmac)\s*\(|\.to_(?:i|f|sym)\b/;
+const BASE_SANITIZER = /\b(?:parseInt|parseFloat|Number|Integer\.parseInt|Long\.parseLong|int|float|bool|escape\w*|encodeURIComponent|encodeFor\w*|htmlEscape\w*|sanitize\w*|quote|basename|UUID\.fromString|isValid\w*|validate\w*|clean\w*|intval|floatval|boolval|ctype_digit|is_numeric|filter_var|\w+_escape_string|escapeshellarg|Atoi|ParseInt|ParseFloat|ParseBool|QueryEscape|PathEscape|(?:int|long|Guid|decimal|double)\.(?:Try)?Parse|Convert\.ToInt\d*|Path\.GetFileName|Integer|Float|sanitize_sql\w*|md5|sha1|crc32|hash_hmac)\s*\(|\.to_(?:i|f|sym)\b/;
 export const ANNOTATED = /@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam)\b|\[\s*From(?:Query|Body|Form|Route|Header)\b/;
 /** API types whose methods are the sinks; a typed receiver of any other type (a project class, an executor, an HTTP client) is not the sink. */
 export const RECEIVER: Partial<Record<SinkKind, RegExp>> = {
@@ -116,3 +118,66 @@ export const RECEIVER: Partial<Record<SinkKind, RegExp>> = {
  * (database/sql, sqlx, gorm); a typed receiver of any other type (CommandBus, HttpService, redis.Client) is not a SQL sink. */
 export const JS_SQL_RECEIVER = /^(?:Pool|PoolClient|Client|Connection|PoolConnection|Knex|Sequelize|DataSource|EntityManager|QueryRunner|Repository|Database|Db|Transaction|Prisma\w*|\w*(?:Sql|SQL|Pg|Postgres|Mysql|MySql|MySQL|Sqlite|SQLite|Mssql|Oracle|Db|DB|Database|Repository|Connection)\w*)$/;
 export const GO_SQL_RECEIVER = /^(?:DB|Tx|Conn|Stmt|\w*(?:Sql|SQL|Db|DB|Repo|Repository|Store)\w*)$/;
+
+export const SINK_KINDS: readonly SinkKind[] = ["sql", "nosql", "command", "code", "path", "ssrf", "xss", "ldap", "xpath", "trust-boundary", "redirect", "xxe", "deserialization"];
+export let SINKS = BASE_SINKS;
+export let LANG_SOURCES = BASE_LANG_SOURCES;
+export let SANITIZER = BASE_SANITIZER;
+
+/** A team's own sources, sinks and sanitizers (.hushavyr/taint-rules.json), compiled; added to the built-in rules. */
+export interface TaintRules { sinks: Sink[]; sources: {lang: RegExp; re: RegExp}[]; sanitizer?: RegExp }
+export const TAINT_RULES_FILE = join(".hushavyr", "taint-rules.json");
+
+/** Use the built-in rules plus a team's own (none: built-in only). */
+export function useTaintRules(rules?: TaintRules): void {
+  SINKS = rules ? [...BASE_SINKS, ...rules.sinks] : BASE_SINKS;
+  LANG_SOURCES = rules ? [...BASE_LANG_SOURCES, ...rules.sources] : BASE_LANG_SOURCES;
+  SANITIZER = rules?.sanitizer ? new RegExp(BASE_SANITIZER.source + "|" + rules.sanitizer.source) : BASE_SANITIZER;
+}
+
+/**
+ * Parse .hushavyr/taint-rules.json. Patterns are regular expressions matched against code with string literals blanked:
+ * sources match the input expression, sinks and sanitizers the called name (the "(" is added). languages are file
+ * extensions (default: all). Throws an Error naming the bad entry.
+ */
+export function parseTaintRules(text: string): TaintRules {
+  let data: unknown;
+  try { data = JSON.parse(text); } catch (e) { throw new Error(TAINT_RULES_FILE + ": " + (e as Error).message); }
+  const fail = (where: string, what: string): never => { throw new Error(TAINT_RULES_FILE + ": " + where + " " + what); };
+  if (!data || typeof data !== "object" || Array.isArray(data)) fail("top level", "must be an object with sources, sinks and sanitizers");
+  const record = data as Record<string, unknown>;
+  for (const key of Object.keys(record)) if (!["sources", "sinks", "sanitizers"].includes(key)) fail(key, "is not a known key (sources, sinks, sanitizers)");
+  const list = (key: string): Record<string, unknown>[] => {
+    const value = record[key] ?? [];
+    if (!Array.isArray(value)) fail(key, "must be an array");
+    return (value as unknown[]).map((v, i) => typeof v === "string" ? {pattern: v} : v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : fail(key + "[" + i + "]", "must be an object"));
+  };
+  const regex = (where: string, value: unknown): string => {
+    if (typeof value !== "string" || !value.trim() || value.length > 500) fail(where, "must be a regular expression of 1-500 characters");
+    try { new RegExp(value as string); } catch (e) { fail(where, "is not a valid regular expression: " + (e as Error).message); }
+    return value as string;
+  };
+  const lang = (where: string, value: unknown): RegExp => {
+    if (value === undefined) return /(?:)/;
+    if (!Array.isArray(value) || !value.length || value.some(v => typeof v !== "string" || !/^\w+$/.test(v))) fail(where, "must be a list of file extensions such as [\"ts\", \"js\"]");
+    return new RegExp("\\.(?:" + (value as string[]).join("|") + ")$", "i");
+  };
+  const sources = list("sources").map((s, i) => ({lang: lang("sources[" + i + "].languages", s.languages), re: new RegExp(regex("sources[" + i + "].pattern", s.pattern))}));
+  const sinks = list("sinks").map((s, i): Sink => {
+    const where = "sinks[" + i + "]";
+    if (!SINK_KINDS.includes(s.kind as SinkKind)) fail(where + ".kind", "must be one of " + SINK_KINDS.join(", "));
+    if (s.arg !== undefined && s.arg !== "all" && !(Number.isInteger(s.arg) && (s.arg as number) >= 0)) fail(where + ".arg", "must be an argument index (0 = first) or \"all\"");
+    const call = regex(where + ".call", s.call);
+    return {custom: true, kind: s.kind as SinkKind, call: new RegExp("(?:^|[^\\w$])(?:" + call + ")\\s*\\(", "g"), lang: lang(where + ".languages", s.languages),
+      all: s.arg === "all", arg: typeof s.arg === "number" ? s.arg : undefined};
+  });
+  const sanitizers = list("sanitizers").map((s, i) => regex("sanitizers[" + i + "]", s.pattern ?? s.call));
+  return {sinks, sources, sanitizer: sanitizers.length ? new RegExp("(?:^|[^\\w$])(?:" + sanitizers.join("|") + ")\\s*\\(") : undefined};
+}
+
+/** The workspace's .hushavyr/taint-rules.json, or undefined when there is none; throws on an invalid file. */
+export async function loadTaintRules(root: string): Promise<TaintRules | undefined> {
+  let text: string;
+  try { text = await readFile(join(root, TAINT_RULES_FILE), "utf8"); } catch { return undefined; }
+  return parseTaintRules(text);
+}

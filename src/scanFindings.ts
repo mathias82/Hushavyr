@@ -3,7 +3,7 @@ import {markDependencies} from "./dependencyMarkers";
 import {groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
 import {auditDependenciesWithOsv} from "./codeScanners";
 import {join} from "node:path";
-import {flowSeverity, flowTitle, taintFlows, TaintFile, TaintFlow} from "./taint";
+import {flowSeverity, flowTitle, loadTaintRules, taintFlows, TaintFile, TaintFlow, TaintRules} from "./taint";
 import {collectImports, findVulnerableCall, reachability, vulnerableSymbols} from "./reachability";
 import {scanSecurity} from "./securityRules";
 import * as vscode from "vscode";
@@ -34,6 +34,20 @@ export async function readSmallText(uri: vscode.Uri): Promise<string | undefined
   } catch { return undefined; }
 }
 
+/** The team's own sources, sinks and sanitizers (.hushavyr/taint-rules.json in the first workspace folder that has one); an invalid file is reported and ignored. */
+export async function workspaceTaintRules(stream: vscode.ChatResponseStream): Promise<TaintRules | undefined> {
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    try {
+      const rules = await loadTaintRules(folder.uri.fsPath);
+      if (rules) return rules;
+    } catch (error) {
+      stream.markdown("_Custom data-flow rules ignored: " + (error as Error).message + "_\n\n");
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /** /scan runs everything that is deterministic too: built-in rules, cross-file data flow and dependency CVEs (Trivy, OSV-Scanner). */
 export async function deterministicForScan(context: vscode.ExtensionContext, files: readonly vscode.Uri[], seen: ReadonlySet<string>,
   stream: vscode.ChatResponseStream, token: vscode.CancellationToken, signal: AbortSignal): Promise<string[]> {
@@ -59,7 +73,7 @@ export async function deterministicForScan(context: vscode.ExtensionContext, fil
     }
   }
   if (rules) stream.markdown("\n");
-  const flows = token.isCancellationRequested ? [] : taintFlows(taintFiles);
+  const flows = token.isCancellationRequested ? [] : taintFlows(taintFiles, await workspaceTaintRules(stream));
   streamFlows(flows, uriOf, stream);
   const totals = ["built-in rules: " + rules, "data flows: " + flows.length];
   for (const folder of vscode.workspace.workspaceFolders ?? []) {

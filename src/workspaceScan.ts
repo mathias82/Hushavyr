@@ -14,7 +14,7 @@ import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import * as vscode from "vscode";
 import {offerToolInstallation} from "./setup";
-import {findingLink, streamFlows, readSmallText, deterministicForScan} from "./scanFindings";
+import {findingLink, streamFlows, readSmallText, deterministicForScan, workspaceTaintRules} from "./scanFindings";
 import {markDependencies} from "./dependencyMarkers";
 export {clearDependencyMarkers} from "./dependencyMarkers";
 
@@ -249,7 +249,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       let flowCount = 0;
       if (request.command === "security" && !token.isCancellationRequested) {
         await initJavaParser();
-        const flows = taintFlows(taintFiles);
+        const flows = taintFlows(taintFiles, await workspaceTaintRules(stream));
         flowCount = flows.length;
         streamFlows(flows, uriOf, stream);
       }

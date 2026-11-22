@@ -9,7 +9,7 @@ import {runScanner} from "./externalScanners";
 import {auditDependenciesWithOsv, runCodeScanners, statusLine} from "./codeScanners";
 import {loadIgnore} from "./teamMemory";
 import {collectImports, findVulnerableCall, vulnerableSymbols} from "./reachability";
-import {flowSeverity, flowTitle, initJavaParser, pythonHandler, taintFlows, TaintFile} from "./taint";
+import {flowSeverity, flowTitle, initJavaParser, loadTaintRules, pythonHandler, taintFlows, TaintFile} from "./taint";
 
 const SKIP = new Set([".git", "node_modules", "target", "build", "dist", "out", "coverage", ".venv", "venv", ".next", ".idea", ".vscode", "vendor", "__pycache__"]);
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
@@ -58,7 +58,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
   const decided = (r: SarifResult) => handlers.has(r.path) && TAINT_DECIDED.has(r.ruleId);
   for (let i = results.length - 1; i >= 0; i--) if (decided(results[i])) results.splice(i, 1);
   await initJavaParser();
-  for (const flow of taintFlows(taintFiles))
+  for (const flow of taintFlows(taintFiles, await loadTaintRules(root)))
     results.push({ruleId: "taint-" + flow.kind, message: flowTitle(flow) + " (input at " + flow.source.path + ":" + flow.source.line + ")", path: flow.sink.path, line: flow.sink.line, level: sarifLevel(flowSeverity(flow))});
   if (builtinOnly) return results.filter(r => !ignored(r.path));
   const fromSemgrep = (await semgrep(root, rules)).filter(r => !decided(r));

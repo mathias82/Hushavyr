@@ -109,6 +109,17 @@ Quick fixes on findings:
 | `.hushavyr/rules.md` | Your team standards, e.g. "never log tokens". `/review` checks the code against them. |
 | `.hushavyr/dismissed.json` | False positives hidden for everyone. Created by the *Not a real issue* quick fix. |
 | `.hushavyr/ignore` | Paths that are never scanned, one per line (`src/test/`, `*.gen.ts`). Use it for intentionally vulnerable test fixtures. |
+| `.hushavyr/taint-rules.json` | Your own request sources, sinks and sanitizers for the data-flow engine (`/scan`, `/security`, CLI), e.g. an in-house DB wrapper. |
+
+```json
+{
+  "sources": [{"pattern": "\\bctx\\.input\\(", "languages": ["ts", "js"]}],
+  "sinks": [{"kind": "sql", "call": "db\\.unsafeQuery", "arg": 0}],
+  "sanitizers": ["toSafeId"]
+}
+```
+
+Patterns are regular expressions on code (string literals are blanked); `call` and `sanitizers` name the function, `(` is added. `kind` is one of `sql`, `nosql`, `command`, `code`, `path`, `ssrf`, `xss`, `ldap`, `xpath`, `trust-boundary`, `redirect`, `xxe`, `deserialization`; `arg` is the argument index or `"all"`; `languages` are file extensions (default: all). The CLI stops with exit code 2 on an invalid file.
 
 ## CI
 

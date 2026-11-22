@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {taintFlows} from "../taint";
+import {parseTaintRules, taintFlows} from "../taint";
 
 const kinds = (path: string, text: string) => taintFlows([{path, text}]).map(f => `${f.kind}:${f.sink.line}`);
 
@@ -120,4 +120,26 @@ test("A clean value assigned inside a conditional block is safe only until the b
     "shell_exec('ping ' . $t);",
   ].join("\n");
   assert.deepEqual(kinds("p.php", php), ["command:8"]);
+});
+
+test("a team's own sources, sinks and sanitizers from .hushavyr/taint-rules.json", () => {
+  const rules = parseTaintRules(JSON.stringify({
+    sources: [{pattern: "\\bctx\\.input\\(", languages: ["ts"]}],
+    sinks: [{kind: "command", call: "Shell\\.run", arg: 1}, {kind: "sql", call: "rawSql", languages: ["py"]}],
+    sanitizers: ["shellSafe"]
+  }));
+  const text = [
+    "function handle (ctx) {",
+    "  const cmd = ctx.input('cmd')",
+    "  Shell.run('-c', cmd)",
+    "  Shell.run(cmd, 'x')",
+    "  Shell.run('-c', shellSafe(cmd))",
+    "  rawSql(cmd)",
+    "}"].join("\n");
+  const flows = (r?: typeof rules) => taintFlows([{path: "h.ts", text}], r).map(f => `${f.kind}:${f.sink.line}`);
+  assert.deepEqual(flows(rules), ["command:3"]);
+  assert.deepEqual(flows(), []);
+  assert.throws(() => parseTaintRules('{"sinks": [{"kind": "rce", "call": "run"}]}'), /sinks\[0\]\.kind must be one of sql/);
+  assert.throws(() => parseTaintRules('{"sanitizers": ["("]}'), /sanitizers\[0\] is not a valid regular expression/);
+  assert.throws(() => parseTaintRules('{"source": []}'), /source is not a known key/);
 });
