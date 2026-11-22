@@ -54,6 +54,45 @@ jobs:
           HUSHAVYR_NODE_DOCKER_SMOKE: '1'
         run: node --test dist/test/fix-node.test.js
 
+  terminal:
+    # The hushavyr launcher scripts (sh and cmd) on every desktop OS, as shipped in the VSIX.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: Fixture with a hardcoded password
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/hv" && printf 'const password = "Sup3rS3cretPassw0rd!";\n' > "$RUNNER_TEMP/hv/app.js"
+      - name: hushavyr (sh)
+        if: runner.os != 'Windows'
+        working-directory: ${{ runner.temp }}/hv
+        env:
+          HUSHAVYR_OLLAMA_ENDPOINT: http://127.0.0.1:9
+        run: |
+          sh "$GITHUB_WORKSPACE/bin/hushavyr" --version
+          sh "$GITHUB_WORKSPACE/bin/hushavyr" /secrets | tee out.txt
+          grep -q "app.js:1  Potential hardcoded credential" out.txt
+      - name: hushavyr (cmd)
+        if: runner.os == 'Windows'
+        shell: cmd
+        working-directory: ${{ runner.temp }}/hv
+        env:
+          HUSHAVYR_OLLAMA_ENDPOINT: http://127.0.0.1:9
+        run: |
+          call "%GITHUB_WORKSPACE%\bin\hushavyr.cmd" --version || exit /b 1
+          call "%GITHUB_WORKSPACE%\bin\hushavyr.cmd" /secrets > out.txt || exit /b 1
+          type out.txt
+          findstr /C:"app.js:1  Potential hardcoded credential" out.txt || exit /b 1
+
   benchmark-gate:
     # Fails when a known finding on the pinned OWASP Benchmarks or the six real vulnerable apps is lost, or a new one appears.
     runs-on: ubuntu-latest

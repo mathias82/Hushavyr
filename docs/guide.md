@@ -101,6 +101,19 @@ npm run ai:serve
 
 You can override the model using `OLLAMA_MODEL=other-model npm run ai:start`. Keep the VS Code `aiPrivacyRouter.ollamaModel` setting consistent. The script contacts only the local Ollama endpoint, except that `ollama pull` downloads a missing model. Do not start a second server if one is already running.
 
+## Terminal command (`hushavyr`)
+
+`bin/hushavyr` (and `bin/hushavyr.cmd` on Windows) starts `dist/terminal/repl.js` with Node.js 18+ from PATH, or else with the editor's own runtime (`HUSHAVYR_NODE`, run with `ELECTRON_RUN_AS_NODE=1`). On activation the extension prepends `bin/` to PATH for VS Code terminals and sets `HUSHAVYR_NODE`. **Hushavyr: Install 'hushavyr' Command in Terminal PATH** writes a launcher to `~/.local/bin/hushavyr` or `%LOCALAPPDATA%\Microsoft\WindowsApps\hushavyr.cmd`; it never overwrites a file it did not create and is refreshed on every activation so it follows extension updates.
+
+From a checkout: `npm run build && sh bin/hushavyr` (or `node dist/terminal/repl.js`). Arguments run one command and exit: `hushavyr /security`. Options: `--model <name>`, `--version`, `--help`.
+
+| Variable | Purpose |
+| --- | --- |
+| `HUSHAVYR_OLLAMA_ENDPOINT` | Ollama endpoint (loopback only), default `http://127.0.0.1:11434` |
+| `HUSHAVYR_MODEL` | Model when none is saved in the config |
+| `HUSHAVYR_CONFIG_DIR` | Config folder, default `~/.hushavyr` (`config.json` holds `model` and `endpoint`) |
+| `NO_COLOR` | Plain output |
+
 ## Local Qwen in VS Code Chat
 
 Run `npm run ai:serve`, select code in an editor, open VS Code Chat and enter `@ai-privacy Find bugs in the selected Java code`. The `@ai-privacy` participant uses local Ollama and reports structured review findings in the Chat panel. Its ordinary requests stay local; the optional `/auto` public-prompt workflow below is the only Copilot route. If selection is not available, select the code again. Note: the last non-empty selection may be reused when switching focus; verify the selection before sending a new question.

@@ -7,7 +7,7 @@
 [![CI](https://github.com/mathias82/Hushavyr/actions/workflows/ci.yml/badge.svg)](https://github.com/mathias82/Hushavyr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)** for VS Code, Cursor, VSCodium and Windsurf. It runs **on your machine** with Ollama, so it is a private alternative to cloud AI code review. It finds bugs, security vulnerabilities (OWASP Top 10, SQL injection, XSS, command injection, path traversal), hardcoded secrets and vulnerable dependencies (CVEs), then explains each finding in the context of your code and **fixes it with local AI**: you see a diff and nothing changes until you approve it. It can prove a fix with a failing test and open the pull request. Your code never goes to a cloud model.
+Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)** for VS Code, Cursor, VSCodium and Windsurf. It runs **on your machine** with Ollama, so it is a private alternative to cloud AI code review. It finds bugs, security vulnerabilities (OWASP Top 10, SQL injection, XSS, command injection, path traversal), hardcoded secrets and vulnerable dependencies (CVEs), then explains each finding in the context of your code and **fixes it with local AI**: you see a diff and nothing changes until you approve it. It can prove a fix with a failing test and open the pull request. Your code never goes to a cloud model. The same private AI assistant also runs in **any terminal**: type `hushavyr` to chat about your code, scan it and fix findings, like a local, offline Copilot CLI.
 
 **Accuracy:** 97.2% on the [OWASP Benchmark for Java](docs/owasp-benchmark.md) and 100% on the [OWASP Benchmark for Python](docs/owasp-benchmark-python.md), both with 0% false positives. On [six real vulnerable apps](docs/real-world-benchmarks.md) (Juice Shop, WebGoat, DVWA, RailsGoat, GoVWA, WebGoat.NET) it finds SQL, NoSQL, command, path, XSS, XXE and deserialization flaws in TypeScript, Java, PHP, Ruby, Go and C#; on Juice Shop 37 of 38 HIGH findings are real.
 
@@ -33,6 +33,36 @@ This is a brand interpretation, not a literal translation of an existing word.
 1. Install **Hushavyr** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mathias82.hushavyr), or from [Open VSX](https://open-vsx.org/extension/mathias82/hushavyr) for VSCodium, Cursor, Windsurf and Gitpod.
 2. Run **Hushavyr: Setup** from the Command Palette. You pick the model and the analyzers, confirm once, and it does the rest: installs and starts Ollama, downloads the model, and installs Semgrep, Gitleaks, Trivy, OSV-Scanner, FindSecBugs, Bandit and gosec with the Trivy and OSV offline databases. Every command is listed before anything runs; run it again after a reboot to restart Ollama (finished steps are skipped).
 3. Open a project and type `@ai-privacy /review` in Chat, or run **Hushavyr: Review Current File** from the Command Palette.
+
+## Use it in the terminal: the `hushavyr` command
+
+Hushavyr includes a **local AI coding assistant for the terminal**, a private, offline alternative to cloud AI CLIs. Open the VS Code terminal in any project and type:
+
+```sh
+hushavyr
+```
+
+```text
+Hushavyr 1.0.6 · private AI code review in your terminal · nothing leaves this machine
+Folder: ~/projects/shop
+Model:  qwen2.5-coder:7b (ready)
+hushavyr › /security
+  [1] HIGH   books.js:5  Local rule: SQL injection - query built from string concatenation or a template literal reaches a database call
+hushavyr › /fix 1
+-    5 │   db.query("SELECT * FROM books WHERE id = " + id, (err, rows) => res.json(rows));
++    5 │   db.query("SELECT * FROM books WHERE id = ?", [id], (err, rows) => res.json(rows));
+Apply this fix? [y/N]
+```
+
+- **Chat about your code:** ask anything; mention a file (`why does books.js leak memory?`) and it is included.
+- **Scan:** `/security` (SQL injection, XSS, command injection, path traversal and more), `/secrets` (hardcoded passwords and API keys), `/dependencies` (CVEs in your libraries), `/scan` (with Semgrep, Gitleaks and Trivy if installed). No AI is needed for these.
+- **Review:** `/review [file]` runs the local AI review together with the static rules.
+- **Fix with local AI:** `/fix N` shows a colored diff and writes the file only if you answer `y`; `/edit <file> <request>` changes code the same way; `/undo` reverts the last change.
+- **Explain:** `/explain N` explains finding N in your code; `/explain <file> [question]` explains a file.
+- **Set up and models:** `/setup` installs and starts Ollama, downloads the model and installs the analyzers (it asks first); `/model` lists and switches models. `/help` lists everything; Ctrl+C cancels a request.
+- **One-shot:** `hushavyr /security` runs one command and exits.
+
+**In VS Code terminals it works right after you install the extension**, with no Node.js needed (it uses the editor's own runtime). For other terminals (Terminal.app, iTerm, Windows Terminal), run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once from the Command Palette. It writes a small launcher to `~/.local/bin` (macOS, Linux) or your user `WindowsApps` folder (Windows), offers to add the folder to your shell profile if needed, and keeps pointing at the current extension version after updates. The terminal uses the same local Ollama as the extension; the model you pick with `/model` is saved in `~/.hushavyr/config.json`. Your code never leaves your machine.
 
 ## What it uses
 
@@ -147,6 +177,9 @@ Yes, for code review and security. It works in the VS Code Chat as `@ai-privacy`
 
 **Can it fix security vulnerabilities automatically?**
 Yes, with your approval. **Fix with local AI** asks the local Ollama model for a minimal fix (a parameterized query for SQL injection, output encoding for XSS, an environment variable for a hardcoded password), shows the diff, and edits the file only after you click **Apply fix**. To be sure the fix works, **Prove with a failing test** runs a test before and after the fix in an offline Docker sandbox and can open the pull request.
+
+**Is there a Hushavyr CLI for the terminal, like Copilot CLI?**
+Yes. Type `hushavyr` in the VS Code terminal to chat with the local AI about your code, run `/security`, `/secrets`, `/dependencies` and `/review`, and fix findings with `/fix N` behind a diff you approve. For other terminals, run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once. See [Use it in the terminal](#use-it-in-the-terminal-the-hushavyr-command).
 
 **Does my code leave my computer?**
 No. Review, scanning and fixes run locally, and there is no telemetry. Only the opt-in `/escalate` sends anything: a selection with names replaced by tokens, and only after you approve the exact text.

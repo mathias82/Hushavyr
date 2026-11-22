@@ -15,6 +15,7 @@ import {registerChatParticipant} from "./chatParticipant";
 import {registerReportIssue} from "./reportIssue";
 import {clearScanFindings, registerPaletteCommands} from "./paletteCommands";
 import {registerExplainFinding} from "./explainFinding";
+import {registerTerminalCommand} from "./terminal/register";
 import {UPDATE_VULN_DBS, updateVulnerabilityDatabases} from "./vulnDb";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -56,6 +57,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerLocalCommands(context, autoPrompt);
   registerPaletteCommands(context, registerChatParticipant(context, reviewDiagnostics, autoPrompt));
   registerExplainFinding(context);
+  registerTerminalCommand(context);
 }
 
 export function deactivate(): void {}

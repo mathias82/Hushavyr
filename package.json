@@ -3,7 +3,7 @@
   "displayName": "Hushavyr - Private AI Code Review & Security Scanner",
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
-  "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, proves fixes with tests and opens PRs. Your code never leaves your machine.",
+  "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, fixes them behind a diff you approve, also from the terminal (`hushavyr`). Your code never leaves your machine.",
   "version": "1.0.5",
   "private": true,
   "engines": {
@@ -11,7 +11,9 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:aiPrivacyRouter.setup",
+    "onCommand:aiPrivacyRouter.installTerminalCommand",
     "onCommand:aiPrivacyRouter.reportIssue",
     "onCommand:aiPrivacyRouter.clearFindings",
     "onCommand:aiPrivacyRouter.installOllama",
@@ -85,6 +87,10 @@
       {
         "command": "aiPrivacyRouter.setup",
         "title": "Hushavyr: Setup"
+      },
+      {
+        "command": "aiPrivacyRouter.installTerminalCommand",
+        "title": "Hushavyr: Install 'hushavyr' Command in Terminal PATH"
       },
       {
         "command": "aiPrivacyRouter.installOllama",
@@ -471,6 +477,7 @@
   },
   "icon": "images/hushavyr-icon.png",
   "bin": {
+    "hushavyr": "dist/terminal/repl.js",
     "hushavyr-scan": "dist/cli.js",
     "hushavyr-review": "dist/prReview.js"
   },
@@ -510,7 +517,7 @@
     "sql injection",
     "static analysis",
     "devsecops",
-    "privacy"
+    "terminal"
   ],
   "galleryBanner": {
     "color": "#0B1020",

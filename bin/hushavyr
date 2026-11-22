@@ -1,0 +1,13 @@
+#!/bin/sh
+# hushavyr: private AI code review in the terminal. Runs dist/terminal/repl.js with Node 18+,
+# or with the editor's runtime (HUSHAVYR_NODE, set by the VS Code extension) when Node is missing.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cli="$dir/../dist/terminal/repl.js"
+if command -v node >/dev/null 2>&1 && node -e 'process.exit(parseInt(process.versions.node) < 18 ? 1 : 0)' 2>/dev/null; then
+  exec node "$cli" "$@"
+fi
+if [ -n "$HUSHAVYR_NODE" ] && [ -x "$HUSHAVYR_NODE" ]; then
+  ELECTRON_RUN_AS_NODE=1 exec "$HUSHAVYR_NODE" "$cli" "$@"
+fi
+echo "hushavyr: Node.js 18 or later was not found. Install it from https://nodejs.org, or run hushavyr from the VS Code terminal." >&2
+exit 127
