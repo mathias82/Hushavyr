@@ -187,8 +187,8 @@ export async function runSetup(): Promise<void> {
             progress.report({message: (i + 1) + "/" + steps.length + ": " + step.label + " " + percent + "%"});
             last = percent;
           });
-        } catch {
-          failed.push(model + " " + tr(language, "setupFailed"));
+        } catch (error) {
+          failed.push(model + " " + tr(language, "setupFailed") + " (" + (error as Error).message.replace(/\.$/, "") + ")");
           return;
         }
       } else {

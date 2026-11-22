@@ -16,7 +16,7 @@ const messages = {
   setupRecommended: {en: "recommended for this machine's memory", el: "προτεινόμενο για τη μνήμη αυτού του υπολογιστή"},
   setupCurrent: {en: "current", el: "τρέχον"},
   setupReady: {en: "ready", el: "έτοιμο"},
-  setupFailed: {en: "could not be prepared. Check Ollama and disk space. No cloud fallback.", el: "δεν ετοιμάστηκε. Ελέγξτε το Ollama και τον χώρο στον δίσκο. Καμία αποστολή στο cloud."},
+  setupFailed: {en: "could not be prepared", el: "δεν ετοιμάστηκε"},
   setupDone: {en: "Hushavyr setup:", el: "Ρύθμιση Hushavyr:"},
   sbomDone: {en: "SBOM written to", el: "Το SBOM γράφτηκε στο"},
   dbConfirm: {en: "Download the Trivy vulnerability database? Only the public database is downloaded; no code or findings leave this machine.", el: "Λήψη της βάσης ευπαθειών του Trivy; Κατεβαίνει μόνο η δημόσια βάση, ο κώδικάς σας δεν φεύγει από τον υπολογιστή."},

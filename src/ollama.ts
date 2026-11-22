@@ -14,6 +14,14 @@ export function localEndpoint(value = "http://127.0.0.1:11434"): string {
   return url.origin;
 }
 
+function pullReason(error: unknown): string {
+  const text = error instanceof Error ? error.message.replace(/[^\x20-\x7e]/g, "").slice(0, 200) : "";
+  if (!text || text === "pull failed" || error instanceof Error && error.name === "AbortError") return "";
+  // Ollama loses its key when ~/.ollama is deleted while the server keeps running.
+  if (/id_ed25519/.test(text)) return ": Ollama is missing its key file; quit and restart Ollama, then try again";
+  return ": " + text;
+}
+
 export class LocalOllama {
   private readonly base: string;
   constructor(private readonly config: LocalModelConfig, private readonly transport: OllamaTransport = fetch) {
@@ -85,7 +93,7 @@ export class LocalOllama {
       const handle = (line: string): void => {
         if (!line.trim()) return;
         const event = JSON.parse(line) as {status?: unknown; total?: unknown; completed?: unknown; error?: unknown};
-        if (event.error) throw new Error("pull failed");
+        if (event.error) throw new Error(typeof event.error === "string" ? event.error : "pull failed");
         const status = typeof event.status === "string" ? event.status : undefined;
         if (status === "success") success = true;
         const percent = typeof event.total === "number" && event.total > 0 && typeof event.completed === "number"
@@ -102,8 +110,8 @@ export class LocalOllama {
       }
       handle(buffer);
       if (!success) throw new Error("pull failed");
-    } catch {
-      throw new Error("Could not download the local model. No cloud fallback.");
+    } catch (error) {
+      throw new Error("Could not download the local model" + pullReason(error) + ". No cloud fallback.");
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);

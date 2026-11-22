@@ -33,6 +33,12 @@ test("ensureInstalled fails closed when the pull never reports success", async (
     url.endsWith("/api/tags") ? new Response(JSON.stringify({models: []})) : ndjson({status: "pulling", total: 10, completed: 5}));
   await assert.rejects(client.ensureInstalled(), /Could not download/);
 });
+test("ensureInstalled reports why Ollama refused the pull", async () => {
+  const failing = (error: string) => new LocalOllama({model: "qwen2.5-coder:14b"}, async url =>
+    url.endsWith("/api/tags") ? new Response(JSON.stringify({models: []})) : ndjson({status: "pulling manifest"}, {error}));
+  await assert.rejects(failing("pull model manifest: file does not exist").ensureInstalled(), /model: pull model manifest: file does not exist\. No cloud/);
+  await assert.rejects(failing("open /Users/x/.ollama/id_ed25519: no such file or directory").ensureInstalled(), /restart Ollama/);
+});
 test("ensureInstalled does not pull when the server is unreachable", async () => {
   let pulls = 0;
   const client = new LocalOllama({model: "qwen2.5-coder:14b"}, async url => { if (url.endsWith("/api/pull")) pulls++; throw new Error("offline"); });

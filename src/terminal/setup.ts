@@ -91,8 +91,8 @@ export async function terminalSetup(io: SetupIO, endpoint: string, model: string
           process.stdout.write("\r  " + model + ": " + percent + "%   ");
         });
         io.out("\r  " + model + ": downloaded      ");
-      } catch {
-        failed.push("downloading " + model);
+      } catch (error) {
+        failed.push("downloading " + model + ": " + (error as Error).message.replace(/\.$/, ""));
         break;
       }
     } else {
