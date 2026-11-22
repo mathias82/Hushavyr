@@ -73,6 +73,9 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run build
       # The cookie and part of the hash results come from the bundled Semgrep rule pack.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install Semgrep
         run: pip install --quiet semgrep==1.186.0
       - name: OWASP Benchmark for Java (97.2%, 0% false positives)
