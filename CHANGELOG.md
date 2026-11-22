@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.7
+- **Marketplace page:** questions go to GitHub Issues; clearer README headings for the terminal CLI and the VS Code Chat commands, and an HD link to the terminal demo.
+
 ## 1.0.6
 - **`hushavyr` in the terminal:** a local AI coding assistant like a private Copilot CLI. Type `hushavyr` in any project to chat about your code (mentioned files are included), run `/security`, `/secrets`, `/dependencies`, `/scan` and `/review`, fix a finding with `/fix N` or change code with `/edit`, both behind a colored diff you approve (`/undo` reverts), explain with `/explain`, switch models with `/model`, and install everything with `/setup`. Works in VS Code terminals right after install, with no Node.js needed; **Hushavyr: Install 'hushavyr' Command in Terminal PATH** adds it to every other terminal on macOS, Linux and Windows.
 - **Terminal parity with VS Code:** `/gitleaks history` (secrets in every commit, redacted), `/prove N` (regression test that fails, fix that makes it pass, in an offline Docker container, both approved; the verified patch is applied only on `y`), `/pr` (commit, push and open a pull request; blocked when a changed file looks like it has a secret) and opt-in `/escalate` (off by default; shows the exact pseudonymized fragment and sends it to GitHub Copilot through the Copilot CLI only after approval, never through a shell).
