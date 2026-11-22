@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.15
+- **Fewer, more useful Copilot suggestions:** a finding dropped by the second check gets one narrow recheck of the lines around it. Only when the two local checks disagree does the review name it ("possible issue the local checks disagree on … at line N") and offer `/escalate` for that line. Benchmark (qwen2.5-coder:14b): suggestions on correct reviews fell from 11/26 to 3/26; precision and recall unchanged (0.76 / 0.72).
+
 ## 1.0.14
 - **Suggests Copilot when the local model may be wrong:** after a review, explanation or chat answer, Hushavyr names why the answer may be wrong (second check rejected findings, findings without matching code, clean review of complex code, hedging, "are you sure?", model failure) and offers to ask Copilot about that exact code. Chat shows a button, the terminal asks `y/N`. Nothing is sent without the usual preview and approval, and nothing is offered while policy blocks escalation. Setting `aiPrivacyRouter.suggestEscalation` (`when-unsure` or `never`); terminal `/escalate suggest on|off`.
 - **Reviews see the file's own tests:** when reviewing `Foo.java`, `foo.ts` or `foo.py`, the matching test (`FooTest.java`, `foo.test.ts`, `test_foo.py`, `foo_test.go`…) that calls its code is added as context.

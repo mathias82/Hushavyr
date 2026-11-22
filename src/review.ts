@@ -1,7 +1,7 @@
 import { ReviewInput, reviewSources, sourcePrompt } from "./context";
 /** Evidence-gated local review: never promote unverified model claims to confirmed bugs. */
 export interface Finding { title: string; severity: string; evidence: string; fix: string; regressionTest: string; status: "potential" | "confirmed"; path?: string; line?: number; verification?: "supported" | "unverified" }
-export interface ReviewResult { findings: Finding[]; rejected: number; proposed?: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; verifierFailed?: boolean; staticCandidates?: number; cached?: boolean }
+export interface ReviewResult { findings: Finding[]; rejected: number; proposed?: number; error?: string; rejectionReasons?: string[]; retryFailed?: boolean; verifierRejected?: number; disputed?: Finding[]; verifierFailed?: boolean; staticCandidates?: number; cached?: boolean }
 // Ollama constrains the shape; source validation below still decides what can be shown.
 export const reviewSchema = {
   type: "object",
@@ -150,6 +150,7 @@ export function formatReview(result: ReviewResult, displayPath: (path: string) =
   if (result.rejectionReasons?.length) lines.push("", "**Validation feedback:**", ...result.rejectionReasons.map(reason => "- " + reason));
   if (result.retryFailed) lines.push("", "The local repair attempt failed. These are the first attempt's validated results.");
   if (result.verifierRejected) lines.push("", "Second local pass rejected " + result.verifierRejected + " finding(s) as unsupported.");
+  for (const f of result.disputed ?? []) lines.push("", "Possible issue the local checks disagree on (not counted as a finding): " + f.title + (f.line ? " at line " + f.line : "") + ".");
   if (result.verifierFailed) lines.push("", "Second local pass was unavailable or invalid; findings remain unverified.");
   return lines.join("\n");
 }

@@ -273,7 +273,7 @@ class Session {
     this.findings = await this.withoutDismissed(result.findings.map(f => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence})));
     this.printFindings();
     await this.offerEscalation(reviewDifficulty(result, file.text), file, "Find bugs and security issues in this fragment.", signal,
-      (result.findings.find(f => f.verification !== "supported") ?? result.findings[0])?.line);
+      (result.disputed?.[0] ?? result.findings.find(f => f.verification !== "supported") ?? result.findings[0])?.line);
   }
 
   private finding(arg: string): Stored {

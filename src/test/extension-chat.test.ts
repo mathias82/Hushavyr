@@ -216,8 +216,8 @@ test("an unsure local review offers Ask Copilot; a confident one and a mandatory
   // A different trailing comment per call, so the review cache never answers.
   const code = (n: number) => ({"file:///Pay.java": "class Pay {\n  long total(int q, int c) {\n    return q * c;\n  }\n}\n// " + n});
   const candidate = JSON.stringify({findings: [{title: "Integer overflow", severity: "medium", path: "file:///Pay.java", startLine: 3, endLine: 3, fix: "Use long", regressionTest: "Large values"}]});
-  const rejected = await chat(code(1), [candidate, '{"verdicts":[{"index":0,"supported":false}]}']);
-  assert.match(rejected.output, /The local model may be wrong here: the second local pass rejected 1 finding\(s\)/);
+  const rejected = await chat(code(1), [candidate, '{"verdicts":[{"index":0,"supported":false}]}', '{"real":true}']);
+  assert.match(rejected.output, /The local model may be wrong here: the local checks disagree on "Integer overflow" \(line 3\)/);
   assert.match(rejected.output, /\[button\] Ask Copilot \(pseudonymized, needs approval\)/);
   const confident = await chat(code(2), [candidate, '{"verdicts":[{"index":0,"supported":true}]}']);
   assert.doesNotMatch(confident.output, /Ask Copilot|may be wrong/);

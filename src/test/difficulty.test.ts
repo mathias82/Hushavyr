@@ -8,8 +8,9 @@ test("review is unsure when the answer is unusable, the second pass disagrees or
   assert.deepEqual(reviewDifficulty({findings: [finding], rejected: 0, verifierRejected: 0}, "x = 1").reasons, []);
   assert.deepEqual(reviewDifficulty(undefined, "").reasons, ["the local answer was unusable"]);
   assert.deepEqual(reviewDifficulty({findings: [], rejected: 0, error: "bad json"}, "").reasons, ["the local answer was unusable"]);
-  assert.deepEqual(reviewDifficulty({findings: [finding], rejected: 2, verifierRejected: 1, verifierFailed: true}, "").reasons,
-    ["the second local pass could not check the findings", "the second local pass rejected 1 finding(s)", "2 finding(s) had no matching evidence in the code"]);
+  assert.deepEqual(reviewDifficulty({findings: [finding], rejected: 2, verifierRejected: 1, disputed: [{...finding, title: "Overflow", line: 3}], verifierFailed: true}, "").reasons,
+    ["the second local pass could not check the findings", 'the local checks disagree on "Overflow" (line 3)', "2 finding(s) had no matching evidence in the code"]);
+  assert.deepEqual(reviewDifficulty({findings: [], rejected: 0, verifierRejected: 1}, "x = 1").reasons, [], "a rejection both checks agree on is not a doubt");
   assert.deepEqual(reviewDifficulty({findings: [], rejected: 0}, "synchronized void run() {}").reasons, ["no findings in concurrent code"]);
   assert.deepEqual(reviewDifficulty({findings: [], rejected: 0}, "if(a){if(b){if(c){if(d){if(e){if(f){g()}}}}}}").reasons, ["no findings in deeply nested code"]);
   assert.deepEqual(reviewDifficulty({findings: [], rejected: 0}, 'print("{{{{{{")').reasons, [], "braces in strings do not count");

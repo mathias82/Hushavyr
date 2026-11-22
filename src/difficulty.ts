@@ -24,7 +24,8 @@ export function reviewDifficulty(result: ReviewResult | undefined, code: string)
   if (!result || result.error || result.retryFailed) reasons.push("the local answer was unusable");
   else {
     if (result.verifierFailed) reasons.push("the second local pass could not check the findings");
-    if (result.verifierRejected) reasons.push("the second local pass rejected " + result.verifierRejected + " finding(s)");
+    // A rejection both local checks agree on is not a doubt; a disagreement is.
+    if (result.disputed?.length) reasons.push("the local checks disagree on " + result.disputed.map(f => "\"" + f.title + "\"" + (f.line ? " (line " + f.line + ")" : "")).join(", "));
     if (result.rejected) reasons.push(result.rejected + " finding(s) had no matching evidence in the code");
     const complex = complexity(code);
     if (!result.findings.length && complex) reasons.push("no findings in " + complex);

@@ -40,11 +40,22 @@ test("context bounds include instruction and reject truncation or duplicate path
 });
 test("separate local pass can reject a source-matching but unsupported claim", async () => {
   let prompt = "";
-  const result = await verifyReview({generate: async text => {prompt = text; return '{"verdicts":[{"index":0,"supported":false}]}';}}, validateReview(raw(), sources), sources);
+  const result = await verifyReview({generate: async text => {prompt ||= text; return '{"verdicts":[{"index":0,"supported":false}]}';}}, validateReview(raw(), sources), sources);
   assert.equal(result?.findings.length, 0);
   assert.equal(result?.verifierRejected, 1);
   assert.match(prompt, /skeptical second reviewer/);
   assert.match(prompt, /Tenant.java/);
+});
+test("a rejected finding gets one narrow recheck: it is never restored, but a disagreement is reported as a doubt", async () => {
+  for (const [real, doubts] of [[true, 1], [false, 0]] as const) {
+    const prompts: string[] = [];
+    const replies = ['{"verdicts":[{"index":0,"supported":false}]}', JSON.stringify({real})];
+    const result = await verifyReview({generate: async text => { prompts.push(text); return replies[prompts.length - 1]; }}, validateReview(raw(), sources), sources);
+    assert.equal(result?.findings.length, 0);
+    assert.equal(result?.verifierRejected, 1);
+    assert.equal(result?.disputed?.length ?? 0, doubts);
+    assert.match(prompts[1], /Check one bug report[\s\S]*FILE Mapper.java \(lines 1-3\):\n1: public class Mapper/);
+  }
 });
 test("verifier agreement never promotes a finding to confirmed", async () => {
   const result = await verifyReview({generate: async () => '{"verdicts":[{"index":0,"supported":true}]}'}, validateReview(raw(), sources), sources);

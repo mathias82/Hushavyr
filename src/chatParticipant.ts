@@ -501,7 +501,7 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
           if (!validated.error) publishFindings(reviewDiagnostics, kept);
         }
         if (!token.isCancellationRequested) offerEscalation(stream, reviewDifficulty(validated, sources[0].text),
-          unsureFragment(validated?.findings.find(f => f.verification !== "supported")?.line ?? validated?.findings[0]?.line));
+          unsureFragment(validated?.disputed?.[0]?.line ?? validated?.findings.find(f => f.verification !== "supported")?.line ?? validated?.findings[0]?.line));
       }
     } catch {
       if (!token.isCancellationRequested) {
