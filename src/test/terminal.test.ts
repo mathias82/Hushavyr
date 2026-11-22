@@ -216,11 +216,11 @@ test("hushavyr offers /escalate only when the local model is unsure, asks first,
     await writeFile(join(dir, "books.js"), BOOKS);
     const fake = join(dir, "fake-copilot.js"), sent = join(dir, "sent.txt");
     await writeFile(fake, "require('fs').writeFileSync(" + JSON.stringify(sent) + ", process.argv[3]); console.log('Copilot says hi.');\n");
-    const output = await session(dir, endpoint, ["what does books.js do?", "are you sure about books.js?", "n", "are you sure about books.js?", "y", "y",
+    const output = await session(dir, endpoint, ["what does books.js do?", "are you sure?", "are you sure about books.js?", "n", "are you sure about books.js?", "y", "y",
       "/escalate suggest off", "are you sure about books.js?"], {HUSHAVYR_COPILOT: fake});
     const [first, ...rest] = output.split("The local model may be wrong here");
     assert.doesNotMatch(first, /Turn on \/escalate/, "a confident answer offers nothing");
-    assert.equal(rest.length, 2, "suggested twice, not after suggest off");
+    assert.equal(rest.length, 2, "suggested twice: not without a file, not after suggest off");
     assert.match(rest[0], /you doubted the previous answer[\s\S]*Turn on \/escalate and ask GitHub Copilot about books\.js:1-\d+\? .*\[y\/N\] n/);
     assert.match(rest[1], /Exact text to send to GitHub Copilot[\s\S]*Send exactly this text\? \[y\/N\] y[\s\S]*Copilot says hi\.[\s\S]*No more \/escalate suggestions\./);
     assert.ok(!(await readFile(sent, "utf8")).includes("SELECT"), "sent pseudonymized");

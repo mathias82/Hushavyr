@@ -567,9 +567,10 @@ class Session {
 
   /** The local model looks unsure: say why and, only if the user says yes, run the normal /escalate approval flow. */
   private async offerEscalation(difficulty: Difficulty, file: {display: string; text: string} | undefined, question: string, signal: AbortSignal, line?: number): Promise<void> {
-    if (!difficulty.hard || this.config.suggestEscalation === false || signal.aborted) return;
+    // Without a file there is no code to escalate, so a hedge like "what do you mean?" suggests nothing.
+    if (!difficulty.hard || !file || this.config.suggestEscalation === false || signal.aborted) return;
     out(yellow("The local model may be wrong here: " + difficulty.reasons.join("; ") + "."));
-    const part = file && escalationFragment(file.text, 1, line);
+    const part = escalationFragment(file.text, 1, line);
     if (!part || /\s/.test(file.display)) { out(dim("Ask GitHub Copilot with /escalate <file>:<from-to> [question] (pseudonymized, after you approve). /escalate suggest off hides this.")); return; }
     const to = part.startLine + part.code.split(/\r?\n/).length - 1;
     if (!await this.ask(this.config.cloudEscalation ? "Ask GitHub Copilot about " + file.display + ":" + part.startLine + "-" + to + "? You see the exact pseudonymized text first."

@@ -26,20 +26,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function field(obj: Record<string, unknown>, key: string): string {
   return typeof obj[key] === "string" ? (obj[key] as string).trim() : "";
 }
-// Concrete, per-language bug classes; only the languages being reviewed are added to the prompt.
-const CHECKLISTS: [RegExp, string][] = [
-  [/\.(?:java|kt)$/i, "Java/Kotlin checklist: int overflow before widening to long, == on String or boxed numbers, equals without hashCode, streams/connections not closed (try-with-resources), shared mutable state without synchronization, swallowed exceptions, Optional.get or map lookups without a check, mutable collections exposed from getters."],
-  [/\.(?:js|jsx|mjs|cjs|ts|tsx)$/i, "JavaScript/TypeScript checklist: missing await or unhandled promise rejections, == instead of ===, 0 or empty string treated as missing, parseInt without radix, array mutation while iterating, object merges open to prototype pollution, lost this in callbacks, any-typed input trusted as validated."],
-  [/\.py$/i, "Python checklist: mutable default arguments, bare except or except Exception hiding errors, is instead of ==, files or locks not closed (with), modifying a dict or list while iterating, subprocess with shell=True and outside input, late-binding closures in loops, integer vs float division."],
-  [/\.go$/i, "Go checklist: ignored error returns, writes to a nil map, loop variables captured by goroutines, missing defer Close/Unlock, channel deadlocks, slices aliased after append, nil pointer dereference after a failed call."],
-  [/\.cs$/i, "C# checklist: async void, missing await, IDisposable without using, possible null dereference, culture-sensitive string comparison, multiple enumeration of IEnumerable, lock on public objects."],
-  [/\.php$/i, "PHP checklist: loose == comparisons, unescaped output, include/require with outside input, unchecked return values (false on failure), SQL built from strings."],
-  [/\.rb$/i, "Ruby checklist: methods called on possible nil, mass assignment without permitted params, SQL or shell built with interpolation, rescue swallowing errors."]
-];
-export function languageChecklists(code: ReviewInput): string[] {
-  const paths = reviewSources(code).map(s => s.path.replace(/[?#].*$/, ""));
-  return CHECKLISTS.filter(([ext]) => paths.some(p => ext.test(p))).map(([, text]) => text);
-}
 export function reviewPrompt(instruction: string, code: ReviewInput): string {
   return [
     "You are a skeptical code reviewer. Review each source using its own language and runtime semantics. Use the file name and source syntax to identify the language. Follow relevant boundaries between languages when both sides are supplied. Return ONLY valid JSON, no Markdown.",
@@ -51,7 +37,6 @@ export function reviewPrompt(instruction: string, code: ReviewInput): string {
     "Use only the supplied files. Follow calls across supplied files when possible; do not assume implementations or validation in absent files. Set path to the exact SOURCE path containing the evidence.",
     "Inspect correctness at input/output boundaries: serialization and escaping, null handling, state changes and error responses. Explain a concrete triggering input and its effect in the title or fix. Do not invent absent behavior.",
     "Apply language-specific semantics, not Java assumptions: Java/Kotlin nullability, transactions and resource ownership; JavaScript/TypeScript async errors, truthiness and type coercion; Python mutable defaults, exception paths and subprocess handling; Go ignored errors and goroutine/channel lifecycle; Rust Result/Option handling and unsafe boundaries; C/C++ ownership, bounds and undefined behavior; C# async disposal and null handling; SQL joins, null semantics and parameter binding; shell quoting and exit status. For other languages infer only from visible syntax.",
-    ...languageChecklists(code),
     "Inspect each file for a reproducible input -> operation -> incorrect output or side effect. Prioritize actual bugs over style, formatting and speculative vulnerabilities. For each finding include a precise trigger and a testable fix.",
     "A clean review is allowed, but first check boundary values (null, empty, zero, negative, duplicate, concurrent), error propagation, resource cleanup and data escaping where relevant to the language.",
     "If evidence is insufficient, return an empty findings array. Do not invent tests, other files, or execution results.",

@@ -114,6 +114,8 @@ Setup picks the model for your machine and also lists the models you already hav
 | 20–30 GB | `qwen2.5-coder:14b` | Thorough: general, security and robustness passes. |
 | 30 GB or more | `qwen3-coder:30b` | Best reviews. A mixture-of-experts model (about 3B active parameters), so it is faster than the 14b. |
 
+**How a review is checked:** each finding must point at real lines of your code, and the file's own test (`FooTest.java`, `foo.test.ts`, `test_foo.py`…) and the callers of its functions are added as context. A second local pass then checks every finding and drops the ones it finds unsupported. When it drops findings, Hushavyr may suggest `/escalate`.
+
 **Hushavyr: Start Ollama** turns on flash attention and an 8-bit KV cache, which roughly halves context memory. The deterministic commands (`/security`, `/secrets`, `/dependencies`) need no model at all, `/review` results are cached, and `/scan-changed` skips files that did not change.
 
 ## VS Code Chat commands
