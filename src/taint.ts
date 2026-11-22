@@ -1,6 +1,7 @@
 import {definedNames, definitionSnippet} from "./callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
 import {pythonToBraces} from "./pythonBlocks";
+import {parseSyntax, SyntaxFile} from "./syntax";
 
 export {initJavaParser};
 // Loading starts at import, so a scan that reads files first finds the parser ready; await initJavaParser() to be sure.
@@ -15,7 +16,8 @@ void initJavaParser();
  * Heuristic and line-based: it reports a path to verify, not a proof. Java files are parsed with tree-sitter when the parser
  * is loaded (initJavaParser): methods, parameters and annotations come from the syntax tree, comments are ignored, and a
  * call on a receiver of a declared type resolves only to that type's methods (and only reaches a SQL, command, LDAP, XPath
- * or session sink on a matching API type). Python files are first rewritten into the same brace form (pythonBlocks), so
+ * or session sink on a matching API type). JS/TS, PHP, Go, C# and Ruby files get functions, parameters and blanked comments
+ * from their own grammars (syntax.ts). Python files are first rewritten into the same brace form (pythonBlocks), so
  * constant branches, match cases and dict/list slots work there too; an if block that always leaves validates what its
  * condition checks (if "../" in name: return), and a Flask route's return value is its HTML response.
  */
@@ -313,10 +315,10 @@ function lookup(summaries: Summaries, name: string, path: string, site?: Site, p
 }
 
 interface Fn { name: string; path: string; startLine: number; lines: string[]; params: Param[]; route: boolean; summary: Summary; skipHead: boolean }
-/** Parsed Java methods: only the body is analysed (the head is blanked), so a method named like a sink is not its own sink. */
-function javaFunctions(path: string, java: JavaFile): Fn[] {
-  const all = java.text.split(/\r?\n/);
-  return java.methods.map(m => {
+/** Functions from a syntax tree: only the body is analysed (the head is blanked), so a method named like a sink is not its own sink. */
+function treeFunctions(path: string, text: string, methods: readonly {name: string; cls: string; startLine: number; endLine: number; body: [number, number, number, number]; params: Param[]; varargs?: boolean}[], java: boolean): Fn[] {
+  const all = text.split(/\r?\n/);
+  return methods.map(m => {
     const [openLine, openColumn, closeLine, closeColumn] = m.body;
     const lines = all.slice(m.startLine - 1, m.endLine).map((line, k) => {
       const row = m.startLine - 1 + k;
@@ -326,7 +328,7 @@ function javaFunctions(path: string, java: JavaFile): Fn[] {
     return {m, lines};
   }).map(({m, lines}) => ({name: m.name, path, startLine: m.startLine, lines, params: m.params, skipHead: false,
     route: all.slice(Math.max(0, m.startLine - 4), m.startLine - 1).some(l => ROUTE.test(l)),
-    summary: {path, sinks: new Map(), returns: new Set(), markup: new Set(), source: false, cls: m.cls, arity: m.params.length, varargs: m.varargs}}));
+    summary: {path, sinks: new Map(), returns: new Set(), markup: new Set(), source: false, ...java ? {cls: m.cls, arity: m.params.length, varargs: m.varargs} : {}}}));
 }
 
 function functions(file: TaintFile): Fn[] {
@@ -771,16 +773,25 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
 export const pythonHandler = (path: string, text: string): boolean => PY.test(path) && (SOURCE.test(text) || text.split(/\r?\n/).some(l => ROUTE.test(l)));
 
 export function taintFlows(files: readonly TaintFile[]): TaintFlow[] {
-  const sources = files.slice(0, MAX_FILES).filter(f => f.text.length <= 200_000).map(f => PY.test(f.path) ? {path: f.path, text: pythonToBraces(f.text)} : f);
-  const trees = new Map<string, JavaFile>();
+  // Minified bundles (vendor libraries) define short, common names that would capture calls from the application's own code.
+  const minified = (f: TaintFile) => /\.min\.[cm]?js$/i.test(f.path) || (JS.test(f.path) && f.text.length > 2000 && f.text.length / (f.text.split("\n").length) > 300);
+  const sources = files.slice(0, MAX_FILES).filter(f => f.text.length <= 200_000 && !minified(f)).map(f => PY.test(f.path) ? {path: f.path, text: pythonToBraces(f.text)} : f);
+  const trees = new Map<string, JavaFile>(), others = new Map<string, SyntaxFile>();
   for (const f of sources) {
     const tree = /\.java$/i.test(f.path) ? parseJava(f.text) : undefined;
     if (tree) trees.set(f.path, tree);
+    const other = tree || PY.test(f.path) ? undefined : parseSyntax(f.path, f.text);
+    if (other) others.set(f.path, other);
   }
   const project = trees.size ? new JavaProject(trees) : undefined;
-  // Parsed Java files are analysed with comments blanked out, so commented-out code is neither a source nor a sink.
-  const text = (f: TaintFile) => trees.get(f.path)?.text ?? f.text;
-  const fns = sources.flatMap(f => trees.has(f.path) ? javaFunctions(f.path, trees.get(f.path)!) : functions(f));
+  // Parsed files are analysed with comments blanked out, so commented-out code is neither a source nor a sink.
+  const text = (f: TaintFile) => trees.get(f.path)?.text ?? others.get(f.path)?.text ?? f.text;
+  const fns = sources.flatMap(f => {
+    const java = trees.get(f.path), other = others.get(f.path);
+    if (java) return treeFunctions(f.path, java.text, java.methods, true);
+    if (other) return treeFunctions(f.path, other.text, other.functions.map(m => ({...m, params: m.params.map(p => ({name: p.name, annotated: ANNOTATED.test(p.text)}))})), false);
+    return functions(f);
+  });
   const summaries: Summaries = new Map();
   for (const fn of fns) summaries.set(fn.name, [...(summaries.get(fn.name) ?? []), fn.summary]);
   for (let round = 0; round < 6; round++) {

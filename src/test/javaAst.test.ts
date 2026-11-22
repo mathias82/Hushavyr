@@ -81,3 +81,37 @@ test("without the parser the line-based engine still runs", async () => {
   assert.equal(await initJavaParser(), true);
   assert.deepEqual(flows([servlet(["ExecutorService pool = null;", "pool.execute(id);"])]), []);
 });
+
+test("syntax trees for C#, PHP, Ruby and JS: commented-out sinks are ignored and functions end where their body closes", async () => {
+  await initJavaParser();
+  const cs = {path: "Db.cs", text: [
+    "class Db {",
+    "  public void Find(string num) {",
+    "    /*using (var c = new SqlConnection(cs))",
+    "    {",
+    "      var cmd = new SqlCommand(\"select * from t where n = \" + num, c);",
+    "    }*/",
+    "    var ok = 1;",
+    "  }",
+    "  public IActionResult Get([FromQuery] string id) { Find(id); return Ok(); }",
+    "}"].join("\n")};
+  assert.deepEqual(flows([cs]), []);
+  const rb = {path: "app/models/upload.rb", text: [
+    "class Upload",
+    "  def self.save(file)",
+    "    name = \"/data/#{file.original_filename}\"",
+    "    File.open(name, \"wb+\")",
+    "  end",
+    "end"].join("\n")};
+  const controller = {path: "app/controllers/uploads_controller.rb", text: "class UploadsController < ApplicationController\n  def create\n    Upload.save(params[:file])\n  end\nend"};
+  assert.deepEqual(flows([rb, controller]), [["path", "app/models/upload.rb", 4, "save"]]);
+  const js = {path: "routes/a.js", text: "// db.query('x' + req.query.id)\nmodule.exports = (req, res) => { res.send('ok') }"};
+  assert.deepEqual(flows([js]), []);
+});
+
+test("minified bundles do not capture calls by name", async () => {
+  await initJavaParser();
+  const route = {path: "routes/w.ts", text: "export function h () {\n  return (req, res) => {\n    add(req.body.x)\n  }\n}"};
+  const lib = {path: "assets/lib.min.js", text: "function add(a){document.write(a)}"};
+  assert.deepEqual(flows([route, lib]), []);
+});

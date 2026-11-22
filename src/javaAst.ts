@@ -5,12 +5,12 @@ import {join} from "node:path";
  * and the declared type of each call's receiver, so a call resolves to the class it is made on instead of to every
  * same-named method. Loaded asynchronously from dist/vendor; when it is unavailable the line-based engine runs alone.
  */
-interface Point { row: number; column: number }
-interface SyntaxNode {
+export interface Point { row: number; column: number }
+export interface SyntaxNode {
   type: string; text: string; startIndex: number; endIndex: number; startPosition: Point; endPosition: Point; hasError: boolean;
   namedChildren: SyntaxNode[]; childForFieldName(name: string): SyntaxNode | null;
 }
-interface Parser { parse(text: string): {rootNode: SyntaxNode; delete(): void} | null }
+export interface Parser { parse(text: string): {rootNode: SyntaxNode; delete(): void} | null }
 
 export interface JavaParam { name: string; annotated: boolean }
 /** Lines are 1-based; body is the 0-based [line, column] of the opening and closing braces. */
@@ -23,36 +23,49 @@ const ANNOTATED = /^(?:RequestParam|PathVariable|RequestBody|RequestHeader|Cooki
 const CLASS = /^(?:class|interface|enum|record|annotation_type)_declaration$/;
 
 let active: Parser | undefined;
+let grammars = new Map<string, Parser>();
 let generation = 0;
-const loads = new Map<string, Promise<Parser | undefined>>();
+const loads = new Map<string, Promise<{java?: Parser; others: Map<string, Parser>}>>();
+/** Grammars besides Java, loaded with it for the other languages' syntax trees (syntax.ts); each one is optional. */
+export const GRAMMARS = ["javascript", "typescript", "tsx", "php", "go", "c_sharp", "ruby"] as const;
+export type Grammar = typeof GRAMMARS[number];
 
-async function load(dir: string): Promise<Parser | undefined> {
+async function load(dir: string): Promise<{java?: Parser; others: Map<string, Parser>}> {
+  const others = new Map<string, Parser>();
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require(join(dir, "web-tree-sitter.cjs")) as {
       Parser: {init(options: object): Promise<void>; new(): Parser & {setLanguage(language: unknown): void}};
       Language: {load(path: string): Promise<unknown>};
     };
+    // Parser.init resets the WASM module, so it runs once and every grammar shares it.
     await ts.Parser.init({locateFile: (name: string) => join(dir, name)});
-    const parser = new ts.Parser();
-    parser.setLanguage(await ts.Language.load(join(dir, "tree-sitter-java.wasm")));
-    return parser;
+    const make = async (grammar: string) => {
+      const parser = new ts.Parser();
+      parser.setLanguage(await ts.Language.load(join(dir, "tree-sitter-" + grammar + ".wasm")));
+      return parser;
+    };
+    for (const g of GRAMMARS) { try { others.set(g, await make(g)); } catch { /* that language stays line-based */ } }
+    return {java: await make("java"), others};
   } catch {
-    return undefined;
+    return {others};
   }
 }
 
-/** Loads the Java parser from dir (default: the bundled dist/vendor); resolves false, leaving the regex engine, when it cannot. */
+/** Loads the Java parser and the other grammars from dir (default: the bundled dist/vendor); resolves false, leaving the regex
+ * engine, when the Java one cannot load. */
 export async function initJavaParser(dir = join(__dirname, "vendor")): Promise<boolean> {
   const mine = ++generation;
   let loading = loads.get(dir);
   if (!loading) loads.set(dir, loading = load(dir));
-  const parser = await loading;
-  if (mine === generation) active = parser;
-  return parser !== undefined;
+  const parsers = await loading;
+  if (mine === generation) { active = parsers.java; grammars = parsers.others; }
+  return parsers.java !== undefined;
 }
 
 export const javaParserReady = (): boolean => active !== undefined && process.env.HUSHAVYR_JAVA_AST !== "0";
+/** The loaded parser for a grammar, unless syntax trees are turned off (HUSHAVYR_AST=0). */
+export const grammarParser = (grammar: Grammar): Parser | undefined => process.env.HUSHAVYR_AST === "0" ? undefined : grammars.get(grammar);
 
 /** Simple name of a declared type (java.sql.Statement, List<String> → Statement, List); undefined for arrays, var and primitives. */
 function typeName(node: SyntaxNode | null): string | undefined {

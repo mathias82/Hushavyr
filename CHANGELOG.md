@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Syntax trees for JS/TS, PHP, Go, C# and Ruby** (tree-sitter, bundled WASM, as Java already had): exact function boundaries and parameters, and commented-out code is ignored. Finds the RailsGoat file-upload path traversal (`Benefits.save`); drops a WebGoat.NET SQL finding that was inside a `/* */` comment. Minified bundles (`*.min.js`) are no longer taint-analysed, so their short function names do not capture the application's calls.
 - **`if` guards count as validation in every language:** `is_numeric`, `ctype_digit`, `filter_var(..., FILTER_VALIDATE_INT)`, `in_array`/`includes` allow-lists and anchored regex checks (`preg_match('/^[a-z]+$/', $x)`, `/^\d+$/.test(x)`, `x.matches("[0-9]+")`, `Regex.IsMatch`) make a value safe inside the guarded block, or after an `if (!check) return;`. Removes the DVWA `exec/impossible.php` false positive; unanchored or `.*` patterns still count as tainted.
 - **CI benchmark gate:** every push re-scans six pinned real-world apps (`npm run benchmark:realworld`) and the OWASP Benchmark, and fails on any lost or new finding or a score drop.
 
