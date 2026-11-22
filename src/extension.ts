@@ -1,11 +1,11 @@
-import {registerApplyFix} from "./applyFix";
+import {registerApplyFix} from "./fix/applyFix";
 import {exportWorkspaceSbom, registerDependencyQuickFix, updateTrivyDatabase} from "./deps/trivyCommands";
 import * as vscode from "vscode";
-import {registerVerifiedFix} from "./fixAgent";
-import {registerVerifiedFixPr} from "./fixPrAgent";
+import {registerVerifiedFix} from "./fix/fixAgent";
+import {registerVerifiedFixPr} from "./fix/fixPrAgent";
 import {createAutoPrompt} from "./autoPrompt";
-import {registerEditCommands} from "./editFlow";
-import {registerEscalationCommands} from "./escalateSuggest";
+import {registerEditCommands} from "./fix/editFlow";
+import {registerEscalationCommands} from "./escalation/escalateSuggest";
 import {registerPullRequestCommand} from "./prFlow";
 import {addDismissal, dismissalText, fingerprint} from "./scan/teamMemory";
 import {runSetup} from "./model/setup";

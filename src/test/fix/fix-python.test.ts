@@ -1,7 +1,7 @@
 import {strict as assert} from "node:assert";
 import {test} from "node:test";
-import {parsePytestReport} from "../fixProof";
-import {dockerCreateArgs} from "../fixSandbox";
+import {parsePytestReport} from "../../fix/fixProof";
+import {dockerCreateArgs} from "../../fix/fixSandbox";
 
 const moduleName = "test_hushavyr_" + "a".repeat(32);
 const report = (child = "", failures = 0) => '<?xml version="1.0" encoding="utf-8"?>' +
@@ -34,8 +34,8 @@ test("Python Docker proof exports an applicable patch and preserves the original
     const {mkdtemp, mkdir, readFile, writeFile, rm} = await import("node:fs/promises");
     const {tmpdir} = await import("node:os");
     const {join} = await import("node:path");
-    const {runFixProof} = await import("../fixProof");
-    const {FixSandbox} = await import("../fixSandbox");
+    const {runFixProof} = await import("../../fix/fixProof");
+    const {FixSandbox} = await import("../../fix/fixSandbox");
     const directory = await mkdtemp(join(tmpdir(), "python-proof-"));
     const project = join(directory, "project");
     const source = join(project, "pricing.py");

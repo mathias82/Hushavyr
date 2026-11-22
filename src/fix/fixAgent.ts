@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import {configuredClient, configuredModel} from "./model/model";
+import {configuredClient, configuredModel} from "../model/model";
 import {join, sep} from "node:path";
 import {FixProofReceipt, bugReproduced, runFixProof} from "./fixProof";
 import {FixSandbox} from "./fixSandbox";

@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runRegressionTests, formatTestReceipt, TestProfile, detectTestProfiles } from "../regression";
+import { runRegressionTests, formatTestReceipt, TestProfile, detectTestProfiles } from "../../fix/regression";
 async function fixture(script: string, run: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), "router-tests-"));
   try {

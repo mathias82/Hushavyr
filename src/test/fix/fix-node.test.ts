@@ -1,7 +1,7 @@
 import {strict as assert} from "node:assert";
 import {test} from "node:test";
-import {parseNodeReport} from "../fixProof";
-import {dockerCreateArgs} from "../fixSandbox";
+import {parseNodeReport} from "../../fix/fixProof";
+import {dockerCreateArgs} from "../../fix/fixSandbox";
 
 const name = "hushavyr-" + "a".repeat(32) + ".test.cjs";
 const report = (body: string) => '<?xml version="1.0" encoding="utf-8"?>' +
@@ -33,8 +33,8 @@ test("JavaScript and TypeScript proofs run red and green in offline Docker",
     const {mkdtemp, mkdir, readFile, writeFile, rm} = await import("node:fs/promises");
     const {tmpdir} = await import("node:os");
     const {join} = await import("node:path");
-    const {runFixProof} = await import("../fixProof");
-    const {FixSandbox} = await import("../fixSandbox");
+    const {runFixProof} = await import("../../fix/fixProof");
+    const {FixSandbox} = await import("../../fix/fixSandbox");
     for (const profile of ["node", "typescript"] as const) {
       const directory = await mkdtemp(join(tmpdir(), "hushavyr-node-proof-"));
       const project = join(directory, "project");

@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from "node:crypto";
 import {classifyInput} from "./classifier";
-import {scanSecrets} from "./scan/secretsScan";
+import {scanSecrets} from "../scan/secretsScan";
 import {AuditEvent} from "./audit";
 import {guardedCloudTransfer} from "./cloudTransfer";
 import {PublicModel} from "./routing";

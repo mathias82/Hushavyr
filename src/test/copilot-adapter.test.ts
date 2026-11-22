@@ -54,7 +54,7 @@ let createAutoPrompt: typeof import("../autoPrompt").createAutoPrompt;
 try {
   Module._load = function(name, ...args) {
     if (name === "vscode") return fake;
-    if (name === "./audit") return {writeRetainedAuditEvent: async (_path: string, event: any) => {
+    if (name === "./escalation/audit") return {writeRetainedAuditEvent: async (_path: string, event: any) => {
       state.events.push(event); if (state.failAudit) throw new Error("disk full");
     }};
     return original.call(this, name, ...args);

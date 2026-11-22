@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
-import {FixProofContext, FixProofDependencies, ProofStage, TestRun, runFixProof, parseSurefire, sha256} from "../fixProof";
+import {FixProofContext, FixProofDependencies, ProofStage, TestRun, runFixProof, parseSurefire, sha256} from "../../fix/fixProof";
 const context: FixProofContext = {baseCommit: "a".repeat(40), imageId: "sha256:" + "b".repeat(64),
   testClass: "example.RegressionTest", testPath: "src/test/java/example/RegressionTest.java"};
 const oldCase = {className: "example.OldTest", name: "works", outcome: "passed" as const};

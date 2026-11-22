@@ -41,7 +41,7 @@ jobs:
       - name: Run Python proof in the offline container
         env:
           HUSHAVYR_PYTHON_DOCKER_SMOKE: '1'
-        run: node --test dist/test/fix-python.test.js
+        run: node --test dist/test/fix/fix-python.test.js
       - name: Build TypeScript proof fixture image
         run: |
           docker pull node:24-slim
@@ -52,7 +52,7 @@ jobs:
       - name: Run JavaScript and TypeScript proofs offline
         env:
           HUSHAVYR_NODE_DOCKER_SMOKE: '1'
-        run: node --test dist/test/fix-node.test.js
+        run: node --test dist/test/fix/fix-node.test.js
 
   terminal:
     # The hushavyr launcher scripts (sh and cmd) on every desktop OS, as shipped in the VSIX.

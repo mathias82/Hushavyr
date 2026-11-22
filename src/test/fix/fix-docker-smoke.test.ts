@@ -4,8 +4,8 @@ import {execFileSync} from "node:child_process";
 import {mkdtemp, mkdir, readFile, writeFile, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join, resolve, dirname} from "node:path";
-import {FixSandbox} from "../fixSandbox";
-import {runFixProof} from "../fixProof";
+import {FixSandbox} from "../../fix/fixSandbox";
+import {runFixProof} from "../../fix/fixProof";
 
 test("opt-in real Docker red/green smoke preserves sources and verifies offline readonly execution",
   {skip: process.env.AI_PRIVACY_DOCKER_SMOKE !== "1", timeout: 600000}, async () => {
@@ -16,7 +16,7 @@ test("opt-in real Docker red/green smoke preserves sources and verifies offline 
     await mkdir(project);
     for (const path of ["pom.xml", "src/main/java/demo/Price.java", "src/test/java/demo/PriceTest.java"]) {
       const target = join(project, path); await mkdir(dirname(target), {recursive: true});
-      await writeFile(target, await readFile(resolve(__dirname, "../../fixtures/java-fix", path)));
+      await writeFile(target, await readFile(resolve(__dirname, "../../../fixtures/java-fix", path)));
     }
     const git = (args: string[]) => execFileSync("git", args, {cwd: project, stdio: "ignore"});
     git(["init", "--initial-branch=main"]);

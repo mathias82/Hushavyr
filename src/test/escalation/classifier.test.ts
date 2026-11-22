@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { classify } from "../classifier";
+import { classify } from "../../escalation/classifier";
 
 test("secrets are routed locally", () => {
   const decision = classify("api_key=supersecret123");

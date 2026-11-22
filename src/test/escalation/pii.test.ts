@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { classifyInput } from "../classifier";
-import { requestCloudOverride } from "../override";
+import { classifyInput } from "../../escalation/classifier";
+import { requestCloudOverride } from "../../escalation/override";
 const policy = { cloudEnabled: true, allowOverrides: true };
 const approval = { reason: "Reviewed and verified that this document is public", confirmedCloudTransfer: true };
 for (const [label, value] of [

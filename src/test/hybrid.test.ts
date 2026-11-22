@@ -151,7 +151,7 @@ test("review summary names the most serious issue to fix first", () => {
 });
 
 test("a /review marker maps to the right offline runner and nearest project", async () => {
-  const { runnerFor, projectRootFor } = await import("../proofTarget");
+  const { runnerFor, projectRootFor } = await import("../fix/proofTarget");
   assert.equal(runnerFor("/w/app/src/main/java/A.java"), "Java / Maven");
   assert.equal(runnerFor("/w/a.mts"), "TypeScript / Node.js");
   assert.equal(runnerFor("/w/a.go"), "Go / go test");
@@ -162,7 +162,7 @@ test("a /review marker maps to the right offline runner and nearest project", as
 });
 
 test("a bug counts as reproduced only when the approved test failed by assertion", async () => {
-  const { bugReproduced } = await import("../fixProof");
+  const { bugReproduced } = await import("../fix/fixProof");
   const red = {stage: "red" as const, exitCode: 1, interrupted: false, durationMs: 1, passed: 0, failures: 1, errors: 0, skipped: 0, caseSetHash: ""};
   const receipt = {baseCommit: "", imageId: "", testClass: "T", testPath: "t", policyVersion: "node-red-green-v1" as const,
     runId: "", startedAtUtc: "", status: "not-verified" as const, reason: "fix-not-approved", stages: [red]};
@@ -321,7 +321,7 @@ test("ignore file matches dirs, files and globs; the CLI skips them", async () =
 });
 
 test("escalation pseudonymizes, restores locally and blocks secrets, PII and local-only", async () => {
-  const { pseudonymize, restore, escalationBlock, escalate } = await import("../escalation");
+  const { pseudonymize, restore, escalationBlock, escalate } = await import("../escalation/escalation");
   const code = "// PaymentService owner: acme\nfunction chargeCustomer(customerId) {\n  return db.query(\"SELECT * FROM payments WHERE id=\" + customerId);\n}";
   const p = pseudonymize(code);
   assert.ok(!/chargeCustomer|customerId|payments|acme|PaymentService/.test(p.text), p.text);
@@ -350,7 +350,7 @@ test("escalation pseudonymizes, restores locally and blocks secrets, PII and loc
 });
 
 test("edit intent, safe edit parsing and short diff", async () => {
-  const { isEditRequest, parseEdit, shortDiff } = await import("../codeEdit");
+  const { isEditRequest, parseEdit, shortDiff } = await import("../fix/codeEdit");
   for (const p of ["can you add them", "add logging to this method", "πρόσθεσέ τα", "μπορείς να αλλάξεις το όνομα;", "rename run to start"]) assert.ok(isEditRequest(p), p);
   for (const p of ["explain the code", "what does add do here?", "this class", "check code for bugs"]) assert.ok(!isEditRequest(p), p);
   const original = "a\nb\nc\nd\ne\n";
@@ -377,7 +377,7 @@ test("pull request: new branch from main, commit, push, gh fallback to compare U
 });
 
 test("escalation also pseudonymizes code names used in the question", async () => {
-  const { escalate } = await import("../escalation");
+  const { escalate } = await import("../escalation/escalation");
   const sent: string[] = [];
   const result = await escalate({ path: "a.js", code: "function chargeCustomer(amount) { return amount * 2; }", question: "rename chargeCustomer", localOnly: false, ignored: false }, {
     pickModel: async () => ({ id: "m", label: "M", send: async (t: string) => { sent.push(t); return "ok"; } }),
@@ -388,7 +388,7 @@ test("escalation also pseudonymizes code names used in the question", async () =
 
 test("verified fix receipt: only a complete red/green/suite proof with a matching patch becomes a draft PR", async () => {
   const { checkReceipt, addedLines, prBody } = await import("../pullRequest");
-  const { sha256 } = await import("../fixProof");
+  const { sha256 } = await import("../fix/fixProof");
   const patch = Buffer.from("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n");
   const run = (stage: string, exitCode: number, passed: number) => ({stage, exitCode, passed, failures: exitCode, errors: 0, skipped: 0});
   const stages = [run("baseline", 0, 3), run("red", 1, 2), run("green", 0, 3), run("suite", 0, 40)];
@@ -407,7 +407,7 @@ test("verified fix receipt: only a complete red/green/suite proof with a matchin
 });
 
 test("/improve asks for real improvements and keeps a safe change summary", async () => {
-  const { improveInstruction, parseSummary, isEditRequest } = await import("../codeEdit");
+  const { improveInstruction, parseSummary, isEditRequest } = await import("../fix/codeEdit");
   assert.match(improveInstruction(), /real bugs/);
   assert.match(improveInstruction("performance"), /Focus on: performance$/);
   assert.deepEqual(parseSummary(JSON.stringify({content: "x", summary: ["Close the stream in finally", " ", "Use `textContent` <b>"]})), ["Close the stream in finally", "Use textContent <b>"]);

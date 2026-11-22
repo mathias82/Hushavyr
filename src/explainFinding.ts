@@ -2,7 +2,7 @@
 import * as vscode from "vscode";
 import {explainFindingPrompt, findingsFromReport, previewLinks, ReportFinding} from "./reportFindings";
 import {configuredClient} from "./model/model";
-import {classifyInput} from "./classifier";
+import {classifyInput} from "./escalation/classifier";
 
 export const EXPLAIN_FINDING = "aiPrivacyRouter.explainFinding";
 export interface FindingArg { uri: string; line: number; message: string }

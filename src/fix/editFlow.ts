@@ -1,14 +1,14 @@
-import {keepIndent} from "./search/codeSearch";
+import {keepIndent} from "../search/codeSearch";
 import * as vscode from "vscode";
-import {inlineText} from "./review/review";
+import {inlineText} from "../review/review";
 import {randomUUID} from "node:crypto";
-import {configuredClient, configuredModel} from "./model/model";
-import {LocalOllama} from "./model/ollama";
+import {configuredClient, configuredModel} from "../model/model";
+import {LocalOllama} from "../model/ollama";
 import {codeBlock, editPrompt, editSchema, parseEdit, parseSummary, shortDiff} from "./codeEdit";
-import {escalate, MAX_ESCALATION_CHARS} from "./escalation";
-import {confirmPublicPayload, pickCopilotModel} from "./autoPrompt";
-import {writeRetainedAuditEvent} from "./audit";
-import {loadIgnore} from "./scan/teamMemory";
+import {escalate, MAX_ESCALATION_CHARS} from "../escalation/escalation";
+import {confirmPublicPayload, pickCopilotModel} from "../autoPrompt";
+import {writeRetainedAuditEvent} from "../escalation/audit";
+import {loadIgnore} from "../scan/teamMemory";
 
 export const MAX_EDIT_CHARS = 12_000;
 export interface EditTarget {uri: vscode.Uri; languageId: string; path: string; original: string; range?: vscode.Range; instruction: string; previousAnswer: string; title?: string}

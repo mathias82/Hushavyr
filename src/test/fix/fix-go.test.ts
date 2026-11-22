@@ -1,7 +1,7 @@
 import {strict as assert} from "node:assert";
 import {test} from "node:test";
-import {parseGoReport} from "../fixProof";
-import {dockerCreateArgs} from "../fixSandbox";
+import {parseGoReport} from "../../fix/fixProof";
+import {dockerCreateArgs} from "../../fix/fixSandbox";
 
 const name = "TestHushavyr" + "a".repeat(32);
 const event = (o: object) => JSON.stringify({Package: "example.test/pricing", ...o});
@@ -38,8 +38,8 @@ test("Go proof runs red and green in offline Docker",
     const {mkdtemp, mkdir, writeFile, rm} = await import("node:fs/promises");
     const {tmpdir} = await import("node:os");
     const {join} = await import("node:path");
-    const {runFixProof} = await import("../fixProof");
-    const {FixSandbox} = await import("../fixSandbox");
+    const {runFixProof} = await import("../../fix/fixProof");
+    const {FixSandbox} = await import("../../fix/fixSandbox");
     const directory = await mkdtemp(join(tmpdir(), "hushavyr-go-proof-"));
     const project = join(directory, "project");
     const source = join(project, "pricing", "pricing.go");

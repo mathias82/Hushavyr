@@ -1,8 +1,8 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
-import {planRoute, runRoutedPrompt, publicPayload, RouterDependencies, RoutingPolicy} from "../routing";
-import {AuditEvent} from "../audit";
-import {requestCloudOverride} from "../override";
+import {planRoute, runRoutedPrompt, publicPayload, RouterDependencies, RoutingPolicy} from "../../escalation/routing";
+import {AuditEvent} from "../../escalation/audit";
+import {requestCloudOverride} from "../../escalation/override";
 const publicPolicy: RoutingPolicy = {
   mode: "hybrid-public-prompts", trusted: true, isolatedPublicWindow: true,
   mandatoryLocalOnly: false, requireReviewer: false

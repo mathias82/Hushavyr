@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { ClassificationInput, classifyInput } from "../classifier";
-import { requestCloudOverride } from "../override";
+import { ClassificationInput, classifyInput } from "../../escalation/classifier";
+import { requestCloudOverride } from "../../escalation/override";
 const policy = {cloudEnabled: true, allowOverrides: true};
 const approval = {reason: "Reviewed synthetic public example", confirmedCloudTransfer: true};
 for (const contextKey of ["attachments", "selectedCode", "toolOutputs", "retrievedContext"] as const) {

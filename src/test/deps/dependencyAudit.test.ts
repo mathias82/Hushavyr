@@ -78,7 +78,7 @@ test("computes vulnerability database age in whole days", () => {
   assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
   assert.equal(dbAgeDays("not json", now), undefined);
 });
-import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../../fixEdit";
+import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../../fix/fixEdit";
 import {parseChangedFiles} from "../../changedFiles";
 test("fix window stays inside the file", () => {
   assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { requestCloudOverride } from "../override";
+import { requestCloudOverride } from "../../escalation/override";
 
 const policy = {cloudEnabled:true,allowOverrides:true};
 const request = {reason:"I reviewed this public example and confirmed it contains no restricted data",confirmedCloudTransfer:true};

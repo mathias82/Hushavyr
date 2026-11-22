@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
-import {FixProofReceipt, sha256} from "../fixProof";
-import {validateProof, assertMatchingRemote, githubRemote, scanResult} from "../fixPrPolicy";
+import {FixProofReceipt, sha256} from "../../fix/fixProof";
+import {validateProof, assertMatchingRemote, githubRemote, scanResult} from "../../fix/fixPrPolicy";
 
 const patch = Buffer.from("safe verified patch");
 function receipt(): FixProofReceipt & {patchHash: string} {

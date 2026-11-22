@@ -1,14 +1,14 @@
 import {configuredClient, configuredModel} from "./model/model";
 import * as vscode from "vscode";
-import {classifyInput} from "./classifier";
+import {classifyInput} from "./escalation/classifier";
 import {createAutoPrompt, formatRouted} from "./autoPrompt";
 import {toSarif, sarifLevel, SarifResult} from "./scan/sarif";
 import {tr} from "./i18n";
 import {uiLanguage} from "./deps/trivyCommands";
-import {reviewOverride} from "./overrideFlow";
-import {writeRetainedAuditEvent} from "./audit";
+import {reviewOverride} from "./escalation/overrideFlow";
+import {writeRetainedAuditEvent} from "./escalation/audit";
 import {validateContext} from "./review/context";
-import {runRegressionTests, testProfiles, detectTestProfiles, formatTestReceipt} from "./regression";
+import {runRegressionTests, testProfiles, detectTestProfiles, formatTestReceipt} from "./fix/regression";
 
 /** Writes every Hushavyr marker (review, security, dependencies) to hushavyr.sarif in the first workspace folder. */
 async function exportSarif(context: vscode.ExtensionContext): Promise<void> {

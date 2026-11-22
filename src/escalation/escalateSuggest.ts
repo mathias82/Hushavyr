@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import {randomUUID} from "node:crypto";
 import {escalate} from "./escalation";
-import {Difficulty} from "./review/difficulty";
-import {confirmPublicPayload, pickCopilotModel} from "./autoPrompt";
+import {Difficulty} from "../review/difficulty";
+import {confirmPublicPayload, pickCopilotModel} from "../autoPrompt";
 import {writeRetainedAuditEvent} from "./audit";
-import {loadIgnore} from "./scan/teamMemory";
+import {loadIgnore} from "../scan/teamMemory";
 
 /** What still keeps /escalate local, apart from the user's own on/off choice when `ignoreSetting` is set. */
 export function escalationBlockers(config: vscode.WorkspaceConfiguration, ignoreSetting = false): string[] {

@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
-import {dockerCreateArgs, makePatch, safeRelative, validateFixChanges} from "../fixSandbox";
-import {parseTestProposal, parseFixProposal} from "../fixProposals";
+import {dockerCreateArgs, makePatch, safeRelative, validateFixChanges} from "../../fix/fixSandbox";
+import {parseTestProposal, parseFixProposal} from "../../fix/fixProposals";
 const input = {snapshot: "/private/snapshot", target: "/private/build", cache: "/private/m2/repository",
   project: "module", image: "sha256:" + "a".repeat(64), uid: 1000, gid: 1000,
   name: "ai-privacy-fix-00000000-0000-0000-0000-000000000000"};

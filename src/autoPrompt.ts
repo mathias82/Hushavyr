@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import {configuredClient} from "./model/model";
-import {writeRetainedAuditEvent} from "./audit";
-import {runRoutedPrompt, RoutedResult, RoutingPolicy, PublicModel} from "./routing";
+import {writeRetainedAuditEvent} from "./escalation/audit";
+import {runRoutedPrompt, RoutedResult, RoutingPolicy, PublicModel} from "./escalation/routing";
 
 export function formatRouted(result: RoutedResult): string {
   return "**Route:** " + result.provider + " · " + result.reason + "\n\n" +

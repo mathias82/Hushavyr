@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import {runnerFor} from "./proofTarget";
-import {configuredClient} from "./model/model";
+import {configuredClient} from "../model/model";
 import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
-import {EXPLAIN_FINDING, FindingArg, pickFinding} from "./explainFinding";
-import {acceptManifestEdit, dependencyEditInstruction, parseDependencyFinding, planDependencyFix, resolveManifest} from "./deps/dependencyAudit";
+import {EXPLAIN_FINDING, FindingArg, pickFinding} from "../explainFinding";
+import {acceptManifestEdit, dependencyEditInstruction, parseDependencyFinding, planDependencyFix, resolveManifest} from "../deps/dependencyAudit";
 import {editPrompt, editSchema, parseEdit} from "./codeEdit";
 
 export const FIX_FINDING = "aiPrivacyRouter.fixFinding";

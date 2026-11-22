@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { requestCloudOverride } from "../override";
+import { requestCloudOverride } from "../../escalation/override";
 const policy = {cloudEnabled:true,allowOverrides:true};
 const approval = {reason:"Reviewed public sample for cloud use",confirmedCloudTransfer:true};
 test("untrusted workspace never permits override", () => {

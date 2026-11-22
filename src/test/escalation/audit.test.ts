@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { auditBeforeCloudDispatch, makeAuditRecord } from "../audit";
+import { auditBeforeCloudDispatch, makeAuditRecord } from "../../escalation/audit";
 
 const event = {
   action: "cloud-approval" as const,

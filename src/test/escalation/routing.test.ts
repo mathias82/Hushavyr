@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { classify, classifyInput } from "../classifier";
+import { classify, classifyInput } from "../../escalation/classifier";
 
 test("credentials stay local even for coding", () => {
   const d = classifyInput({prompt:"Debug this Java class: api_key=supersecret123",workspaceTrusted:true,cloudEnabled:true,cloudApproved:true});
