@@ -425,7 +425,7 @@
           },
           {
             "name": "escalate",
-            "description": "Opt-in: send only the selected function, pseudonymized and approved by you, to a Copilot model"
+            "description": "Opt-in: send only the selected function, pseudonymized and approved by you, to a Copilot model. Type on or off to allow or block it"
           },
           {
             "name": "pr",

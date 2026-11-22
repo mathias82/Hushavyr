@@ -152,13 +152,25 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
     }
     if (request.command === "escalate") {
       const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+      const toggle = /^\s*(on|enable|off|disable)\s*$/i.exec(request.prompt)?.[1].toLowerCase();
+      if (toggle) {
+        const on = toggle === "on" || toggle === "enable";
+        const scope = vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+        const where = scope === vscode.ConfigurationTarget.Workspace ? "this workspace" : "all windows";
+        if (on && await vscode.window.showWarningMessage("Allow /escalate in " + where + "? It can send a selected, pseudonymized fragment to a Copilot model, only after you approve the exact text.",
+          {modal: true}, "Allow") !== "Allow") { stream.markdown("Cloud escalation stays off."); return; }
+        await config.update("cloudEscalation", on, scope);
+        const blockers = escalationBlockers(config);
+        stream.markdown(on ? "Cloud escalation is on for " + where + ". Select code and ask `@ai-privacy /escalate <question>`."
+          + (blockers.length ? "\n\nStill blocked: " + blockers.join(", ") + "." : "") : "Cloud escalation is off for " + where + ".");
+        return;
+      }
       const editor = vscode.window.activeTextEditor;
       const code = editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : lastSelection?.text ?? "";
       const uri = editor && !editor.selection.isEmpty ? editor.document.uri : lastSelection ? vscode.Uri.parse(lastSelection.uri) : undefined;
       const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
       const relativePath = uri ? (folder ? vscode.workspace.asRelativePath(uri, false) : uri.path) : "selection";
-      const localOnly = !config.get<boolean>("cloudEscalation", false) || config.get<boolean>("mandatoryLocalOnly", false) ||
-        vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false) || !vscode.workspace.isTrusted || Boolean(vscode.env?.remoteName);
+      const localOnly = escalationBlockers(config).length > 0;
       const ignored = folder ? (await loadIgnore(folder.uri.fsPath))(relativePath) : false;
       try {
         const result = await escalate({path: relativePath, code, question: request.prompt, localOnly, ignored}, {
@@ -170,7 +182,11 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
         if (token.isCancellationRequested) return;
         stream.markdown(result.outcome === "sent"
           ? "**Cloud answer (pseudonymized fragment, names restored locally). Not verified — run `/review` or the proof test locally before applying.**\n\n" + result.text
-          : "Nothing was sent: " + (result.reason ?? result.outcome) + "." + (result.reason === "this workspace is local-only" ? " Enable `aiPrivacyRouter.cloudEscalation` to allow approved, pseudonymized escalation." : ""));
+          : "Nothing was sent: " + (result.reason ?? result.outcome) + "." + (result.reason === "this workspace is local-only"
+            ? (config.get<boolean>("cloudEscalation", false) ? " Blocked by: " + escalationBlockers(config).join(", ") + "."
+              : " Type `@ai-privacy /escalate on` or turn on `aiPrivacyRouter.cloudEscalation` in Settings.") : ""));
+        if (result.reason === "this workspace is local-only")
+          stream.button({command: "workbench.action.openSettings", arguments: ["aiPrivacyRouter.cloudEscalation"], title: "Open setting"});
       } catch {
         if (!token.isCancellationRequested) stream.markdown("Escalation stopped. Nothing else is retried.");
       }
@@ -487,4 +503,14 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
   if (typeof vscode.chat?.createChatParticipant === "function")
     context.subscriptions.push(vscode.chat.createChatParticipant("ai-privacy-router.privacy", handler));
   return handler;
+}
+
+function escalationBlockers(config: vscode.WorkspaceConfiguration): string[] {
+  const reasons: string[] = [];
+  if (!config.get<boolean>("cloudEscalation", false)) reasons.push("`aiPrivacyRouter.cloudEscalation` is off");
+  if (config.get<boolean>("mandatoryLocalOnly", false)) reasons.push("`aiPrivacyRouter.mandatoryLocalOnly` is on");
+  if (vscode.workspace.getConfiguration("chat").get<boolean>("disableAIFeatures", false)) reasons.push("`chat.disableAIFeatures` is on");
+  if (!vscode.workspace.isTrusted) reasons.push("the workspace is not trusted");
+  if (vscode.env?.remoteName) reasons.push("this is a remote session");
+  return reasons;
 }

@@ -13,16 +13,17 @@ let docs = new Map<string, string>();
 // Pin the single-pass, LLM-only flow so request counts stay exact; hybrid paths have their own tests.
 const configuration: Record<string, unknown> = {ollamaModel: "qwen2.5-coder:7b", reviewDepth: "fast", staticAnalysis: false, callContext: false};
 const registeredCommands = new Set<string>();
+const configUpdates: unknown[][] = [];
 let copilotLookups = 0, participantRegistrations = 0;
 const fake = {
-  Uri, Location, TabInputText,
+  Uri, Location, TabInputText, ConfigurationTarget: {Global: 1, Workspace: 2},
   languages: {createDiagnosticCollection: () => ({clear() {}, set() {}, dispose() {}}), registerCodeActionsProvider: () => disposable},
   CodeActionKind: {QuickFix: "quickfix"},
   DiagnosticSeverity: {Error: 0, Warning: 1, Information: 2},
   window: {
     activeTextEditor: undefined, visibleTextEditors: [], tabGroups: {activeTabGroup: {}},
     onDidChangeActiveTextEditor: () => disposable, onDidChangeTextEditorSelection: () => disposable,
-    showWarningMessage: async () => undefined, showErrorMessage: async () => undefined,
+    showWarningMessage: async (): Promise<string | undefined> => undefined, showErrorMessage: async () => undefined,
     showInformationMessage: async () => undefined
   },
   commands: {registerCommand: (id: string) => {registeredCommands.add(id); return disposable;}, executeCommand: async () => undefined},
@@ -31,7 +32,8 @@ const fake = {
     isTrusted: true,
     workspaceFolders: undefined,
     textDocuments: [] as any[],
-    getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback}),
+    getConfiguration: () => ({get: (key: string, fallback?: unknown) => configuration[key] ?? fallback,
+      update: async (key: string, value: unknown, target: unknown) => {configUpdates.push([key, value, target]); configuration[key] = value;}}),
     findFiles: async () => [],
     registerTextDocumentContentProvider: () => disposable,
     asRelativePath: (uri: Uri) => uri.toString().replace("file:///", ""),
@@ -186,4 +188,22 @@ test("every registered palette command is declared in package.json with an activ
     assert.ok(declared.has(id), id);
     assert.ok(pkg.activationEvents.includes("onCommand:" + id), id);
   }
+});
+
+test("chat /escalate on asks first, turns the setting on, and a blocked escalation offers the setting", async () => {
+  const blocked = await chat({}, [], "explain this", false, "escalate");
+  assert.match(blocked.output, /Nothing was sent: this workspace is local-only\. Type `@ai-privacy \/escalate on`/);
+  assert.match(blocked.output, /\[button\] Open setting/);
+  const declined = await chat({}, [], "on", false, "escalate");
+  assert.match(declined.output, /stays off/);
+  assert.equal(configUpdates.length, 0);
+  const warn = fake.window.showWarningMessage;
+  fake.window.showWarningMessage = async () => "Allow";
+  try {
+    const enabled = await chat({}, [], "on", false, "escalate");
+    assert.match(enabled.output, /Cloud escalation is on for all windows/);
+    assert.deepEqual(configUpdates, [["cloudEscalation", true, 1]]);
+    await chat({}, [], "off", false, "escalate");
+    assert.deepEqual(configUpdates[1], ["cloudEscalation", false, 1]);
+  } finally { fake.window.showWarningMessage = warn; configuration.cloudEscalation = undefined; }
 });

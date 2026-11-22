@@ -134,7 +134,7 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/dependencies` | Finds CVEs with Trivy and OSV-Scanner and shows whether your code calls the vulnerable function |
 | `/test` | Runs the project tests |
 | `/auto` | Sends a typed question that contains no code to the right model |
-| `/escalate` | *Opt-in.* Sends only the selected function to a Copilot model, with names removed and after you approve it (see below) |
+| `/escalate` | *Opt-in.* Sends only the selected function to a Copilot model, with names removed and after you approve it (see below). Type `/escalate on` or `/escalate off` to allow or block it |
 
 **Without Chat** (Cursor, Windsurf, VSCodium, or Chat turned off): the main commands are also in the Command Palette, for example **Hushavyr: Review Current File**, **Scan Project**, **Security Scan (No AI)**, **Find Hardcoded Secrets** and **Check Dependencies for CVEs**. The report opens as a Markdown preview with links to each line, and the findings appear in the **Problems** panel. *Review* and *Explain* are also in the editor's right-click menu.
 
@@ -229,7 +229,7 @@ Yes. Install it from [Open VSX](https://open-vsx.org/extension/mathias82/hushavy
   - It is blocked for secrets, personal data, `.env`/key files, ignored files and local-only workspaces.
   - You see the exact text before anything is sent, and every send is written to a local audit log.
   - The answer is a suggestion: verify it locally.
-- To turn it on, open Settings (`Cmd+,` / `Ctrl+,`), search for `aiPrivacyRouter.cloudEscalation` and tick it. Typing "enable" in chat does not change the setting. It stays blocked while `aiPrivacyRouter.mandatoryLocalOnly` or `chat.disableAIFeatures` is on, in untrusted workspaces and in remote (SSH, container) sessions.
+- To turn it on, type `@ai-privacy /escalate on` in chat and confirm (`/escalate off` turns it off). It is saved to the open workspace's settings, or to your User settings if no folder is open. You can also tick `aiPrivacyRouter.cloudEscalation` in Settings (`Cmd+,` / `Ctrl+,`). In the `hushavyr` terminal, use `/escalate on`. It stays blocked while `aiPrivacyRouter.mandatoryLocalOnly` or `chat.disableAIFeatures` is on, in untrusted workspaces and in remote (SSH, container) sessions; the chat lists which of these applies.
 - Recommended: keep it off in **User** settings and turn it on per project in **Workspace** settings, only for code you may share (your own or open source). For company or client code, set `aiPrivacyRouter.mandatoryLocalOnly` to `true` in that workspace so it can never be turned on there.
 - Findings are potential issues. Check them before acting.
 - No telemetry. **Hushavyr: Report an Issue** shows a redacted report (versions, OS, settings without endpoints or paths) and opens a GitHub issue only if you click it.
