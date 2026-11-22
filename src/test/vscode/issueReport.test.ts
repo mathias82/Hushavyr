@@ -1,6 +1,6 @@
 import {strict as assert} from "node:assert";
 import {test} from "node:test";
-import {formatReport, redactSettings} from "../issueReport";
+import {formatReport, redactSettings} from "../../vscode/issueReport";
 
 test("issue report never contains endpoints, paths or private registries", () => {
   const settings = {ollamaEndpoint: "http://gpu.corp.example:11434", fixMavenCache: "/Users/someone/.m2", fixGoModCache: "",

@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { Module } from "node:module";
-import { explainFindingPrompt, findingsFromReport, previewLinks } from "../reportFindings";
+import { explainFindingPrompt, findingsFromReport, previewLinks } from "../../vscode/reportFindings";
 const load = (Module as unknown as {_load: (name: string, ...args: unknown[]) => unknown})._load;
 (Module as unknown as {_load: unknown})._load = function(this: unknown, name: string, ...args: unknown[]) {
   return name === "vscode" ? {DiagnosticSeverity: {Error: 0, Warning: 1, Information: 2}} : load.call(this, name, ...args);
 };
-const {toDiagnosticEntries} = require("../diagnostics") as typeof import("../diagnostics");
+const {toDiagnosticEntries} = require("../../vscode/diagnostics") as typeof import("../../vscode/diagnostics");
 const base = {severity: "high", evidence: "x", fix: "fix it", regressionTest: "test it", status: "potential" as const};
 test("only file-backed findings become editor markers", () => {
   const entries = toDiagnosticEntries([

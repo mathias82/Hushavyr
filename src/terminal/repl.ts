@@ -15,14 +15,14 @@ import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, replacementS
 import {runLocalReview} from "../review/localReview";
 import {autoDepth} from "../model/model";
 import {localEndpoint, LocalOllama} from "../model/ollama";
-import {explainFindingPrompt} from "../reportFindings";
+import {explainFindingPrompt} from "../vscode/reportFindings";
 import {staticReview} from "../scan/staticReview";
 import {addDismissal, dismissalText, fingerprint, loadDismissals, loadTeamRules, withTeamRules} from "../scan/teamMemory";
 import {chatPrompt, chooseModel, COMMANDS, completeCommand, diffLines, languageOf, mentionedFiles, parseLine, replaceLines} from "./helpers";
 import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
-import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../pullRequest";
+import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
 import {proofFixPrompt, proofProfile, proofTestPrompt} from "../fix/proofPrompts";
 import {FixSandbox} from "../fix/fixSandbox";

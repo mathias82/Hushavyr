@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Finding } from "./review/review";
+import type { Finding } from "../review/review";
 
 export interface DiagnosticEntry { uri: string; line: number; severity: string; message: string }
 

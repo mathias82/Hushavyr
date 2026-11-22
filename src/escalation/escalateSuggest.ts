@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import {randomUUID} from "node:crypto";
 import {escalate} from "./escalation";
 import {Difficulty} from "../review/difficulty";
-import {confirmPublicPayload, pickCopilotModel} from "../autoPrompt";
+import {confirmPublicPayload, pickCopilotModel} from "../vscode/autoPrompt";
 import {writeRetainedAuditEvent} from "./audit";
 import {loadIgnore} from "../scan/teamMemory";
 

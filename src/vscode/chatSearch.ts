@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import {describeHit, hitText, SearchHit} from "./search/codeSearch";
-import {CodeFinder, EMBED_MODEL, identifierMentions, isProjectQuestion, projectOverview} from "./search/projectContext";
-import {LocalOllama} from "./model/ollama";
-import {ReviewSource} from "./review/context";
-import {configuredClient, configuredModel} from "./model/model";
+import {describeHit, hitText, SearchHit} from "../search/codeSearch";
+import {CodeFinder, EMBED_MODEL, identifierMentions, isProjectQuestion, projectOverview} from "../search/projectContext";
+import {LocalOllama} from "../model/ollama";
+import {ReviewSource} from "../review/context";
+import {configuredClient, configuredModel} from "../model/model";
 
 /** Code search for VS Code Chat: the workspace folder of the open file (or the only folder), local reads only. */
 export class ChatSearch {

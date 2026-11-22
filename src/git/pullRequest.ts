@@ -1,9 +1,9 @@
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {scanSecrets} from "./scan/secretsScan";
-import {sha256} from "./fix/fixProof";
-import {githubRepo, validateProof} from "./fix/fixPrPolicy";
-import {exec as run} from "./util/exec";
+import {scanSecrets} from "../scan/secretsScan";
+import {sha256} from "../fix/fixProof";
+import {githubRepo, validateProof} from "../fix/fixPrPolicy";
+import {exec as run} from "../util/exec";
 export type Exec = (cmd: string, args: string[], cwd: string) => Promise<string>;
 export const defaultExec: Exec = async (cmd, args, cwd) =>
   (await run(cmd, args, {cwd, timeout: 120_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024})).stdout;

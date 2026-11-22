@@ -50,16 +50,16 @@ const fake: any = {
 };
 const Module = require("node:module") as {_load: (name: string, ...args: any[]) => any};
 const original = Module._load;
-let createAutoPrompt: typeof import("../autoPrompt").createAutoPrompt;
+let createAutoPrompt: typeof import("../../vscode/autoPrompt").createAutoPrompt;
 try {
   Module._load = function(name, ...args) {
     if (name === "vscode") return fake;
-    if (name === "./escalation/audit") return {writeRetainedAuditEvent: async (_path: string, event: any) => {
+    if (name === "../escalation/audit") return {writeRetainedAuditEvent: async (_path: string, event: any) => {
       state.events.push(event); if (state.failAudit) throw new Error("disk full");
     }};
     return original.call(this, name, ...args);
   };
-  createAutoPrompt = require("../autoPrompt").createAutoPrompt;
+  createAutoPrompt = require("../../vscode/autoPrompt").createAutoPrompt;
 } finally {Module._load = original;}
 function reset() {
   state.endpoint = undefined; state.aiDisabled = false;

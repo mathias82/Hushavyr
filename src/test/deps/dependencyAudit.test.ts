@@ -31,7 +31,7 @@ test("finds version properties that pin an inherited dependency", () => {
 });
 import {bumpVersion, firstFixedVersion, parseMarkerMessage} from "../../deps/dependencyAudit";
 import {relatedScriptSources, localImportSpecifiers} from "../../review/relatedJava";
-import {tr} from "../../i18n";
+import {tr} from "../../vscode/i18n";
 import {mkdtemp, mkdir, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -79,7 +79,7 @@ test("computes vulnerability database age in whole days", () => {
   assert.equal(dbAgeDays("not json", now), undefined);
 });
 import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../../fix/fixEdit";
-import {parseChangedFiles} from "../../changedFiles";
+import {parseChangedFiles} from "../../git/changedFiles";
 test("fix window stays inside the file", () => {
   assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});
   assert.deepEqual(fixWindow(5, 4), {start: 1, end: 4});

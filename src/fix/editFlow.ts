@@ -6,7 +6,7 @@ import {configuredClient, configuredModel} from "../model/model";
 import {LocalOllama} from "../model/ollama";
 import {codeBlock, editPrompt, editSchema, parseEdit, parseSummary, shortDiff} from "./codeEdit";
 import {escalate, MAX_ESCALATION_CHARS} from "../escalation/escalation";
-import {confirmPublicPayload, pickCopilotModel} from "../autoPrompt";
+import {confirmPublicPayload, pickCopilotModel} from "../vscode/autoPrompt";
 import {writeRetainedAuditEvent} from "../escalation/audit";
 import {loadIgnore} from "../scan/teamMemory";
 

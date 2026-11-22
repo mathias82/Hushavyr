@@ -361,7 +361,7 @@ test("edit intent, safe edit parsing and short diff", async () => {
 });
 
 test("pull request: new branch from main, commit, push, gh fallback to compare URL", async () => {
-  const { branchName, compareUrl, statusPaths, createPullRequest } = await import("../pullRequest");
+  const { branchName, compareUrl, statusPaths, createPullRequest } = await import("../git/pullRequest");
   assert.equal(branchName("Add MDC checks!", new Date("2026-11-21T09:05:00Z")), "hushavyr/add-mdc-checks-202611210905");
   assert.equal(compareUrl("git@github.com:mathias82/Hushavyr.git", "main", "hushavyr/x"), "https://github.com/mathias82/Hushavyr/compare/main...hushavyr%2Fx?expand=1");
   assert.equal(compareUrl("https://dev.azure.com/org/p/_git/r", "main", "x"), undefined);
@@ -387,7 +387,7 @@ test("escalation also pseudonymizes code names used in the question", async () =
 });
 
 test("verified fix receipt: only a complete red/green/suite proof with a matching patch becomes a draft PR", async () => {
-  const { checkReceipt, addedLines, prBody } = await import("../pullRequest");
+  const { checkReceipt, addedLines, prBody } = await import("../git/pullRequest");
   const { sha256 } = await import("../fix/fixProof");
   const patch = Buffer.from("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n");
   const run = (stage: string, exitCode: number, passed: number) => ({stage, exitCode, passed, failures: exitCode, errors: 0, skipped: 0});
@@ -477,7 +477,7 @@ test("provider token formats are found whatever the variable is called", async (
 });
 
 test("the pull request plan lists untracked files that the commit will add", async () => {
-  const { planPullRequest } = await import("../pullRequest");
+  const { planPullRequest } = await import("../git/pullRequest");
   const out: Record<string, string> = {
     "status": " M src/a.js\n?? lock.json\n", "rev-parse --abbrev-ref": "main\n", "remote": "https://github.com/o/r.git\n",
     "diff": " src/a.js | 2 +-\n 1 file changed\n", "ls-files": "lock.json\n"

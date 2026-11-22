@@ -4,7 +4,7 @@ import {tmpdir} from "node:os";
 import {basename, join, resolve} from "node:path";
 import {scanSecrets} from "../scan/secretsScan";
 import {assertMatchingRemote, scanResult} from "./fixPrPolicy";
-import {addedLines, checkReceipt, compareUrl, prBody, statusPaths, type Exec} from "../pullRequest";
+import {addedLines, checkReceipt, compareUrl, prBody, statusPaths, type Exec} from "../git/pullRequest";
 
 import {exec as execute} from "../util/exec";
 const command: Exec = async (bin, args, cwd) => (await execute(bin, args, {cwd, timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,

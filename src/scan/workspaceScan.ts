@@ -1,6 +1,6 @@
 import {loadIgnore} from "./teamMemory";
 import {configuredClient} from "../model/model";
-import {tr} from "../i18n";
+import {tr} from "../vscode/i18n";
 import {uiLanguage} from "../deps/trivyCommands";
 import {trivyDbAgeDays, groupVulnerabilities, GroupedVulnerability} from "../deps/dependencyAudit";
 import {autoUpdateIfStale, offerUpdateIfStale, vulnDbAges, vulnDbStatus} from "../deps/vulnDb";

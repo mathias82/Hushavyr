@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import {createPullRequest, planPullRequest, secretsInChanges} from "./pullRequest";
+import {createPullRequest, planPullRequest, secretsInChanges} from "../git/pullRequest";
 
 /** Commit all changes to a new branch, push and open a PR, after showing the files and asking. `say` reports progress (chat or notification). */
 export async function openPullRequest(title: string, body: string, say: (text: string) => void, cancelled: () => boolean = () => false): Promise<string | undefined> {

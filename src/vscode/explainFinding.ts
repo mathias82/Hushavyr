@@ -1,8 +1,8 @@
 // "Explain finding": the deterministic scanner result stays as reported; local Ollama only explains it in context and suggests a fix.
 import * as vscode from "vscode";
 import {explainFindingPrompt, findingsFromReport, previewLinks, ReportFinding} from "./reportFindings";
-import {configuredClient} from "./model/model";
-import {classifyInput} from "./escalation/classifier";
+import {configuredClient} from "../model/model";
+import {classifyInput} from "../escalation/classifier";
 
 export const EXPLAIN_FINDING = "aiPrivacyRouter.explainFinding";
 export interface FindingArg { uri: string; line: number; message: string }

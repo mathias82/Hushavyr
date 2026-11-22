@@ -53,10 +53,10 @@ const fake = {
 // Load the extension against a small VS Code API double; no Electron or network needed.
 const Module = require("node:module") as { _load: (name: string, ...args: any[]) => unknown };
 const originalLoad = Module._load;
-let activate: typeof import("../extension").activate;
+let activate: typeof import("../../extension").activate;
 try {
   Module._load = function(name, ...args) { return name === "vscode" ? fake : originalLoad.call(this, name, ...args); };
-  activate = require("../extension").activate;
+  activate = require("../../extension").activate;
 } finally { Module._load = originalLoad; }
 
 async function chat(files: Record<string, string>, responses: string[], prompt = "check code for bugs", unknown: boolean | object[] = false, commandOverride?: string) {
@@ -191,9 +191,9 @@ test("Command Palette commands register without the Chat API and run the same lo
   } finally {(fake as any).chat = chatApi;}
 });
 test("every registered palette command is declared in package.json with an activation event", () => {
-  const pkg = require("../../package.json");
+  const pkg = require("../../../package.json");
   const declared = new Set(pkg.contributes.commands.map((c: {command: string}) => c.command));
-  for (const {id} of require("../paletteCommands").PALETTE_COMMANDS) {
+  for (const {id} of require("../../vscode/paletteCommands").PALETTE_COMMANDS) {
     assert.ok(declared.has(id), id);
     assert.ok(pkg.activationEvents.includes("onCommand:" + id), id);
   }

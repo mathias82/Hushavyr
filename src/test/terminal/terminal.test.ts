@@ -6,11 +6,11 @@ import {AddressInfo} from "node:net";
 import {mkdir, mkdtemp, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join} from "node:path";
-import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../terminal/helpers";
-import {onPath, profileFile, shimPath, shimScript, writeShim} from "../terminal/shim";
-import {resolveCopilot} from "../terminal/copilot";
+import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../../terminal/helpers";
+import {onPath, profileFile, shimPath, shimScript, writeShim} from "../../terminal/shim";
+import {resolveCopilot} from "../../terminal/copilot";
 
-const ROOT = join(__dirname, "..", "..");
+const ROOT = join(__dirname, "..", "..", "..");
 const REPL = join(ROOT, "dist", "terminal", "repl.js");
 const GB = 1024 ** 3;
 
