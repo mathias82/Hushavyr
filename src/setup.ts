@@ -5,6 +5,9 @@ import {LocalOllama} from "./ollama";
 import {startOllamaServer} from "./ollamaCommands";
 import {detectTools, hasInstaller, installCommands, InstallableTool, ollamaInstaller, osvDatabaseCommand, relevantTools, runs, setupPlan} from "./setupSteps";
 import {tr} from "./i18n";
+import {existsSync} from "node:fs";
+import {shimPath} from "./terminal/shim";
+import {INSTALL_TERMINAL_COMMAND} from "./terminal/register";
 import {configuredModel, isLocalModelName, modelChoices, recommendedModel} from "./model";
 export {recommendedModel};
 export {detectTools, osvDatabaseCommand, relevantTools, setupPlan} from "./setupSteps";
@@ -137,22 +140,31 @@ export async function runSetup(): Promise<void> {
   const relevant = new Set(relevantTools(tools, {python, go, jvm}));
   const missing = platform === "win32" ? [] : (Object.keys(tools) as InstallableTool[]).filter(tool => !tools[tool]).sort((a, b) => Number(relevant.has(b)) - Number(relevant.has(a)));
   let chosenTools: InstallableTool[] = [];
-  if (missing.length) {
-    const picked = await vscode.window.showQuickPick(missing.map(tool => ({label: installCommands[tool].label, description: installCommands[tool].purpose, picked: true, tool})),
-      {canPickMany: true, placeHolder: "Dependency and security analyzers to install (uncheck any you do not want)"});
+  // The `hushavyr` command for terminals outside VS Code (Terminal.app, iTerm, Windows Terminal).
+  const shimMissing = !existsSync(shimPath(platform, homedir(), process.env));
+  let terminalCommand = false;
+  if (missing.length || shimMissing) {
+    const picked = await vscode.window.showQuickPick([
+      ...missing.map(tool => ({label: installCommands[tool].label, description: installCommands[tool].purpose, picked: true, tool: tool as InstallableTool | "terminal"})),
+      ...(shimMissing ? [{label: "hushavyr terminal command", description: "use Hushavyr in every terminal, not only in VS Code", picked: true, tool: "terminal" as const}] : [])],
+      {canPickMany: true, placeHolder: "What to install (uncheck any you do not want)"});
     if (!picked) return;
-    chosenTools = picked.map(item => item.tool);
+    chosenTools = picked.flatMap(item => item.tool === "terminal" ? [] : [item.tool]);
+    terminalCommand = picked.some(item => item.tool === "terminal");
   }
+  const installTerminal = () => terminalCommand ? vscode.commands.executeCommand(INSTALL_TERMINAL_COMMAND) : undefined;
 
   const steps = setupPlan({platform, root, ollama, installer, running, model, modelReady: installed.includes(model), tools: chosenTools, osvInstalled: tools["osv-scanner"], osvDatabase});
   const summary = () => "Ollama: " + (ollama || steps.some(s => s.kind === "ollama-install") ? "installed" : "missing") + " · model " + model +
     " · analyzers: " + (Object.keys(tools) as InstallableTool[]).filter(tool => tools[tool] || chosenTools.includes(tool)).map(tool => installCommands[tool].label).join(", ");
   if (!steps.length) {
+    await installTerminal();
     void vscode.window.showInformationMessage(tr(language, "setupDone") + " " + summary());
     return;
   }
-  const confirm = await vscode.window.showInformationMessage("Hushavyr Setup will run " + steps.length + " step(s) on this machine", {modal: true,
-    detail: steps.map((step, i) => (i + 1) + ". " + step.label + "\n    " + step.command).join("\n") + "\n\nDownloads come from the package managers and ollama.com; no project code is sent."}, "Run setup");
+  const confirm = await vscode.window.showInformationMessage("Hushavyr Setup will run " + (steps.length + Number(terminalCommand)) + " step(s) on this machine", {modal: true,
+    detail: steps.map((step, i) => (i + 1) + ". " + step.label + "\n    " + step.command).join("\n") +
+      (terminalCommand ? "\n" + (steps.length + 1) + ". hushavyr terminal command\n    " + shimPath(platform, homedir(), process.env) : "") + "\n\nDownloads come from the package managers and ollama.com; no project code is sent."}, "Run setup");
   if (confirm !== "Run setup") return;
 
   const failed: string[] = [];
@@ -189,6 +201,7 @@ export async function runSetup(): Promise<void> {
       }
     }
   });
+  await installTerminal();
   if (failed.length) void vscode.window.showWarningMessage("Hushavyr setup did not finish: " + failed.join("; ") + ". Fix it and run Hushavyr: Setup again; finished steps are skipped.");
   else void vscode.window.showInformationMessage(tr(language, "setupDone") + " " + summary());
 }

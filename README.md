@@ -74,7 +74,7 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 
 Tab completes commands, and Ctrl+C cancels a running request. `hushavyr /security` runs one command and exits; `hushavyr --model qwen2.5-coder:14b` starts with a specific model.
 
-**In VS Code terminals it works right after you install the extension**, with no Node.js needed (it uses the editor's own runtime). For other terminals (Terminal.app, iTerm, Windows Terminal), run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once from the Command Palette. It writes a small launcher to `~/.local/bin` (macOS, Linux) or your user `WindowsApps` folder (Windows), offers to add the folder to your shell profile if needed, and keeps pointing at the current extension version after updates. The terminal uses the same local Ollama as the extension; the model you pick with `/model` is saved in `~/.hushavyr/config.json`. Your code never leaves your machine.
+**In VS Code terminals it works right after you install the extension**, with no Node.js needed (it uses the editor's own runtime). For other terminals (Terminal.app, iTerm, Windows Terminal), **Hushavyr: Setup** offers to install it (checked by default), or run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once from the Command Palette. It writes a small launcher to `~/.local/bin` (macOS, Linux) or your user `WindowsApps` folder (Windows), offers to add the folder to your shell profile if needed, and keeps pointing at the current extension version after updates. The terminal uses the same local Ollama as the extension; the model you pick with `/model` is saved in `~/.hushavyr/config.json`. Your code never leaves your machine.
 
 ## What it uses
 
