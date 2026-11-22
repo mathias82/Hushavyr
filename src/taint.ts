@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {definedNames, definitionSnippet} from "./callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
 import {pythonToBraces} from "./pythonBlocks";
@@ -772,15 +773,30 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
 /** A Python module that handles web requests: its request-to-sink flows are fully covered by taint analysis. */
 export const pythonHandler = (path: string, text: string): boolean => PY.test(path) && (SOURCE.test(text) || text.split(/\r?\n/).some(l => ROUTE.test(l)));
 
+/** Syntax trees of recently scanned files by path and content hash, so a repeated scan reparses only what changed. */
+const parsed = new Map<string, JavaFile | SyntaxFile>();
+let parsedSize = 0;
+function cachedParse<T extends JavaFile | SyntaxFile>(path: string, text: string, parse: () => T | undefined): T | undefined {
+  const key = path + "\0" + createHash("sha1").update(text).digest("hex"), hit = parsed.get(key);
+  if (hit) { parsed.delete(key); parsed.set(key, hit); return hit as T; }
+  const tree = parse();
+  if (!tree) return undefined;
+  parsed.set(key, tree);
+  parsedSize += text.length;
+  // About 64 MB of source; the oldest entries go first.
+  for (const [k, v] of parsed) { if (parsedSize <= 64_000_000) break; parsed.delete(k); parsedSize -= v.text.length; }
+  return tree;
+}
+
 export function taintFlows(files: readonly TaintFile[]): TaintFlow[] {
   // Minified bundles (vendor libraries) define short, common names that would capture calls from the application's own code.
   const minified = (f: TaintFile) => /\.min\.[cm]?js$/i.test(f.path) || (JS.test(f.path) && f.text.length > 2000 && f.text.length / (f.text.split("\n").length) > 300);
   const sources = files.slice(0, MAX_FILES).filter(f => f.text.length <= 200_000 && !minified(f)).map(f => PY.test(f.path) ? {path: f.path, text: pythonToBraces(f.text)} : f);
   const trees = new Map<string, JavaFile>(), others = new Map<string, SyntaxFile>();
   for (const f of sources) {
-    const tree = /\.java$/i.test(f.path) ? parseJava(f.text) : undefined;
+    const tree = /\.java$/i.test(f.path) ? cachedParse("java:" + f.path, f.text, () => parseJava(f.text)) : undefined;
     if (tree) trees.set(f.path, tree);
-    const other = tree || PY.test(f.path) ? undefined : parseSyntax(f.path, f.text);
+    const other = tree || PY.test(f.path) ? undefined : cachedParse(f.path, f.text, () => parseSyntax(f.path, f.text));
     if (other) others.set(f.path, other);
   }
   const project = trees.size ? new JavaProject(trees) : undefined;
