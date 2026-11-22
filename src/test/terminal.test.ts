@@ -5,7 +5,7 @@ import {createServer, Server} from "node:http";
 import {AddressInfo} from "node:net";
 import {mkdir, mkdtemp, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {basename, join} from "node:path";
 import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../terminal/helpers";
 import {onPath, profileFile, shimPath, shimScript, writeShim} from "../terminal/shim";
 import {resolveCopilot} from "../terminal/copilot";
@@ -148,6 +148,18 @@ test("hushavyr /update-db: auto on is saved, and missing scanners are reported i
   assert.match(output, /CVE databases will update before \/scan and \/dependencies/);
   assert.equal((JSON.parse(await readFile(join(dir, ".config", "config.json"), "utf8")) as {autoUpdateVulnDb?: boolean}).autoUpdateVulnDb, true);
   assert.match(output, /Neither Trivy nor OSV-Scanner is installed: type \/setup\./);
+});
+
+test("hushavyr: /review of a folder or 'all' scans it, the folder's own name means this folder, and chat knows the folder and commands", async () => {
+  const {server, endpoint, prompts} = await fakeOllama();
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+    await writeFile(join(dir, "books.js"), BOOKS);
+    const output = await session(dir, endpoint, ["/review all", "/security " + basename(dir), "review the folder for bugs"]);
+    assert.match(output, /for a whole folder this runs \/scan[\s\S]*SQL injection/);
+    assert.doesNotMatch(output, /is not a (?:file|folder)/);
+    assert.ok(prompts.some(p => p.includes(JSON.stringify(basename(dir))) && p.includes("Whole folder for bugs and security issues: /scan")), "chat prompt names the folder and the commands");
+  } finally { server.close(); }
 });
 
 test("hushavyr /dismiss hides a finding for the team, also in later scans", async () => {

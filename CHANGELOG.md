@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.12
+- **Terminal `/review` on a folder:** `/review`, `/review all` or `/review <folder>` scan the whole folder (as `/scan`) instead of failing with "is not a file".
+- **The chat knows where it is:** the local model is told the folder name and the Hushavyr commands. "Review this folder" gets "type /scan" instead of "I can't access your files".
+- **The folder's own name works:** `/security MyProject`, typed from inside `MyProject`, scans the current folder.
+
 ## 1.0.11
 - **CVE databases stay current:** Setup offers **Update CVE databases daily** (checked by default). Before a dependency scan, Hushavyr then downloads the latest public Trivy and OSV data when it is over a day old. No code or dependency list leaves the machine.
 - **Terminal `/update-db`:** downloads the databases now. `/update-db auto on|off` controls the daily update, and `/setup` asks about it (Enter means yes).

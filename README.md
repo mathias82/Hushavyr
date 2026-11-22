@@ -58,7 +58,7 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/dependencies [folder]` | CVEs in your libraries with Trivy and OSV-Scanner |
 | `/scan [folder]` | Full project scan: built-in rules, data flow, secrets, Semgrep, Gitleaks, Trivy if installed |
 | `/gitleaks [history] [folder]` | Secrets with Gitleaks; `history` checks every past commit, so a deleted password is still found |
-| `/review <file>` | Local AI review of a file for bugs and security issues, together with the static rules |
+| `/review <file\|folder>` | Local AI review of a file for bugs and security issues, together with the static rules; a folder runs `/scan` |
 | `/findings` | Show the last report again |
 | `/explain <N\|file> [question]` | Explain finding N in your code, or a whole file |
 | `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y`. For a dependency CVE it upgrades the package in the manifest (`package.json`, `pom.xml`, `go.mod`, …) |

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /** hushavyr: talk to a local AI about your code in the terminal, scan it, and fix findings behind a diff you approve. Nothing leaves this machine. */
-import {statSync} from "node:fs";
+import {existsSync, statSync} from "node:fs";
 import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
 import {homedir, totalmem} from "node:os";
 import {spawn} from "node:child_process";
-import {isAbsolute, join, relative, resolve, sep} from "node:path";
+import {basename, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {createInterface, Interface} from "node:readline";
 import {scanFolder} from "../cli";
 import {auditDependenciesWithOsv} from "../codeScanners";
@@ -158,7 +158,9 @@ class Session {
   }
 
   private path(arg: string): {abs: string; display: string} {
-    const abs = isAbsolute(arg) ? arg : resolve(this.cwd, arg);
+    let abs = isAbsolute(arg) ? arg : resolve(this.cwd, arg);
+    // "/security MyProject" typed from inside MyProject means this folder.
+    if (!existsSync(abs) && arg.replace(/[\\/]+$/, "") === basename(this.cwd)) abs = this.cwd;
     return {abs, display: relative(this.cwd, abs) || "."};
   }
   private async readSource(arg: string): Promise<{abs: string; display: string; text: string}> {
@@ -202,7 +204,7 @@ class Session {
       sources.push({path: file, text});
     }
     if (sources.length) out(dim("Including " + sources.map(s => s.path).join(", ")));
-    const answer = await this.stream(chatPrompt(message, this.history, sources.length ? sourcePrompt(sources) : ""), signal);
+    const answer = await this.stream(chatPrompt(message, this.history, sources.length ? sourcePrompt(sources) : "", basename(this.cwd)), signal);
     this.history.push({user: message, answer});
   }
 
@@ -252,6 +254,11 @@ class Session {
   }
 
   private async review(arg: string, signal: AbortSignal): Promise<void> {
+    const target = /^(?:all|\.|)$/i.test(arg) ? "." : arg;
+    if ((await stat(this.path(target).abs).catch(() => undefined))?.isDirectory()) {
+      out(dim("/review checks one file with the local AI; for a whole folder this runs /scan. Then /review <file> or /explain N on any finding."));
+      return await this.scan("scan", target);
+    }
     const file = await this.readSource(arg);
     await this.ensureModel(signal);
     const sources = [{path: file.display, text: file.text}];
