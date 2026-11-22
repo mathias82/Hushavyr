@@ -448,7 +448,8 @@
     "scan": "npm run build && node dist/cli.js",
     "benchmark:static": "npm run build && node dist/benchmark.js --static --gate",
     "benchmark:owasp": "npm run build && node benchmarks/owasp.mjs",
-    "benchmark:owasp-python": "npm run build && node benchmarks/owasp.mjs --lang python"
+    "benchmark:owasp-python": "npm run build && node benchmarks/owasp.mjs --lang python",
+    "benchmark:realworld": "npm run build && node benchmarks/realworld.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

@@ -54,6 +54,31 @@ jobs:
           HUSHAVYR_NODE_DOCKER_SMOKE: '1'
         run: node --test dist/test/fix-node.test.js
 
+  benchmark-gate:
+    # Fails when a known finding on the pinned OWASP Benchmarks or the six real vulnerable apps is lost, or a new one appears.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/hushavyr
+            ~/.cache/hushavyr-bench
+          key: benchmark-sources-${{ hashFiles('benchmarks/realworld.mjs') }}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: OWASP Benchmark for Java (97.2%, 0% false positives)
+        run: node benchmarks/owasp.mjs --min-score 97.2 --max-fpr 0
+      - name: OWASP Benchmark for Python (100%, 0% false positives)
+        run: node benchmarks/owasp.mjs --lang python --min-score 100 --max-fpr 0
+      - name: Real-world apps (Juice Shop, WebGoat, DVWA, RailsGoat, GoVWA, WebGoat.NET)
+        run: node benchmarks/realworld.mjs
+
   e2e:
     runs-on: ubuntu-latest
     permissions:

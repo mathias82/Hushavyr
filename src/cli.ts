@@ -33,8 +33,9 @@ async function semgrep(root: string, rules: string): Promise<SarifResult[]> {
   return result.findings.map(f => ({ruleId: canonicalRule(f.rule), message: f.message ?? f.rule, path: f.path, line: f.line, level: sarifLevel(f.severity)}));
 }
 
-/** Offline scan of a folder: bundled rules, credentials and, when installed, Semgrep, FindSecBugs, Bandit, gosec, Trivy and OSV-Scanner. */
-export async function scanFolder(root: string, rules: string, log: (line: string) => void = () => undefined): Promise<SarifResult[]> {
+/** Offline scan of a folder: bundled rules, credentials and, when installed, Semgrep, FindSecBugs, Bandit, gosec, Trivy and OSV-Scanner.
+ * builtinOnly skips every installed tool, so the result depends only on Hushavyr's own code (used by the benchmark gate). */
+export async function scanFolder(root: string, rules: string, log: (line: string) => void = () => undefined, builtinOnly = false): Promise<SarifResult[]> {
   const results: SarifResult[] = [];
   const ignored = await loadIgnore(root);
   const taintFiles: TaintFile[] = [];
@@ -59,6 +60,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
   await initJavaParser();
   for (const flow of taintFlows(taintFiles))
     results.push({ruleId: "taint-" + flow.kind, message: flowTitle(flow) + " (input at " + flow.source.path + ":" + flow.source.line + ")", path: flow.sink.path, line: flow.sink.line, level: sarifLevel(flowSeverity(flow))});
+  if (builtinOnly) return results.filter(r => !ignored(r.path));
   const fromSemgrep = (await semgrep(root, rules)).filter(r => !decided(r));
   log("semgrep: " + fromSemgrep.length + " findings");
   for (const r of fromSemgrep) {

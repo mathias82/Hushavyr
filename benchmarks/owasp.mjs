@@ -120,6 +120,10 @@ function main() {
   const report = {benchmark: bench.name, commit, hushavyr: version, date: new Date().toISOString().slice(0, 10), unmappedFindings: unmapped, findingsOutsideTests: outside, ...result};
   if (option('--out')) writeFileSync(resolve(option('--out')), JSON.stringify(report, null, 2) + '\n');
   console.log(`${bench.name} (${commit?.slice(0, 7)}), Hushavyr ${version}, ${report.date}\n\n${markdown(result)}\n\nUnmapped findings ignored: ${unmapped}; mapped findings outside test cases: ${outside}`);
+  // Gate: --min-score 97.2 --max-fpr 0 fail the run when the overall score drops or false positives appear.
+  const minScore = option('--min-score'), maxFpr = option('--max-fpr');
+  if (minScore !== undefined && result.overall.score * 100 < Number(minScore) - 0.05) { console.error(`Score ${pct(result.overall.score)} is below ${minScore}%`); process.exitCode = 1; }
+  if (maxFpr !== undefined && result.overall.fpr * 100 > Number(maxFpr) + 0.05) { console.error(`False positive rate ${pct(result.overall.fpr)} is above ${maxFpr}%`); process.exitCode = 1; }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
