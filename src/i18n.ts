@@ -5,6 +5,7 @@ const messages = {
   reported: {en: "vulnerabilities reported", el: "ευπάθειες που βρέθηκαν"},
   noCloud: {en: "No cloud requests.", el: "Καμία αποστολή στο cloud."},
   fixedIn: {en: "fixed in", el: "διορθώνεται στο"},
+  fixLabel: {en: "Fix", el: "Διόρθωση"},
   noFix: {en: "no fix available", el: "δεν υπάρχει διόρθωση"},
   inFiles: {en: "in", el: "σε"},
   moreHidden: {en: "more not shown", el: "ακόμα δεν εμφανίζονται"},

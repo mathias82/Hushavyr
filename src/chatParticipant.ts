@@ -19,7 +19,9 @@ import {ReviewResult} from "./review";
 import {writeRetainedAuditEvent} from "./audit";
 import {isInstructionReference, ReviewSource, sourcePrompt, validateContext} from "./context";
 import {publishFindings} from "./diagnostics";
-import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./teamMemory";
+import {dismissalText, fingerprint, loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./teamMemory";
+import {findingsFromReport} from "./reportFindings";
+import {readFileSync} from "node:fs";
 import {lowMemoryWarning} from "./setup";
 import {runWorkspaceScan, isScanCommand} from "./workspaceScan";
 import {EXPLAIN_FINDING, rememberReport} from "./explainFinding";
@@ -188,20 +190,33 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
     const workspaceReview = isScanCommand(request.command) || (command === "review" && !explains &&
       /\b(workspace|project|repository|entire codebase|whole codebase|all code|entire project)\b/i.test(instruction));
     if (workspaceReview) {
-      if (!["security", "secrets", "dependencies"].includes(request.command ?? "")) {
-        await runWorkspaceScan(context, request, stream, token);
-        return;
-      }
-      // Keep the scanner report as is; afterwards offer a local AI explanation of one finding.
-      let report = "";
+      // Keep the scanner report as is (minus team dismissals); afterwards offer to fix, explain or dismiss one finding.
+      let report = "", hidden = 0;
+      const dismissed = new Set((await Promise.all((vscode.workspace.workspaceFolders ?? []).map(f => loadDismissals(f.uri.fsPath)))).flat().map(d => d.fingerprint));
+      const lines = new Map<string, string[]>();
+      const isDismissed = (chunk: string) => {
+        const found = dismissed.size ? findingsFromReport(chunk) : [];
+        if (found.length !== 1) return false;
+        const uri = vscode.Uri.parse(found[0].uri);
+        if (uri.scheme !== "file") return false;
+        if (!lines.has(uri.fsPath)) { try { lines.set(uri.fsPath, readFileSync(uri.fsPath, "utf8").split(/\r?\n/)); } catch { lines.set(uri.fsPath, []); } }
+        const text = lines.get(uri.fsPath)![found[0].line - 1] ?? "";
+        return dismissed.has(fingerprint(vscode.workspace.asRelativePath(uri, false), dismissalText(text, found[0].message)));
+      };
       // The chat stream is frozen, so proxy an empty object (proxy invariants) and forward to the stream.
       const recording = new Proxy({} as vscode.ChatResponseStream, {get: (_, key) => key === "markdown"
-        ? (value: string | vscode.MarkdownString) => { report += typeof value === "string" ? value : value.value; return stream.markdown(value); }
+        ? (value: string | vscode.MarkdownString) => {
+          const chunk = typeof value === "string" ? value : value.value;
+          if (isDismissed(chunk)) { hidden++; return; }
+          report += chunk;
+          return stream.markdown(value);
+        }
         : (v => typeof v === "function" ? v.bind(stream) : v)(Reflect.get(stream, key))});
       await runWorkspaceScan(context, request, recording, token);
+      if (hidden) stream.markdown("\n_" + hidden + " finding(s) hidden: dismissed by the team in `.hushavyr/dismissed.json`._\n");
       if (!token.isCancellationRequested && rememberReport(report)) {
+        stream.button({command: FIX_FINDING, title: "Fix or dismiss a finding (local AI, diff to approve)"});
         stream.button({command: EXPLAIN_FINDING, title: "Explain a finding (local AI)"});
-        if (request.command !== "dependencies") stream.button({command: FIX_FINDING, title: "Fix a finding (local AI, diff to approve)"});
       }
       return;
     }

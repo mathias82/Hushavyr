@@ -10,14 +10,14 @@ import {scanFolder} from "../cli";
 import {auditDependenciesWithOsv} from "../codeScanners";
 import {MAX_CONTEXT_BYTES, ReviewSource, sourcePrompt} from "../context";
 import {editPrompt, editSchema, parseEdit, parseSummary} from "../codeEdit";
-import {findDependencyLine, groupVulnerabilities} from "../dependencyAudit";
+import {acceptManifestEdit, dependencyEditInstruction, findDependencyLine, groupVulnerabilities, parseDependencyFinding, planDependencyFix, resolveManifest} from "../dependencyAudit";
 import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, replacementSchema} from "../fixEdit";
 import {runLocalReview} from "../localReview";
 import {autoDepth} from "../model";
 import {localEndpoint, LocalOllama} from "../ollama";
 import {explainFindingPrompt} from "../reportFindings";
 import {staticReview} from "../staticReview";
-import {loadTeamRules, withTeamRules} from "../teamMemory";
+import {addDismissal, dismissalText, fingerprint, loadDismissals, loadTeamRules, withTeamRules} from "../teamMemory";
 import {chatPrompt, chooseModel, COMMANDS, completeCommand, diffLines, languageOf, mentionedFiles, parseLine, replaceLines} from "./helpers";
 import {terminalSetup} from "./setup";
 import {runScanner} from "../externalScanners";
@@ -120,6 +120,7 @@ class Session {
         case "review": return await this.review(rest, signal);
         case "explain": return await this.explain(rest, signal);
         case "fix": return await this.fix(rest, signal);
+        case "dismiss": return await this.dismiss(rest);
         case "edit": return await this.edit(rest, signal);
         case "undo": return await this.undo();
         case "model": return await this.switchModel(rest, signal);
@@ -138,8 +139,8 @@ class Session {
     }
   }
 
-  banner(version: string, running: boolean, ready: boolean): void {
-    out(bold("Hushavyr " + version) + dim(" · private AI code review in your terminal · nothing leaves this machine"));
+  banner(running: boolean, ready: boolean): void {
+    out(bold("Hushavyr") + dim(" · private AI code review in your terminal · nothing leaves this machine"));
     out(dim("Folder: ") + this.cwd);
     out(dim("Model:  ") + this.model + " " + (!running ? yellow("(Ollama is not running: type /setup)") : ready ? green("(ready)") : yellow("(not downloaded: type /setup or /model)")));
     out(dim("Ask anything about your code (mention a file to include it), or type /help.\n"));
@@ -208,6 +209,7 @@ class Session {
     const kept = kind === "secrets" ? results.filter(r => r.ruleId === "hardcoded-credential") : results;
     this.findings = kept.map(r => ({path: join(abs, r.path), display: relative(this.cwd, join(abs, r.path)), line: r.line, message: r.message, level: r.level}))
       .sort((a, b) => levelRank(a.level) - levelRank(b.level) || a.display.localeCompare(b.display) || a.line - b.line);
+    this.findings = await this.withoutDismissed(this.findings);
     this.printFindings();
   }
 
@@ -222,10 +224,13 @@ class Session {
       const target = join(abs, v.targets[0] ?? "");
       let line = 1;
       try { line = findDependencyLine(await readFile(target, "utf8"), v.pkg, v.installed); } catch { /* not a readable file */ }
+      const manifest = await resolveManifest(target);
+      const plan = planDependencyFix(target, {id: v.id, pkg: v.pkg, installed: v.installed, fixed: v.fixed}, manifest.text, manifest.path);
       found.push({path: target, display: relative(this.cwd, target), line, level: /critical|high/i.test(v.severity) ? "error" : /medium/i.test(v.severity) ? "warning" : "note",
-        message: v.id + " in " + v.pkg + " " + v.installed + (v.fixed ? ", fixed in " + v.fixed : ", no fix available") + (v.title ? ": " + v.title : "")});
+        message: v.id + " in " + v.pkg + " " + v.installed + (v.fixed ? ", fixed in " + v.fixed : ", no fix available") + (v.title ? ": " + v.title : ""),
+        fix: plan?.advice.replace(/`/g, "")});
     }
-    this.findings = found.sort((a, b) => levelRank(a.level) - levelRank(b.level));
+    this.findings = await this.withoutDismissed(found.sort((a, b) => levelRank(a.level) - levelRank(b.level)));
     this.printFindings();
   }
 
@@ -236,7 +241,7 @@ class Session {
       if (f.evidence) out(dim(f.evidence.split("\n").slice(0, 3).map(l => "         " + l).join("\n")));
       if (f.fix) out("         " + green("Fix: ") + f.fix.split("\n")[0]);
     });
-    out(dim("\n" + this.findings.length + " finding(s). /fix N fixes one with local AI (diff to approve) · /explain N explains it."));
+    out(dim("\n" + this.findings.length + " finding(s). /fix N fixes one with local AI (diff to approve) · /explain N explains it · /dismiss N hides a false positive."));
   }
 
   private async review(arg: string, signal: AbortSignal): Promise<void> {
@@ -249,7 +254,7 @@ class Session {
       {depth: autoDepth(), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
     if (!result || signal.aborted) return;
     if (result.error) out(yellow(result.error));
-    this.findings = result.findings.map(f => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence}));
+    this.findings = await this.withoutDismissed(result.findings.map(f => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence})));
     this.printFindings();
   }
 
@@ -291,10 +296,70 @@ class Session {
     out(green("Applied to " + display + ".") + dim(" /undo restores it."));
   }
 
+  /** The repository root that holds .hushavyr/dismissed.json (same file as the VS Code extension). */
+  private teamRoot(): string {
+    for (let dir = this.cwd; ; dir = resolve(dir, "..")) {
+      if (statSync(join(dir, ".git"), {throwIfNoEntry: false}) || statSync(join(dir, ".hushavyr"), {throwIfNoEntry: false})) return dir;
+      if (resolve(dir, "..") === dir) return this.cwd;
+    }
+  }
+
+  private async fingerprintOf(f: Stored, root: string): Promise<string> {
+    const text = (await readFile(f.path, "utf8").catch(() => "")).split(/\r?\n/)[f.line - 1] ?? "";
+    return fingerprint(relative(root, f.path).split(sep).join("/"), dismissalText(text, f.message));
+  }
+
+  private async withoutDismissed(found: Stored[]): Promise<Stored[]> {
+    const root = this.teamRoot();
+    const dismissed = new Set((await loadDismissals(root)).map(d => d.fingerprint));
+    if (!dismissed.size) return found;
+    const kept: Stored[] = [];
+    for (const f of found) if (!dismissed.has(await this.fingerprintOf(f, root))) kept.push(f);
+    if (kept.length < found.length) out(dim((found.length - kept.length) + " finding(s) hidden: dismissed by the team in .hushavyr/dismissed.json."));
+    return kept;
+  }
+
+  private async dismiss(arg: string): Promise<void> {
+    const f = this.finding(arg);
+    const reason = arg.replace(/^\d+\s*/, "").trim() || (await this.read(bold("Why is this not a real issue? ")))?.trim() || "false positive";
+    const root = this.teamRoot();
+    await addDismissal(root, {fingerprint: await this.fingerprintOf(f, root), path: relative(root, f.path).split(sep).join("/"), reason});
+    this.findings = this.findings.filter(x => x !== f);
+    out(green("Dismissed: ") + f.message.split("\n")[0] + dim("\nSaved in .hushavyr/dismissed.json; commit it to hide it for the team (VS Code too)."));
+  }
+
+  /** Dependency CVE: bump it in the manifest (deterministic when possible, else local AI), behind a diff. */
+  private async fixDependency(f: Stored, signal: AbortSignal): Promise<void> {
+    const finding = parseDependencyFinding(f.message)!;
+    const manifest = await resolveManifest(f.path);
+    const plan = planDependencyFix(f.path, finding, manifest.text, manifest.path);
+    if (!plan) { out(yellow(finding.pkg + " has no fixed version yet: remove or replace it, or /dismiss it if it does not apply.")); return; }
+    const display = relative(this.cwd, plan.manifest);
+    const text = await readFile(plan.manifest, "utf8");
+    let updated = plan.updated;
+    if (updated === undefined) {
+      await this.ensureModel(signal);
+      out(dim("Preparing the upgrade in " + display + " with " + this.model + "… (Ctrl+C cancels)"));
+      const edited = parseEdit(await this.client.generate(editPrompt(display, languageOf(plan.manifest), text, dependencyEditInstruction(finding, plan)), {schema: editSchema, signal}), text);
+      if (signal.aborted) return;
+      if (!edited || !acceptManifestEdit(plan.manifest, text, edited, finding)) { out(yellow("The local model did not produce a safe change. Do it manually: ") + plan.advice.replace(/`/g, "")); return; }
+      updated = edited;
+    }
+    out(bold("Proposed fix for " + finding.id + " in " + display + ":"));
+    this.showDiff(text, updated, 1);
+    if (await this.ask("Apply this fix?")) {
+      await this.apply(plan.manifest, display, text, updated);
+      if (plan.then) out(dim("Then run ") + bold(plan.then) + dim(" to update the lockfile."));
+      this.prDraft = {title: ("Upgrade " + finding.pkg + " (" + finding.id + ")").slice(0, 72), body: "Fixes " + finding.id + " in `" + finding.pkg + "` " + finding.installed + "."};
+    }
+    else out("Discarded. " + display + " is unchanged.");
+  }
+
   private async fix(arg: string, signal: AbortSignal): Promise<void> {
     const f = this.finding(arg);
+    if (!f.title && parseDependencyFinding(f.message)) return this.fixDependency(f, signal);
     const how = f.title && f.fix ? {title: f.title, fix: f.fix} : findingFix(f.message);
-    if (!how) { out("Finding " + arg + " is a vulnerable dependency: upgrade the package (" + f.message.split(":")[0] + ") in " + f.display + "."); return; }
+    if (!how) { out("Finding " + arg + " has no automatic fix" + (f.fix ? ": " + f.fix : ".") + " /dismiss " + arg + " hides it if it is not a real issue."); return; }
     await this.ensureModel(signal);
     const text = await readFile(f.path, "utf8");
     const lines = text.split(/\r?\n/);
@@ -559,7 +624,7 @@ async function main(argv: string[]): Promise<void> {
     process.stdin.destroy();
     return;
   }
-  session.banner(version, running, installed.includes(chosen) || installed.includes(chosen + ":latest"));
+  session.banner(running, installed.includes(chosen) || installed.includes(chosen + ":latest"));
   await session.loop();
 }
 

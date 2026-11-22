@@ -7,6 +7,7 @@ export const COMMANDS: readonly TerminalCommand[] = [
   {name: "explain", usage: "/explain <file|N> [question]", help: "Explain a file, or finding N from the last report"},
   {name: "fix", usage: "/fix <N>", help: "Fix finding N with local AI: shows a diff, changes the file only after you approve"},
   {name: "edit", usage: "/edit <file> <request>", help: "Change a file as you ask: shows a diff, changes it only after you approve"},
+  {name: "dismiss", usage: "/dismiss <N> [reason]", help: "Hide finding N as not a real issue (shared with the team in .hushavyr/dismissed.json)"},
   {name: "undo", usage: "/undo", help: "Restore the file changed by the last /fix or /edit"},
   {name: "scan", usage: "/scan [folder]", help: "Project scan: built-in rules, data flow, secrets, installed analyzers and dependency CVEs"},
   {name: "security", usage: "/security [folder]", help: "Fast security scan without AI or external tools: rules, data flow, secrets"},

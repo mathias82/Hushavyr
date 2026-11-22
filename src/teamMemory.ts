@@ -2,6 +2,7 @@ import {createHash} from "node:crypto";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {Finding} from "./review";
+import {parseDependencyFinding} from "./dependencyAudit";
 
 /**
  * Team memory lives in the repository (.hushavyr/dismissed.json) so a false positive dismissed by one
@@ -14,6 +15,12 @@ export const DISMISSED_FILE = join(".hushavyr", "dismissed.json");
 /** Survives line moves: the workspace-relative file plus the whitespace-normalised flagged line. */
 export function fingerprint(relativePath: string, lineText: string): string {
   return createHash("sha256").update(relativePath.replace(/\\/g, "/") + "\0" + lineText.replace(/\s+/g, " ").trim()).digest("hex").slice(0, 16);
+}
+
+/** What a dismissal remembers: the flagged line, or for a dependency CVE the advisory and package (the lockfile line changes). */
+export function dismissalText(lineText: string, message = ""): string {
+  const dependency = parseDependencyFinding(message);
+  return dependency ? "dependency " + dependency.id + " " + dependency.pkg : lineText;
 }
 
 export async function loadDismissals(root: string): Promise<Dismissal[]> {

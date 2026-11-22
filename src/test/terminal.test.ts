@@ -3,7 +3,7 @@ import {strict as assert} from "node:assert";
 import {execFile, spawn} from "node:child_process";
 import {createServer, Server} from "node:http";
 import {AddressInfo} from "node:net";
-import {mkdtemp, readFile, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../terminal/helpers";
@@ -140,6 +140,19 @@ test("hushavyr without Ollama: scans still work and AI commands say how to set u
   assert.match(output, /Error: Ollama is not running\. Type \/setup/);
   assert.match(output, /Unknown command \/nope/);
   assert.equal(await readFile(join(dir, "books.js"), "utf8"), BOOKS);
+});
+
+test("hushavyr /dismiss hides a finding for the team, also in later scans", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+  await mkdir(join(dir, ".git"));
+  await writeFile(join(dir, "books.js"), BOOKS);
+  const output = await session(dir, "http://127.0.0.1:9", ["/security", "/dismiss 2 test fixture", "/security"]);
+  assert.match(output, /Dismissed: SQL injection/);
+  const saved = JSON.parse(await readFile(join(dir, ".hushavyr", "dismissed.json"), "utf8")) as {dismissed: {path: string; reason: string}[]};
+  assert.deepEqual(saved.dismissed.map(d => [d.path, d.reason]), [["books.js", "test fixture"]]);
+  const after = output.slice(output.lastIndexOf("Security scan"));
+  assert.match(after, /\d finding\(s\) hidden: dismissed by the team/);
+  assert.doesNotMatch(after, /SQL injection/);
 });
 
 test("hushavyr /escalate is off by default, shows the exact pseudonymized text and sends it only after approval; /pr and /prove refuse safely", async () => {

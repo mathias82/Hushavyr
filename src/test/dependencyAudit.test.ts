@@ -145,3 +145,47 @@ test("findingFix gives scanner, data-flow and secret findings a fix by kind; dep
   assert.equal(findingFix("Null check\nFix: guard the value")!.fix, "guard the value");
   assert.equal(findingFix("CVE-2018-1000656 in flask 0.12.2 (HIGH). Fixed in 0.12.3."), undefined);
 });
+
+test("dependency fix: exact command for direct and transitive packages", async () => {
+  const {dependencyFix, isDirectDependency, manifestFor} = await import("../dependencyAudit");
+  assert.equal(manifestFor("web/package-lock.json"), "web/package.json");
+  assert.equal(manifestFor("go.sum"), "go.mod");
+  const pkg = "{\n  \"dependencies\": {\"lodash\": \"^4.17.20\"}\n}";
+  assert.ok(isDirectDependency(pkg, "lodash"));
+  assert.ok(!isDirectDependency(pkg, "minimist"));
+  assert.ok(!isDirectDependency("require (\n\tgolang.org/x/net v0.1.0 // indirect\n)", "golang.org/x/net"));
+  assert.match(dependencyFix("package-lock.json", "lodash", "4.17.20", "4.17.21", true)!, /npm install lodash@4\.17\.21/);
+  assert.match(dependencyFix("package-lock.json", "minimist", "1.2.5", "1.2.6", false)!, /overrides/);
+  assert.match(dependencyFix("go.sum", "golang.org/x/net", "v0.1.0", "0.17.0", false)!, /go get golang\.org\/x\/net@v0\.17\.0/);
+  assert.match(dependencyFix("pom.xml", "org.yaml:snakeyaml", "1.33", "2.0", true)!, /<version>2\.0<\/version>/);
+  assert.equal(dependencyFix("package-lock.json", "lodash", "4.17.20", undefined, true), undefined);
+});
+
+test("reads a dependency CVE back from markers, CLI lines and chat rows", async () => {
+  const {parseDependencyFinding} = await import("../dependencyAudit");
+  const expected = {id: "CVE-2021-23337", pkg: "lodash", installed: "4.17.20", fixed: "4.17.21"};
+  assert.deepEqual(parseDependencyFinding("CVE-2021-23337 in lodash 4.17.20 (HIGH). Fixed in 4.17.21."), expected);
+  assert.deepEqual(parseDependencyFinding("CVE-2021-23337 in lodash 4.17.20, fixed in 4.17.21: Command injection"), expected);
+  assert.deepEqual(parseDependencyFinding("HIGH · CVE-2021-23337 lodash 4.17.20 · fixed in 4.17.21 · package-lock.json:12"), expected);
+  assert.deepEqual(parseDependencyFinding("HIGH · CVE-2021-23337 · lodash 4.17.20 · διορθώνεται στο 4.17.21 · σε package-lock.json:12"), expected);
+  assert.equal(parseDependencyFinding("CVE-2021-23337 in lodash 4.17.20 (HIGH). No fix available.")?.fixed, undefined);
+  assert.equal(parseDependencyFinding("SQL injection: user input reaches query"), undefined);
+});
+
+test("plans a dependency upgrade: deterministic bump when direct, model edit otherwise", async () => {
+  const {acceptManifestEdit, planDependencyFix} = await import("../dependencyAudit");
+  const pkg = "{\n  \"dependencies\": {\n    \"lodash\": \"4.17.20\"\n  }\n}\n";
+  const direct = planDependencyFix("app/package-lock.json", {id: "CVE-1", pkg: "lodash", installed: "4.17.20", fixed: "4.17.21"}, pkg, "app/package.json")!;
+  assert.equal(direct.manifest, "app/package.json");
+  assert.equal(direct.then, "npm install");
+  assert.equal(direct.updated, pkg.replace("4.17.20", "4.17.21"));
+  const minimist = {id: "CVE-2", pkg: "minimist", installed: "1.2.5", fixed: "1.2.6"};
+  const transitive = planDependencyFix("app/package-lock.json", minimist, pkg, "app/package.json")!;
+  assert.equal(transitive.updated, undefined);
+  assert.match(transitive.advice, /overrides/);
+  assert.equal(planDependencyFix("package-lock.json", {id: "CVE-3", pkg: "x", installed: "1.0.0"}, pkg), undefined);
+  const edited = pkg.replace("}\n}", "},\n  \"overrides\": {\"minimist\": \"1.2.6\"}\n}");
+  assert.ok(acceptManifestEdit("package.json", pkg, edited, minimist));
+  assert.ok(!acceptManifestEdit("package.json", pkg, edited.replace("},\n  \"overrides\"", "}\n  \"overrides\""), minimist), "invalid JSON");
+  assert.ok(!acceptManifestEdit("package.json", pkg, pkg, minimist), "no change");
+});

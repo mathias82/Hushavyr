@@ -22,6 +22,10 @@ const LEVEL = {high: vscode.DiagnosticSeverity.Error, medium: vscode.DiagnosticS
 
 let scanCollection: vscode.DiagnosticCollection | undefined;
 export function clearScanFindings(): void { scanCollection?.clear(); }
+export function dropScanFinding(uri: vscode.Uri, line: number): void {
+  const list = scanCollection?.get(uri);
+  if (list) scanCollection!.set(uri, list.filter(d => d.range.start.line !== line));
+}
 
 export function registerPaletteCommands(context: vscode.ExtensionContext, handler: vscode.ChatRequestHandler): void {
   const scanDiagnostics = scanCollection = vscode.languages.createDiagnosticCollection("hushavyr-scan");
@@ -64,10 +68,10 @@ async function run(context: vscode.ExtensionContext, handler: vscode.ChatRequest
   }
   for (const [uri, list] of byUri) scanDiagnostics.set(vscode.Uri.parse(uri), list);
   const count = [...byUri.values()].reduce((n, list) => n + list.length, 0);
-  if (count) void vscode.window.showInformationMessage("Hushavyr: " + count + " finding(s) added to the Problems panel.", "Open Problems", "Explain a Finding (Local AI)", "Fix a Finding (Local AI)")
+  if (count) void vscode.window.showInformationMessage("Hushavyr: " + count + " finding(s) added to the Problems panel.", "Open Problems", "Explain a Finding (Local AI)", "Fix or Dismiss a Finding")
     .then(choice => {
       if (choice === "Open Problems") void vscode.commands.executeCommand("workbench.actions.view.problems");
-      else if (choice === "Fix a Finding (Local AI)") void vscode.commands.executeCommand("aiPrivacyRouter.fixFinding");
+      else if (choice === "Fix or Dismiss a Finding") void vscode.commands.executeCommand("aiPrivacyRouter.fixFinding");
       else if (choice) void vscode.commands.executeCommand(EXPLAIN_FINDING);
     });
 }

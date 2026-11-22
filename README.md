@@ -58,7 +58,8 @@ Ask anything in plain language. If you mention a file (`why does books.js leak m
 | `/review <file>` | Local AI review of a file for bugs and security issues, together with the static rules |
 | `/findings` | Show the last report again |
 | `/explain <N\|file> [question]` | Explain finding N in your code, or a whole file |
-| `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y` |
+| `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y`. For a dependency CVE it upgrades the package in the manifest (`package.json`, `pom.xml`, `go.mod`, …) |
+| `/dismiss <N> [reason]` | Hide finding N as not a real issue; saved in `.hushavyr/dismissed.json` and hidden for the whole team, in VS Code too |
 | `/edit <file> <request>` | Change a file as you ask, behind the same diff and approval |
 | `/undo` | Restore the file changed by the last `/fix` or `/edit` |
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
@@ -133,7 +134,9 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 
 **Without Chat** (Cursor, Windsurf, VSCodium, or Chat turned off): the main commands are also in the Command Palette, for example **Hushavyr: Review Current File**, **Scan Project**, **Security Scan (No AI)**, **Find Hardcoded Secrets** and **Check Dependencies for CVEs**. The report opens as a Markdown preview with links to each line, and the findings appear in the **Problems** panel. *Review* and *Explain* are also in the editor's right-click menu.
 
-**Fix a finding with local AI (AI auto-fix with approval):** use the 💡 **Fix with local AI** quick fix on any Hushavyr finding in the Problems panel (SQL injection, XSS, command injection, path traversal, hardcoded secrets, review issues), click **Fix a finding** after a Chat report, or run **Hushavyr: Fix a Finding with Local AI**. The local model writes the change, Hushavyr opens a side-by-side diff, and the file changes only after you click **Apply fix** (undo with Cmd/Ctrl+Z). Dependency CVEs use the **Upgrade** quick fix instead.
+**Fix a finding with local AI (AI auto-fix with approval):** use the 💡 **Fix with local AI** quick fix on any Hushavyr finding in the Problems panel (SQL injection, XSS, command injection, path traversal, hardcoded secrets, review issues), click **Fix or dismiss a finding** after any Chat report (`/scan`, `/security`, `/secrets`, `/dependencies`, `/gitleaks`), or run **Hushavyr: Fix or Dismiss a Finding**. Pick the finding, then **Fix with local AI**, **Explain** or **Dismiss**. The local model writes the change, Hushavyr opens a side-by-side diff, and the file changes only after you click **Apply fix** (undo with Cmd/Ctrl+Z).
+
+**Dependency CVEs get a fix too:** every row shows the exact command (`npm install lodash@4.17.21`, `go get …`, `"overrides"` for a transitive package, `<dependencyManagement>` in Maven, …). **Fix with local AI** edits the manifest: a direct version is bumped exactly, a transitive one gets an override written by the local model, and the diff waits for your approval. Then run the shown command (for example `npm install`) to refresh the lockfile.
 
 **Explain a finding with local AI:** after `/security` or `/secrets` (or their palette commands), click **Explain a finding**, or use the 💡 quick fix on any Hushavyr finding. The scanner result stays unchanged; the local model explains what it means in that exact code, whether it looks real, and suggests a minimal fix.
 
@@ -150,7 +153,7 @@ Quick fixes on findings:
 | File | Purpose |
 | --- | --- |
 | `.hushavyr/rules.md` | Your team standards, e.g. "never log tokens". `/review` checks the code against them. |
-| `.hushavyr/dismissed.json` | False positives hidden for everyone. Created by the *Not a real issue* quick fix. |
+| `.hushavyr/dismissed.json` | False positives hidden for everyone, in reviews, scans and dependency reports. Created by the *Not a real issue* quick fix, **Dismiss** or `/dismiss N` in the terminal. |
 | `.hushavyr/ignore` | Paths that are never scanned, one per line (`src/test/`, `*.gen.ts`). Use it for intentionally vulnerable test fixtures. |
 | `.hushavyr/taint-rules.json` | Your own request sources, sinks and sanitizers for the data-flow engine (`/scan`, `/security`, CLI), e.g. an in-house DB wrapper. |
 

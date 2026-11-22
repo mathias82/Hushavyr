@@ -1,6 +1,7 @@
 // Deterministic scan helpers shared by the workspace scan: chat links, taint flows and local rule/secret findings.
 import {markDependencies} from "./dependencyMarkers";
-import {groupVulnerabilities, GroupedVulnerability} from "./dependencyAudit";
+import {dependencyFix, findDependencyLine, groupVulnerabilities, GroupedVulnerability, isDirectDependency, manifestFor} from "./dependencyAudit";
+import {readFile} from "node:fs/promises";
 import {auditDependenciesWithOsv} from "./codeScanners";
 import {join} from "node:path";
 import {flowSeverity, flowTitle, loadTaintRules, taintFlows, TaintFile, TaintFlow, TaintRules} from "./taint";
@@ -10,6 +11,21 @@ import * as vscode from "vscode";
 import {offerToolInstallation} from "./setup";
 
 /** Chat file links use the original workspace URI, never user-controlled markdown paths. */
+/** File link (lockfile line) and the concrete fix command for one dependency row of a chat report. */
+export async function dependencyRowInfo(root: vscode.Uri, v: GroupedVulnerability, cache = new Map<string, string>()): Promise<{link: string; fix?: string}> {
+  const target = v.targets[0] ?? "";
+  const text = async (rel: string) => {
+    if (!cache.has(rel)) { try { cache.set(rel, await readFile(join(root.fsPath, rel), "utf8")); } catch { cache.set(rel, ""); } }
+    return cache.get(rel)!;
+  };
+  if (!target) return {link: ""};
+  const lockText = await text(target);
+  const line = lockText ? findDependencyLine(lockText, v.pkg, v.installed) : 1;
+  const manifest = manifestFor(target);
+  const fix = dependencyFix(target, v.pkg, v.installed, v.fixed, isDirectDependency(manifest === target ? lockText : await text(manifest), v.pkg));
+  return {link: findingLink(vscode.Uri.joinPath(root, ...target.split(/[\\/]/)), line, target + ":" + line), fix};
+}
+
 export function findingLink(uri: vscode.Uri, line: number, label: string): string {
   const safeLabel = label.replace(/[\[\]\r\n]/g, "");
   const target = uri.with({fragment: "L" + Math.max(1, Math.trunc(line))}).toString();
@@ -91,9 +107,13 @@ export async function deterministicForScan(context: vscode.ExtensionContext, fil
     }).sort((a, b) => a.rank - b.rank);
     stream.markdown("**Dependency vulnerabilities (" + (audit.status === "ok" ? "Trivy" : "") + (audit.status === "ok" && osv.status === "ok" ? " + " : "") + (osv.status === "ok" ? "OSV-Scanner" : "") + ", offline):** " + groups.length + " · " + rows.filter(r => r.rank === 0).length + " with the vulnerable function called · " +
       rows.filter(r => r.rank === 1).length + " imported by your code\n\n");
+    const cache = new Map<string, string>();
     for (const {v, call, rank} of rows.slice(0, 20)) {
+      const info = await dependencyRowInfo(folder.uri, v, cache);
       stream.markdown("- **" + v.severity + "** · `" + (v.id + " " + v.pkg + " " + v.installed).replace(/`/g, "") + "`" + (v.source === "osv" ? " · OSV" : "") + " · " + (v.fixed ? "fixed in `" + v.fixed.replace(/`/g, "") + "`" : "no fix") +
-        (call ? " · **vulnerable function `" + call.symbol + "` called at " + findingLink(uriOf.get(call.path)!, call.line, call.path + ":" + call.line) + "**" : rank === 1 ? " · used in code" : rank === 3 ? " · _not imported directly_" : "") + "\n");
+        (info.link ? " · " + info.link : "") +
+        (call ? " · **vulnerable function `" + call.symbol + "` called at " + findingLink(uriOf.get(call.path)!, call.line, call.path + ":" + call.line) + "**" : rank === 1 ? " · used in code" : rank === 3 ? " · _not imported directly_" : "") +
+        (info.fix ? "\n  **Fix:** " + info.fix : "") + "\n");
     }
     stream.markdown(rows.length > 20 ? "\n_" + (rows.length - 20) + " more: run `/dependencies` for the full list._\n\n" : "\n");
     await markDependencies(context, folder.uri, rows.map(r => r.v));

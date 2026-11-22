@@ -14,6 +14,10 @@ export function rememberReport(markdown: string): number {
   return lastFindings.length;
 }
 
+export function forgetFinding(uri: string, line: number): void {
+  lastFindings = lastFindings.filter(f => f.uri !== uri || f.line !== line);
+}
+
 export function registerExplainFinding(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(EXPLAIN_FINDING, async (arg?: FindingArg) => {

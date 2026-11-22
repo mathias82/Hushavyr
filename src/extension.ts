@@ -6,15 +6,16 @@ import {registerVerifiedFixPr} from "./fixPrAgent";
 import {createAutoPrompt} from "./autoPrompt";
 import {registerEditCommands} from "./editFlow";
 import {registerPullRequestCommand} from "./prFlow";
-import {addDismissal, fingerprint} from "./teamMemory";
+import {addDismissal, dismissalText, fingerprint} from "./teamMemory";
 import {runSetup} from "./setup";
 import {clearDependencyMarkers} from "./workspaceScan";
 import {registerOllamaCommands} from "./ollamaCommands";
 import {registerLocalCommands} from "./localCommands";
 import {registerChatParticipant} from "./chatParticipant";
 import {registerReportIssue} from "./reportIssue";
-import {clearScanFindings, registerPaletteCommands} from "./paletteCommands";
-import {registerExplainFinding} from "./explainFinding";
+import {clearScanFindings, dropScanFinding, registerPaletteCommands} from "./paletteCommands";
+import {forgetFinding, registerExplainFinding} from "./explainFinding";
+import {dropDependencyMarker} from "./dependencyMarkers";
 import {registerTerminalCommand} from "./terminal/register";
 import {UPDATE_VULN_DBS, updateVulnerabilityDatabases} from "./vulnDb";
 
@@ -25,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(reviewDiagnostics,
     vscode.commands.registerCommand("aiPrivacyRouter.clearFindings", () => { reviewDiagnostics.clear(); clearDependencyMarkers(); clearScanFindings(); }),
     // Team memory: the dismissal is written to the repository so it applies to everyone after commit.
-    vscode.commands.registerCommand("aiPrivacyRouter.dismissFinding", async (uriText: string, line: number) => {
+    vscode.commands.registerCommand("aiPrivacyRouter.dismissFinding", async (uriText: string, line: number, message = "") => {
       const uri = vscode.Uri.parse(uriText);
       const folder = vscode.workspace.getWorkspaceFolder(uri);
       if (!folder || !vscode.workspace.isTrusted) { void vscode.window.showWarningMessage("Open the file inside a trusted workspace folder to share a dismissal."); return; }
@@ -33,9 +34,12 @@ export function activate(context: vscode.ExtensionContext): void {
       const reason = await vscode.window.showInputBox({prompt: "Why is this not a real issue? (saved in .hushavyr/dismissed.json, shared with the team)", ignoreFocusOut: true});
       if (reason === undefined) return;
       const path = vscode.workspace.asRelativePath(uri, false);
-      await addDismissal(folder.uri.fsPath, {fingerprint: fingerprint(path, document.lineAt(line).text), path, reason: reason || "false positive"});
+      await addDismissal(folder.uri.fsPath, {fingerprint: fingerprint(path, dismissalText(document.lineAt(line).text, message)), path, reason: reason || "false positive"});
       reviewDiagnostics.set(uri, (reviewDiagnostics.get(uri) ?? []).filter(d => d.range.start.line !== line));
-      void vscode.window.showInformationMessage("Hidden from future reviews. Commit .hushavyr/dismissed.json to share it with the team.");
+      dropDependencyMarker(uri, line);
+      dropScanFinding(uri, line);
+      forgetFinding(uriText, line + 1);
+      void vscode.window.showInformationMessage("Hidden from future reviews and scans. Commit .hushavyr/dismissed.json to share it with the team.");
     }));
   // One-time, non-blocking invitation; the user can dismiss it permanently.
   if (!context.globalState.get<boolean>("hushavyr.setupOffered")) {

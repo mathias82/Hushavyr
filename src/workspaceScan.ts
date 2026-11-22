@@ -14,7 +14,7 @@ import {scanSecrets} from "./secretsScan";
 import {fingerprint, parseIndex, FileFingerprint} from "./projectIndex";
 import * as vscode from "vscode";
 import {offerToolInstallation} from "./setup";
-import {findingLink, streamFlows, readSmallText, deterministicForScan, workspaceTaintRules} from "./scanFindings";
+import {dependencyRowInfo, findingLink, streamFlows, readSmallText, deterministicForScan, workspaceTaintRules} from "./scanFindings";
 import {markDependencies} from "./dependencyMarkers";
 export {clearDependencyMarkers} from "./dependencyMarkers";
 
@@ -207,14 +207,17 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           const unreached = groups.filter(v => reach(v) === "not-imported").length;
           if (reached || unreached) stream.markdown("**" + tr(lang, "reachHeader") + "** " + reached + " " + tr(lang, "reachImported") + " · " + unreached + " " + tr(lang, "reachNotImported") + "\n\n");
           const shown = groups.slice(0, 50);
+          const cache = new Map<string, string>();
           for (const v of shown) {
+            const {link, fix} = await dependencyRowInfo(folder.uri, v, cache);
             const r = reach(v);
             const id = /^CVE-\d{4}-\d{4,}$/.test(v.id) ? "[" + v.id + "](https://nvd.nist.gov/vuln/detail/" + v.id + ")" : "`" + v.id.replace(/`/g, "") + "`";
-            const files = v.targets.slice(0, 5).map(t => "`" + t.replace(/`/g, "") + "`").join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
+            const files = (link ? [link] : []).concat(v.targets.slice(link ? 1 : 0, 5).map(t => "`" + t.replace(/`/g, "") + "`")).join(", ") + (v.targets.length > 5 ? " +" + (v.targets.length - 5) + " more" : "");
             stream.markdown("- **" + v.severity + "** · " + id + (v.source === "osv" ? " · OSV" : "") + " · `" + v.pkg.replace(/`/g, "") + " " + v.installed.replace(/`/g, "") + "` · " +
               (v.fixed ? tr(lang, "fixedIn") + " `" + v.fixed.replace(/`/g, "") + "`" : tr(lang, "noFix")) + (files ? " · " + tr(lang, "inFiles") + " " + files : "") + (v.title ? " · " + v.title.replace(/[\[\]<>`]/g, "") : "") +
               (called(v) ? " · **" + tr(lang, "tagCalled") + " " + findingLink(depUris.get(called(v)!.path)!, called(v)!.line, called(v)!.path + ":" + called(v)!.line) + " (`" + called(v)!.symbol + "`)**" :
-              r === "imported" ? " · **" + tr(lang, "tagImported") + "**" : r === "not-imported" ? " · _" + tr(lang, "tagNotImported") + "_" : "") + "\n");
+              r === "imported" ? " · **" + tr(lang, "tagImported") + "**" : r === "not-imported" ? " · _" + tr(lang, "tagNotImported") + "_" : "") +
+              (fix ? "\n  **" + tr(lang, "fixLabel") + ":** " + fix : "") + "\n");
           }
           if (groups.length > shown.length) stream.markdown("\n_" + (groups.length - shown.length) + " " + tr(lang, "moreHidden") + ". Links open the public NVD page only if you click them._\n");
           if (shown.length) stream.markdown("\n");

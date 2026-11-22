@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- **Every finding can be fixed or dismissed:** after `/scan`, `/security`, `/secrets`, `/dependencies` and `/gitleaks`, **Fix or dismiss a finding** lets you pick one, then fix it with local AI (diff to approve), explain it, or dismiss it. Dismissed findings (`.hushavyr/dismissed.json`) are now hidden from scans and dependency reports as well, not only from reviews.
+- **Dependency CVEs get a concrete fix:** each row shows the exact command or edit per ecosystem (npm, yarn, pnpm, pip, Poetry, uv, Go, Cargo, Composer, Bundler, Maven, Gradle, .NET); transitive packages get an override or constraint instead of a direct install. **Fix with local AI** upgrades the package in the manifest behind a diff: an exact bump when the version is declared, otherwise an override written by the local model and checked (valid JSON, fixed version present).
+- **Terminal:** `/fix N` works on dependency findings, new `/dismiss N [reason]`, and the banner no longer shows a version (`hushavyr --version` still does).
+
 ## 1.0.7
 - **Marketplace page:** questions go to GitHub Issues; clearer README headings for the terminal CLI and the VS Code Chat commands, and an HD link to the terminal demo.
 
