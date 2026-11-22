@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { initJavaParser, taintFlows, TaintFile } from "../taint";
+import { initJavaParser, taintFlows, TaintFile } from "../../taint";
 
 const servlet = (body: string[]): TaintFile => ({path: "web/Entry.java", text: [
   "class Entry {",

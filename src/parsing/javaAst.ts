@@ -54,7 +54,7 @@ async function load(dir: string): Promise<{java?: Parser; others: Map<string, Pa
 
 /** Loads the Java parser and the other grammars from dir (default: the bundled dist/vendor); resolves false, leaving the regex
  * engine, when the Java one cannot load. */
-export async function initJavaParser(dir = join(__dirname, "vendor")): Promise<boolean> {
+export async function initJavaParser(dir = join(__dirname, "..", "vendor")): Promise<boolean> {
   const mine = ++generation;
   let loading = loads.get(dir);
   if (!loading) loads.set(dir, loading = load(dir));

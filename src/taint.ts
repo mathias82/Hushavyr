@@ -1,8 +1,8 @@
 import {createHash} from "node:crypto";
 import {definedNames, definitionSnippet} from "./callContext";
-import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
-import {pythonToBraces} from "./pythonBlocks";
-import {parseSyntax, SyntaxFile, typeOf} from "./syntax";
+import {initJavaParser, JavaFile, JavaProject, parseJava} from "./parsing/javaAst";
+import {pythonToBraces} from "./parsing/pythonBlocks";
+import {parseSyntax, SyntaxFile, typeOf} from "./parsing/syntax";
 import {ANNOTATED, CS, GO, GO_SQL_RECEIVER, HTML_ESCAPE, JAVA, JS, JS_SQL_RECEIVER, LANG_SOURCES, PHP, PY, RB, RECEIVER, SANITIZER, Sink, SINK_KINDS, SINKS, SOURCE, TaintRules, useTaintRules} from "./taintRules";
 export {loadTaintRules, parseTaintRules, TAINT_RULES_FILE} from "./taintRules";
 export type {TaintRules} from "./taintRules";
