@@ -229,6 +229,8 @@ Yes. Install it from [Open VSX](https://open-vsx.org/extension/mathias82/hushavy
   - It is blocked for secrets, personal data, `.env`/key files, ignored files and local-only workspaces.
   - You see the exact text before anything is sent, and every send is written to a local audit log.
   - The answer is a suggestion: verify it locally.
+- To turn it on, open Settings (`Cmd+,` / `Ctrl+,`), search for `aiPrivacyRouter.cloudEscalation` and tick it. Typing "enable" in chat does not change the setting. It stays blocked while `aiPrivacyRouter.mandatoryLocalOnly` or `chat.disableAIFeatures` is on, in untrusted workspaces and in remote (SSH, container) sessions.
+- Recommended: keep it off in **User** settings and turn it on per project in **Workspace** settings, only for code you may share (your own or open source). For company or client code, set `aiPrivacyRouter.mandatoryLocalOnly` to `true` in that workspace so it can never be turned on there.
 - Findings are potential issues. Check them before acting.
 - No telemetry. **Hushavyr: Report an Issue** shows a redacted report (versions, OS, settings without endpoints or paths) and opens a GitHub issue only if you click it.
 
