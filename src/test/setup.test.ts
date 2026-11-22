@@ -120,7 +120,8 @@ test("modelHint only nudges small models with no AI findings", () => {
 });
 test("source has no double-escaped newline, quote or bracket sequences", () => {
   const dir = join(__dirname, "..", "..", "src");
-  for (const file of readdirSync(dir).filter(f => f.endsWith(".ts"))) {
+  const files = readdirSync(dir, {recursive: true}).map(String).filter(f => f.endsWith(".ts") && !f.startsWith("test") && !f.startsWith("terminal"));
+  for (const file of files) {
     assert.doesNotMatch(readFileSync(join(dir, file), "utf8"), /\\\\[nr`\[\]]/, file);
   }
 });
