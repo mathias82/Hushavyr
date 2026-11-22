@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.17
+- **Code organized by responsibility:** `src/` is split into `review`, `scan`, `deps`, `fix`, `escalation`, `model`, `search`, `parsing`, `git`, `vscode` and `terminal`, with tests in matching folders. `ARCHITECTURE.md` describes each package. Behavior is unchanged: all tests, the static benchmark gate and the real-world scan give the same results as 1.0.16.
+
 ## 1.0.16
 - **Find code by name or description, everywhere:** `/find` in the terminal and in VS Code Chat. `/review`, `/explain` and `/edit` accept a class or method name (`OrderService.place`, typos like `order servce` are fine) or a description (`the code that sends the confirmation email`). `/edit` on a method changes only that method. Free questions that name code include it; "describe the project" uses a local overview (README, build files, folders, main types). The terminal reads only the folder it was started in.
 - **Search by meaning (optional):** with the local `nomic-embed-text` model (the terminal asks once). The index lives in `~/.hushavyr/index`, never in the repository.
