@@ -115,3 +115,24 @@ test("minified bundles do not capture calls by name", async () => {
   const lib = {path: "assets/lib.min.js", text: "function add(a){document.write(a)}"};
   assert.deepEqual(flows([route, lib]), []);
 });
+
+test("JS/TS and Go: a receiver declared with a non-database type is not a SQL sink", async () => {
+  await initJavaParser();
+  const ts = {path: "users.controller.ts", text: [
+    "export class UsersController {",
+    "  constructor (private readonly commandBus: CommandBus, private readonly pool: Pool) {}",
+    "  find (req: Request) {",
+    "    const name = req.query.name",
+    "    this.commandBus.execute(new FindUser(name))",
+    "    this.pool.query('SELECT * FROM u WHERE n = ' + name)",
+    "  }",
+    "}"].join("\n")};
+  const go = {path: "h.go", text: [
+    "package main",
+    "func h(w http.ResponseWriter, r *http.Request, cache *redis.Client, db *sql.DB) {",
+    "\tk := r.FormValue(\"k\")",
+    "\tcache.Exec(k)",
+    "\tdb.Query(\"SELECT * FROM t WHERE k = '\" + k + \"'\")",
+    "}"].join("\n")};
+  assert.deepEqual(flows([ts, go]).map(f => f.slice(0, 3)), [["sql", "h.go", 5], ["sql", "users.controller.ts", 6]]);
+});

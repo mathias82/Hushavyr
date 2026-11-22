@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {definedNames, definitionSnippet} from "./callContext";
 import {initJavaParser, JavaFile, JavaProject, parseJava} from "./javaAst";
 import {pythonToBraces} from "./pythonBlocks";
-import {parseSyntax, SyntaxFile} from "./syntax";
+import {parseSyntax, SyntaxFile, typeOf} from "./syntax";
 
 export {initJavaParser};
 // Loading starts at import, so a scan that reads files first finds the parser ready; await initJavaParser() to be sure.
@@ -157,6 +157,10 @@ const RECEIVER: Partial<Record<SinkKind, RegExp>> = {
   xpath: /^(?:XPath|XPathExpression)$/,
   "trust-boundary": /^\w*Session$/
 };
+/** Database handle types of JS/TS drivers and ORMs (pg Pool/Client, mysql Connection, Knex, Sequelize, TypeORM, Prisma) and of Go
+ * (database/sql, sqlx, gorm); a typed receiver of any other type (CommandBus, HttpService, redis.Client) is not a SQL sink. */
+const JS_SQL_RECEIVER = /^(?:Pool|PoolClient|Client|Connection|PoolConnection|Knex|Sequelize|DataSource|EntityManager|QueryRunner|Repository|Database|Db|Transaction|Prisma\w*|\w*(?:Sql|SQL|Pg|Postgres|Mysql|MySql|MySQL|Sqlite|SQLite|Mssql|Oracle|Db|DB|Database|Repository|Connection)\w*)$/;
+const GO_SQL_RECEIVER = /^(?:DB|Tx|Conn|Stmt|\w*(?:Sql|SQL|Db|DB|Repo|Repository|Store)\w*)$/;
 /** A method or constructor head (Java, C#, Kotlin, JS/TS functions); calls end with ";" and control statements are excluded. */
 const DECL = /^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async|internal|open|suspend)\s+)*(?:fun\s+|function\s*\*?\s*|func\s+|(?!(?:return|new|else|throw|await|yield|case|typeof|delete|if|for|while|switch|catch)\b)[\w$.]+(?:<[^()]*>)?(?:\[\s*\])*\s+)(?!(?:if|for|while|switch|catch|synchronized)\b)[A-Za-z_$][\w$]*\s*\([^;]*\)\s*(?:throws\s+[\w$.,\s]+?)?(?::\s*[\w$.<>[\]?, ]+)?\s*\{/;
 
@@ -579,6 +583,12 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
         if (sink.kind === "sql" && !go && !rb && /(?<![\w$.])[A-Z][\w$]*\.$/.test(text.slice(0, m.index! + 1))) continue;
         const method = /(?<!\bnew\s+)\b([A-Za-z_$][\w$]*)\s*\($/.exec(m[0])?.[1], types = method && RECEIVER[sink.kind] ? site(method)?.types : undefined;
         if (types && project && ![...types].some(t => [...project.ancestors(t)].some(a => RECEIVER[sink.kind]!.test(a)))) continue;
+        // JS/TS and Go: a receiver declared with a non-database type (commandBus: CommandBus, cache *redis.Client) is not a SQL sink.
+        if (sink.kind === "sql" && (go || JS.test(path))) {
+          const recv = /([A-Za-z_$][\w$]*)\s*\.$/.exec(text.slice(0, m.index! + 1))?.[1], tree = syntaxFiles.get(path);
+          const type = recv && tree ? typeOf(tree, recv, line - 1) : undefined;
+          if (type && !(go ? GO_SQL_RECEIVER : JS_SQL_RECEIVER).test(type)) continue;
+        }
         // A Go prepared statement (stmt, err := db.Prepare(q)) takes bind values, not SQL.
         if (go && sink.kind === "sql") {
           const recv = /([A-Za-z_]\w*)\.$/.exec(text.slice(0, m.index! + 1))?.[1];
@@ -773,6 +783,8 @@ function analyse(lines: readonly string[], firstLine: number, path: string, init
 /** A Python module that handles web requests: its request-to-sink flows are fully covered by taint analysis. */
 export const pythonHandler = (path: string, text: string): boolean => PY.test(path) && (SOURCE.test(text) || text.split(/\r?\n/).some(l => ROUTE.test(l)));
 
+/** Syntax trees of the files being scanned, for declared receiver types. */
+let syntaxFiles: ReadonlyMap<string, SyntaxFile> = new Map();
 /** Syntax trees of recently scanned files by path and content hash, so a repeated scan reparses only what changed. */
 const parsed = new Map<string, JavaFile | SyntaxFile>();
 let parsedSize = 0;
@@ -800,6 +812,7 @@ export function taintFlows(files: readonly TaintFile[]): TaintFlow[] {
     if (other) others.set(f.path, other);
   }
   const project = trees.size ? new JavaProject(trees) : undefined;
+  syntaxFiles = others;
   // Parsed files are analysed with comments blanked out, so commented-out code is neither a source nor a sink.
   const text = (f: TaintFile) => trees.get(f.path)?.text ?? others.get(f.path)?.text ?? f.text;
   const fns = sources.flatMap(f => {
