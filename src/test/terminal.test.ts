@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../terminal/helpers";
 import {onPath, profileFile, shimPath, shimScript, writeShim} from "../terminal/shim";
+import {resolveCopilot} from "../terminal/copilot";
 
 const ROOT = join(__dirname, "..", "..");
 const REPL = join(ROOT, "dist", "terminal", "repl.js");
@@ -94,9 +95,9 @@ async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts:
 const BOOKS = 'const express = require("express");\nconst app = express();\napp.get("/books", (req, res) => {\n  const id = req.query.id;\n' +
   '  db.query("SELECT * FROM books WHERE id = " + id, (err, rows) => res.json(rows));\n});\n';
 
-function session(cwd: string, endpoint: string, input: string[]): Promise<string> {
+function session(cwd: string, endpoint: string, input: string[], env: Record<string, string> = {}): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [REPL], {cwd, env: {...process.env, NO_COLOR: "1", HUSHAVYR_OLLAMA_ENDPOINT: endpoint, HUSHAVYR_MODEL: "fake-coder:1b", HUSHAVYR_CONFIG_DIR: join(cwd, ".config")}});
+    const child = spawn(process.execPath, [REPL], {cwd, env: {...process.env, NO_COLOR: "1", HUSHAVYR_OLLAMA_ENDPOINT: endpoint, HUSHAVYR_MODEL: "fake-coder:1b", HUSHAVYR_CONFIG_DIR: join(cwd, ".config"), ...env}});
     let output = "";
     child.stdout.on("data", chunk => { output += chunk; });
     child.stderr.on("data", chunk => { output += chunk; });
@@ -139,4 +140,34 @@ test("hushavyr without Ollama: scans still work and AI commands say how to set u
   assert.match(output, /Error: Ollama is not running\. Type \/setup/);
   assert.match(output, /Unknown command \/nope/);
   assert.equal(await readFile(join(dir, "books.js"), "utf8"), BOOKS);
+});
+
+test("hushavyr /escalate is off by default, shows the exact pseudonymized text and sends it only after approval; /pr and /prove refuse safely", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+  await writeFile(join(dir, "books.js"), BOOKS);
+  const fake = join(dir, "fake-copilot.js"), sent = join(dir, "sent.txt");
+  await writeFile(fake, "require('fs').writeFileSync(" + JSON.stringify(sent) + ", process.argv[3]); console.log('Use a parameterized query.');\n");
+  const output = await session(dir, "http://127.0.0.1:9", ["/escalate books.js:5", "/escalate on", "/escalate books.js:3-5 is this safe?", "n",
+    "/escalate books.js:3-5 is this safe?", "y", "/pr", "/prove books.js returns all books", "/escalate off"], {HUSHAVYR_COPILOT: fake});
+  assert.match(output, /Nothing was sent: cloud escalation is off/);
+  assert.match(output, /Exact text to send to GitHub Copilot[\s\S]*id5\.query\("s2" \+ id4[\s\S]*Send exactly this text\? \[y\/N\] n\nNothing was sent/);
+  assert.match(output, /Cloud answer[\s\S]*Use a parameterized query\./);
+  const payload = await readFile(sent, "utf8");
+  assert.ok(payload.includes("is this safe?") && !payload.includes("const express") && !payload.includes("SELECT"), "only the approved lines are sent, pseudonymized");
+  assert.match(output, /not a git repository\. Nothing was pushed\./);
+  assert.match(output, /No project file/);
+  assert.match(output, /Cloud escalation is off\./);
+  assert.equal(await readFile(join(dir, "books.js"), "utf8"), BOOKS);
+});
+
+test("Copilot CLI runs without a shell: winget copilot.exe directly, the npm .cmd shim through its JavaScript entry, never a .cmd", () => {
+  const files = new Set(["C:\\winget\\copilot.exe", "C:\\npm\\copilot.cmd", "C:\\npm\\node_modules\\@github\\copilot\\npm-loader.js"].map(f => f.replace(/\\/g, "/")));
+  const exists = (f: string) => files.has(f.replace(/\\/g, "/"));
+  assert.equal(resolveCopilot(undefined, "win32", "C:/winget;C:/npm", exists, "node")?.file.replace(/\\/g, "/"), "C:/winget/copilot.exe");
+  const npm = resolveCopilot(undefined, "win32", "C:/npm", exists, "node");
+  assert.equal(npm?.file, "node");
+  assert.equal(npm?.args[0].replace(/\\/g, "/"), "C:/npm/node_modules/@github/copilot/npm-loader.js");
+  assert.equal(resolveCopilot(undefined, "win32", "C:/empty", exists, "node"), undefined);
+  assert.equal(resolveCopilot("C:/x/copilot.cmd", "win32", "", exists, "node"), undefined);
+  assert.deepEqual(resolveCopilot(undefined, "darwin", "/usr/bin", exists, "node"), {file: "copilot", args: []});
 });

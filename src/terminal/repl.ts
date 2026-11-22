@@ -3,14 +3,15 @@
 import {statSync} from "node:fs";
 import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
 import {homedir, totalmem} from "node:os";
-import {isAbsolute, join, relative, resolve} from "node:path";
+import {spawn} from "node:child_process";
+import {isAbsolute, join, relative, resolve, sep} from "node:path";
 import {createInterface, Interface} from "node:readline";
 import {scanFolder} from "../cli";
 import {auditDependenciesWithOsv} from "../codeScanners";
 import {MAX_CONTEXT_BYTES, ReviewSource, sourcePrompt} from "../context";
 import {editPrompt, editSchema, parseEdit, parseSummary} from "../codeEdit";
 import {findDependencyLine, groupVulnerabilities} from "../dependencyAudit";
-import {findingFix, fixPrompt, fixWindow, isPlausibleFix, parseReplacement, replacementSchema} from "../fixEdit";
+import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, replacementSchema} from "../fixEdit";
 import {runLocalReview} from "../localReview";
 import {autoDepth} from "../model";
 import {localEndpoint, LocalOllama} from "../ollama";
@@ -19,6 +20,17 @@ import {staticReview} from "../staticReview";
 import {loadTeamRules, withTeamRules} from "../teamMemory";
 import {chatPrompt, chooseModel, COMMANDS, completeCommand, diffLines, languageOf, mentionedFiles, parseLine, replaceLines} from "./helpers";
 import {terminalSetup} from "./setup";
+import {runScanner} from "../externalScanners";
+import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../pullRequest";
+import {projectRootFor, runnerFor} from "../proofTarget";
+import {proofFixPrompt, proofProfile, proofTestPrompt} from "../proofPrompts";
+import {FixSandbox} from "../fixSandbox";
+import {bugReproduced, runFixProof} from "../fixProof";
+import {fixSchema, parseFixProposal, parseTestProposal, testSchema} from "../fixProposals";
+import {escalate} from "../escalation";
+import {writeRetainedAuditEvent} from "../audit";
+import {loadIgnore} from "../teamMemory";
+import {copilotSend} from "./copilot";
 
 const ROOT = join(__dirname, "..", "..");
 const RULES = join(ROOT, "rules", "hushavyr-review.yml");
@@ -28,7 +40,7 @@ const red = paint("31"), green = paint("32"), yellow = paint("33"), cyan = paint
 const out = (text = ""): void => { process.stdout.write(text + "\n"); };
 
 interface Stored {path: string; display: string; line: number; message: string; level: string; title?: string; fix?: string; evidence?: string}
-interface Config {model?: string; endpoint?: string}
+interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>}
 const configDir = (): string => process.env.HUSHAVYR_CONFIG_DIR ?? join(homedir(), ".hushavyr");
 async function loadConfig(): Promise<Config> {
   try { return JSON.parse(await readFile(join(configDir(), "config.json"), "utf8")) as Config; } catch { return {}; }
@@ -50,6 +62,8 @@ class Session {
   private findings: Stored[] = [];
   private history: {user: string; answer: string}[] = [];
   private lastChange?: {path: string; display: string; text: string};
+  /** Title and description for the next /pr, from the last applied fix or verified proof. */
+  private prDraft?: {title: string; body: string};
   private readonly interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
 
   constructor(private config: Config, private client: LocalOllama, private model: string, private readonly endpoint: string, private readonly cwd: string) {
@@ -110,6 +124,10 @@ class Session {
         case "undo": return await this.undo();
         case "model": return await this.switchModel(rest, signal);
         case "setup": return await this.setup(signal);
+        case "gitleaks": return await this.gitleaks(rest, signal);
+        case "pr": return await this.pullRequest(rest);
+        case "prove": return await this.prove(rest, signal);
+        case "escalate": return await this.escalate(rest, signal);
         default: out("Unknown command /" + command + ". Type /help for the list.");
       }
     } catch (error) {
@@ -285,11 +303,16 @@ class Session {
     out(dim("Preparing a fix for " + f.display + ":" + f.line + " with " + this.model + "… (Ctrl+C cancels)"));
     const replacement = parseReplacement(await this.client.generate(fixPrompt(f.display, languageOf(f.path), original, window.start + 1, how.title, how.fix), {schema: replacementSchema, signal}));
     if (signal.aborted) return;
-    if (!replacement || !isPlausibleFix(original, replacement)) { out(yellow("The local model did not produce a safe automatic fix. Suggested fix: ") + how.fix); return; }
     if (replacement === original.join("\n")) { out(yellow("The local model proposed no change. Suggested fix: ") + how.fix); return; }
+    const fit = replacement ? fitFix(original, replacement, f.line - 1 - window.start) : undefined;
+    if (!replacement || !fit) { out(yellow("The local model did not produce a safe automatic fix. Suggested fix: ") + how.fix); return; }
+    const start = window.start + fit.start, end = window.start + fit.end;
     out(bold("Proposed fix for " + f.display + ":"));
-    this.showDiff(original.join("\n"), replacement, window.start + 1);
-    if (await this.ask("Apply this fix?")) await this.apply(f.path, f.display, text, replaceLines(text, window.start, window.end, replacement));
+    this.showDiff(original.slice(fit.start, fit.end + 1).join("\n"), replacement, start + 1);
+    if (await this.ask("Apply this fix?")) {
+      await this.apply(f.path, f.display, text, replaceLines(text, start, end, replacement));
+      this.prDraft = {title: ("Fix " + how.title.replace(/^Local rule:\s*/i, "")).slice(0, 72), body: "Fixes `" + f.display + ":" + f.line + "`: " + how.title + "."};
+    }
     else out("Discarded. " + f.display + " is unchanged.");
   }
 
@@ -341,11 +364,171 @@ class Session {
     out(green("Using " + arg + ".") + dim(" Saved in " + join(configDir(), "config.json")));
   }
 
+  private async gitleaks(arg: string, signal: AbortSignal): Promise<void> {
+    const history = /\bhistory\b/i.test(arg);
+    const {abs, display} = this.path(arg.replace(/\bhistory\b/i, "").trim() || ".");
+    out(dim("Gitleaks " + (history ? "over every commit of " : "on the current files of ") + display + " … nothing leaves this machine"));
+    const result = await runScanner("gitleaks", abs, RULES, signal, history, history);
+    if (signal.aborted) return;
+    if (result.status === "missing") throw new Error("Gitleaks is not installed. Type /setup to install it.");
+    if (result.status !== "ok") throw new Error("Gitleaks failed" + (history ? "; history needs a git repository" : "") + ".");
+    this.findings = result.findings.map(f => ({path: join(abs, f.path), display: relative(this.cwd, join(abs, f.path)), line: f.line, level: "error",
+      message: "Potential hardcoded credential (gitleaks " + f.rule + ")" + (f.commit ? " in commit " + f.commit : "") + "; value redacted"}));
+    this.printFindings();
+    if (history && this.findings.length) out(yellow("A secret removed in a later commit is still in the history: rotate it if it is real."));
+    else if (!history) out(dim("/gitleaks history also checks every past commit."));
+  }
+
+  private async pullRequest(arg: string): Promise<void> {
+    const plan = await planPullRequest(this.cwd);
+    if (typeof plan === "string") { out(yellow(plan) + " Nothing was pushed."); return; }
+    out(bold("Changes") + dim(" (" + plan.files.length + " files, branch " + plan.current + "):"));
+    out((plan.stat || plan.files.join("\n")).slice(0, 4000));
+    const secrets = await secretsInChanges(plan);
+    if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed or pushed.")); return; }
+    const title = (arg || this.prDraft?.title || "Changes prepared with Hushavyr").split("\n")[0].slice(0, 72);
+    out(dim("Title: ") + title);
+    out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
+    if (!await this.ask("Commit all " + plan.files.length + " changed files, push to origin and open a pull request?")) { out("Cancelled. Nothing was committed or pushed."); return; }
+    const result = await createPullRequest(plan, title, undefined, this.prDraft?.body ?? "");
+    this.prDraft = undefined;
+    out(green(result.created && result.url ? "Pull request opened: " + result.url
+      : "Pushed branch " + result.branch + "." + (result.url ? " Open the pull request: " + result.url : " Open a pull request on your git host.") + (result.created ? "" : " (Log in with the gh CLI to open it automatically.)")));
+  }
+
+  /** Red/green proof in an offline Docker container: a generated test must fail on the current code and pass after the fix. */
+  private async prove(arg: string, signal: AbortSignal): Promise<void> {
+    let file: string, goal: string;
+    if (/^\d+\b/.test(arg)) {
+      const f = this.finding(arg);
+      file = f.path;
+      goal = (f.message + (f.fix ? "\nExpected: " + f.fix : "")).replace(/\s+/g, " ").slice(0, 1400);
+    } else {
+      const m = /^(\S+)\s+([\s\S]+)$/.exec(arg);
+      if (!m) throw new Error("Use /prove N (a finding), or /prove <file> <the bug and the expected behavior>.");
+      file = this.path(m[1]).abs;
+      goal = m[2].trim();
+    }
+    if (Buffer.byteLength(goal, "utf8") > 1500) throw new Error("Keep the bug description within 1.5 KB.");
+    const runner = runnerFor(file);
+    if (!runner) throw new Error("Proof tests support Java (Maven), Python (pytest), JavaScript, TypeScript (node:test) and Go.");
+    const project = projectRootFor(file, runner, this.cwd);
+    if (!project) throw new Error("No project file (pom.xml, package.json, go.mod, pyproject.toml or tests/) between " + relative(this.cwd, file) + " and this folder.");
+    await this.ensureModel(signal);
+    const profile = proofProfile(runner);
+    const image = this.config.proofImages?.[profile.profile ?? "java"] ?? profile.image;
+    out(dim("Proving with " + runner + " in an offline Docker container (" + image + "). Your files do not change unless you apply the verified patch."));
+    let box: FixSandbox | undefined;
+    try {
+      box = await FixSandbox.create({project, selected: [file], storage: join(configDir(), "verified-fixes"), image, profile: profile.profile, signal});
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(reason === "non-root-macos-or-linux-required" ? "Proof tests run on macOS or Linux as a normal user (not Windows, not root)."
+        : "Could not prepare the snapshot (" + reason + "). Commit the file first, start Docker and pull " + image + ".");
+    }
+    const sandbox = box;
+    try {
+      const input = JSON.stringify({goal, sources: sandbox.sources});
+      const original = new Map(sandbox.sources.map(s => [s.path, s.text]));
+      const receipt = await runFixProof({...sandbox.context, localModel: this.model}, {
+        cancelled: () => signal.aborted,
+        run: async (stage, target) => { out(dim("  Running " + stage + " tests…")); return sandbox.run(stage, target); },
+        proposeTest: async () => {
+          out(dim("  Writing a regression test with " + this.model + "…"));
+          return parseTestProposal(await this.client.generate(proofTestPrompt(profile, sandbox.context, input), {schema: testSchema, signal}));
+        },
+        approveTest: async source => {
+          out(bold("Proposed regression test (" + sandbox.context.testPath + "):"));
+          out(source.split("\n").map(l => green("+ ") + l).join("\n"));
+          return this.ask("Run this test in the offline container?");
+        },
+        writeTest: source => sandbox.writeTest(source),
+        proposeFix: async testSource => {
+          out(dim("  The test fails on the current code. Writing a fix with " + this.model + "…"));
+          return parseFixProposal(await this.client.generate(proofFixPrompt(profile, testSource, input), {schema: fixSchema, signal}));
+        },
+        approveFix: async changes => {
+          for (const c of changes) { out(bold("Proposed fix for " + c.path + ":")); this.showDiff(original.get(c.path) ?? "", c.content, 1); }
+          return this.ask("Apply this fix in the snapshot and run the tests again?");
+        },
+        applyFix: changes => sandbox.applyFix(changes)
+      });
+      const directory = await sandbox.save(receipt);
+      if (receipt.status === "verified") {
+        out(green("Verified: the test failed before the fix and passes after it, and the other tests still pass.") + dim(" Proof: " + directory));
+        await this.applyVerified(directory, project, signal);
+      } else if (bugReproduced(receipt)) out(yellow("Bug confirmed: the approved test fails on the current code, but no fix was verified (" + receipt.reason + "). Proof: " + directory));
+      else out(yellow("Not verified (" + receipt.reason + "). Your files are unchanged. Details: " + directory));
+    } finally {
+      await sandbox.dispose();
+    }
+  }
+
+  private async applyVerified(directory: string, project: string, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
+    const patchPath = join(directory, "verified.patch");
+    const patch = await readFile(patchPath);
+    const receipt = checkReceipt(await readFile(join(directory, "receipt.json"), "utf8"), patch);
+    if (typeof receipt === "string") throw new Error("The proof artifacts do not match: " + receipt);
+    if (!await this.ask("Apply the verified patch (fix and regression test) to your files?")) { out("Your files are unchanged. The patch is in " + patchPath + "."); return; }
+    const root = (await gitOut(["rev-parse", "--show-toplevel"], project)).trim();
+    try {
+      await gitOut(["apply", "--check", "--", patchPath], root);
+      await gitOut(["apply", "--", patchPath], root);
+    } catch { throw new Error("The patch no longer applies (the files changed since the proof). It is in " + patchPath + "."); }
+    this.prDraft = {title: "Verified fix with a regression test", body: prBody(receipt)};
+    out(green("Applied.") + dim(" /pr opens a pull request with the proof in its description."));
+  }
+
+  /** Opt-in: one pseudonymized fragment to GitHub Copilot through the Copilot CLI, after showing the exact text. */
+  private async escalate(arg: string, signal: AbortSignal): Promise<void> {
+    if (/^(?:on|off)$/i.test(arg)) {
+      this.config.cloudEscalation = /^on$/i.test(arg);
+      await saveConfig(this.config);
+      out(this.config.cloudEscalation ? yellow("Cloud escalation is on: /escalate may send a pseudonymized fragment to GitHub Copilot, only after you approve the exact text.")
+        : green("Cloud escalation is off. Nothing leaves this machine."));
+      return;
+    }
+    if (!this.config.cloudEscalation) { out("Nothing was sent: cloud escalation is off. " + dim("/escalate on allows approved, pseudonymized fragments to be sent to GitHub Copilot.")); return; }
+    const m = /^(\S+?)(?::(\d+)(?:-(\d+))?)?(?:\s+([\s\S]*))?$/.exec(arg);
+    if (!m) throw new Error("Use /escalate <file>[:from-to] [question], e.g. /escalate src/app.ts:10-40 why does this leak?");
+    const source = await this.readSource(m[1]);
+    const lines = source.text.split(/\r?\n/);
+    const from = m[2] ? Math.max(1, Number(m[2])) : 1, to = m[3] ? Math.min(lines.length, Number(m[3])) : m[2] ? from : lines.length;
+    if (from > to) throw new Error(source.display + " has " + lines.length + " lines; pick a range inside it, e.g. " + source.display + ":1-" + Math.min(lines.length, 40) + ".");
+    const code = lines.slice(from - 1, to).join("\n");
+    const ignored = (await loadIgnore(this.cwd))(source.display.split(sep).join("/"));
+    const result = await escalate({path: source.display, code, question: m[4] ?? "", localOnly: false, ignored}, {
+      pickModel: async () => ({id: "copilot-cli", label: "GitHub Copilot (Copilot CLI)", send: prompt => copilotSend(prompt, signal)}),
+      confirm: async (payload, label) => {
+        out(bold("Exact text to send to " + label + " (names and strings are replaced; they are restored only on this machine):"));
+        out(dim("─".repeat(60)) + "\n" + payload + "\n" + dim("─".repeat(60)));
+        return this.ask("Send exactly this text?");
+      },
+      audit: event => writeRetainedAuditEvent(join(configDir(), "audit"), event),
+      cancelled: () => signal.aborted
+    });
+    if (signal.aborted) return;
+    if (result.outcome === "sent") { out(bold("Cloud answer") + dim(" (names restored locally; not verified, check it with /review before applying):")); out(result.text ?? ""); }
+    else out("Nothing was sent: " + (result.reason ?? result.outcome) + ".");
+  }
+
   private async setup(signal: AbortSignal): Promise<void> {
     await terminalSetup({out, dim, ask: q => this.ask(q), signal,
-      suspend: () => { this.rl.pause(); if (process.stdin.isTTY) process.stdin.setRawMode(false); },
-      resume: () => { if (this.interactive) process.stdin.setRawMode(true); this.rl.resume(); }}, this.endpoint, this.model, this.cwd);
+      // Piped input may already have closed readline.
+      suspend: () => { if (!this.ended) this.rl.pause(); if (process.stdin.isTTY) process.stdin.setRawMode(false); },
+      resume: () => { if (this.interactive) process.stdin.setRawMode(true); if (!this.ended) this.rl.resume(); }}, this.endpoint, this.model, this.cwd);
   }
+}
+
+function gitOut(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {cwd, stdio: ["ignore", "pipe", "pipe"]});
+    let text = "";
+    child.stdout.on("data", (d: Buffer) => { text += d.toString(); });
+    child.on("error", reject);
+    child.on("close", code => code === 0 ? resolve(text) : reject(new Error("git " + args[0] + " failed")));
+  });
 }
 
 async function main(argv: string[]): Promise<void> {

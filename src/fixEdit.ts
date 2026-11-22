@@ -70,8 +70,27 @@ export function parseReplacement(raw: string): string | undefined {
   } catch { return undefined; }
 }
 
-/** A fix must change something and stay close to the original size. */
+/** A fix must change something, stay close to the original size and keep the unrelated lines of the excerpt. */
 export function isPlausibleFix(original: readonly string[], replacement: string): boolean {
   const after = replacement.split("\n");
-  return replacement !== original.join("\n") && !/^\s*\d+: /.test(after[0] ?? "") && after.length <= original.length * 2 + 8;
+  const kept = new Set(after.map(l => l.trim()));
+  const context = original.filter(l => l.trim());
+  // A minimal fix rewrites a few lines; dropping most of the excerpt would delete code.
+  const lost = context.filter(l => !kept.has(l.trim())).length;
+  return replacement !== original.join("\n") && !/^\s*\d+: /.test(after[0] ?? "") && after.length <= original.length * 2 + 8 && lost <= 3;
+}
+
+/**
+ * Which lines of the excerpt the replacement covers (0-based, inclusive). Models sometimes return only the corrected
+ * marked line instead of the whole excerpt; that is applied to the marked line alone. Undefined when unusable.
+ */
+export function fitFix(original: readonly string[], replacement: string, marked: number): {start: number; end: number} | undefined {
+  if (isPlausibleFix(original, replacement)) return {start: 0, end: original.length - 1};
+  const line = original[marked];
+  if (line === undefined || original.length < 2 || replacement.split("\n").length > 3 || !isPlausibleFix([line], replacement)) return undefined;
+  // It must be a rewrite of the marked line, not some other line of the excerpt.
+  const words = line.match(/\w+/g) ?? [];
+  const reused = new Set(replacement.match(/\w+/g) ?? []);
+  if (words.length && words.filter(w => reused.has(w)).length * 2 >= words.length) return {start: marked, end: marked};
+  return undefined;
 }

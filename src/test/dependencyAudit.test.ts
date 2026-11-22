@@ -78,7 +78,7 @@ test("computes vulnerability database age in whole days", () => {
   assert.equal(dbAgeDays('{"UpdatedAt":"2026-11-10T00:00:00Z"}', now), 11);
   assert.equal(dbAgeDays("not json", now), undefined);
 });
-import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix} from "../fixEdit";
+import {findingFix, fixWindow, parseReviewMessage, parseReplacement, isPlausibleFix, fitFix} from "../fixEdit";
 import {parseChangedFiles} from "../changedFiles";
 test("fix window stays inside the file", () => {
   assert.deepEqual(fixWindow(100, 0), {start: 0, end: 6});
@@ -92,6 +92,13 @@ test("reads title and fix from review markers and rejects bad replacements", () 
   assert.equal(parseReplacement('{"replacement":"a\\nb\\n"}'), "a\nb");
   assert.equal(isPlausibleFix(["a"], "a"), false);
   assert.equal(isPlausibleFix(["a"], "b"), true);
+  // A real qwen2.5-coder:14b answer returned only the fixed line for a 9-line excerpt.
+  const excerpt = ["", "app.get(\"/books\", (req, res) => {", "  const id = req.query.id;", "  db.query(\"SELECT * FROM books WHERE id = \" + id, cb);", "});", "", "const adminPassword = \"x\";", "app.listen(3000);", ""];
+  const fixed = "  db.query(\"SELECT * FROM books WHERE id = ?\", [id], cb);";
+  assert.equal(isPlausibleFix(excerpt, fixed), false, "dropping the unrelated lines would delete code");
+  assert.deepEqual(fitFix(excerpt, fixed, 3), {start: 3, end: 3}, "a lone corrected line replaces only the marked line");
+  assert.deepEqual(fitFix(excerpt, excerpt.join("\n").replace("= \" + id, cb", "= ?\", [id], cb"), 3), {start: 0, end: 8});
+  assert.equal(fitFix(excerpt, "app.listen(3000);", 3), undefined, "a line unrelated to the marked one is refused");
 });
 test("changed file list drops traversal, lockfiles and build output", () => {
   assert.deepEqual(parseChangedFiles("src/a.ts\n../x.ts\n/etc/p.py\npackage-lock.json\nnode_modules/q/i.js\ndist/b.js\nREADME.md\nsrc/B.java"), ["src/a.ts", "src/B.java"]);

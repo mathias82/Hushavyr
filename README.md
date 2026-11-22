@@ -58,6 +58,10 @@ Apply this fix? [y/N]
 - **Scan:** `/security` (SQL injection, XSS, command injection, path traversal and more), `/secrets` (hardcoded passwords and API keys), `/dependencies` (CVEs in your libraries), `/scan` (with Semgrep, Gitleaks and Trivy if installed). No AI is needed for these.
 - **Review:** `/review [file]` runs the local AI review together with the static rules.
 - **Fix with local AI:** `/fix N` shows a colored diff and writes the file only if you answer `y`; `/edit <file> <request>` changes code the same way; `/undo` reverts the last change.
+- **Secrets in git history:** `/gitleaks history` scans every commit with Gitleaks (values redacted), so a password deleted later is still found.
+- **Prove a fix:** `/prove N` (or `/prove <file> <bug>`) writes a regression test, runs it in an offline Docker container to show it fails, then proposes a fix and shows the test passes. You approve the test and the fix; the verified patch reaches your files only if you say `y`.
+- **Pull request:** `/pr [title]` commits, pushes a branch and opens a pull request with `gh`, after you confirm. It stops if a changed file looks like it has a secret.
+- **Ask GitHub Copilot (opt-in, off by default):** `/escalate on`, then `/escalate <file>:<from>-<to> [question]` shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit`. `/escalate off` turns it off again.
 - **Explain:** `/explain N` explains finding N in your code; `/explain <file> [question]` explains a file.
 - **Set up and models:** `/setup` installs and starts Ollama, downloads the model and installs the analyzers (it asks first); `/model` lists and switches models. `/help` lists everything; Ctrl+C cancels a request.
 - **One-shot:** `hushavyr /security` runs one command and exits.
@@ -179,7 +183,7 @@ Yes, for code review and security. It works in the VS Code Chat as `@ai-privacy`
 Yes, with your approval. **Fix with local AI** asks the local Ollama model for a minimal fix (a parameterized query for SQL injection, output encoding for XSS, an environment variable for a hardcoded password), shows the diff, and edits the file only after you click **Apply fix**. To be sure the fix works, **Prove with a failing test** runs a test before and after the fix in an offline Docker sandbox and can open the pull request.
 
 **Is there a Hushavyr CLI for the terminal, like Copilot CLI?**
-Yes. Type `hushavyr` in the VS Code terminal to chat with the local AI about your code, run `/security`, `/secrets`, `/dependencies` and `/review`, and fix findings with `/fix N` behind a diff you approve. For other terminals, run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once. See [Use it in the terminal](#use-it-in-the-terminal-the-hushavyr-command).
+Yes. Type `hushavyr` in the VS Code terminal to chat with the local AI about your code, run `/security`, `/secrets`, `/dependencies` and `/review`, fix findings with `/fix N` behind a diff you approve, prove a fix with a failing test (`/prove`), scan git history (`/gitleaks history`) and open a pull request (`/pr`). Everything runs locally; only `/escalate`, which is off by default, can send an approved, pseudonymized fragment to GitHub Copilot. For other terminals, run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once. See [Use it in the terminal](#use-it-in-the-terminal-the-hushavyr-command).
 
 **Does my code leave my computer?**
 No. Review, scanning and fixes run locally, and there is no telemetry. Only the opt-in `/escalate` sends anything: a selection with names replaced by tokens, and only after you approve the exact text.

@@ -111,8 +111,11 @@ From a checkout: `npm run build && sh bin/hushavyr` (or `node dist/terminal/repl
 | --- | --- |
 | `HUSHAVYR_OLLAMA_ENDPOINT` | Ollama endpoint (loopback only), default `http://127.0.0.1:11434` |
 | `HUSHAVYR_MODEL` | Model when none is saved in the config |
-| `HUSHAVYR_CONFIG_DIR` | Config folder, default `~/.hushavyr` (`config.json` holds `model` and `endpoint`) |
+| `HUSHAVYR_CONFIG_DIR` | Config folder, default `~/.hushavyr` (`config.json` holds `model`, `endpoint`, `cloudEscalation` and optional `proofImages`, e.g. `{"node": "node:24-slim"}`) |
+| `HUSHAVYR_COPILOT` | Copilot CLI program (or `.js` entry) used by `/escalate`; default `copilot` |
 | `NO_COLOR` | Plain output |
+
+`/escalate` is off until `/escalate on`, which saves `cloudEscalation: true`. It uses the same checks as `@ai-privacy /escalate` in VS Code: at most 4000 characters, no files listed in `.hushavyr/ignore`, no detected secrets, identifiers and strings replaced before sending. It runs `copilot -p <text> -s --available-tools= --disable-builtin-mcps --no-custom-instructions --no-ask-user` in an empty temporary folder, never through a shell. On Windows it runs `copilot.exe` (WinGet), or the npm package's `npm-loader.js` with Node. `/prove` needs Docker and macOS or Linux as a normal user, and the file must be committed; proofs are stored in `~/.hushavyr/verified-fixes`.
 
 ## Local Qwen in VS Code Chat
 

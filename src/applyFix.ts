@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import {runnerFor} from "./proofTarget";
 import {configuredClient} from "./model";
-import {findingFix, fixPrompt, fixWindow, isPlausibleFix, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
+import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
 import {pickFinding} from "./explainFinding";
 
 export const FIX_FINDING = "aiPrivacyRouter.fixFinding";
@@ -38,15 +38,17 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
     void vscode.window.showErrorMessage("Hushavyr: local fix failed or was cancelled. Run Hushavyr: Setup if Ollama is not running. No cloud fallback.");
     return;
   }
-  if (!replacement || !isPlausibleFix(original, replacement)) {
+  const fit = replacement ? fitFix(original, replacement, markedLine - window.start) : undefined;
+  if (!replacement || !fit) {
     void vscode.window.showInformationMessage("Hushavyr: the local model did not produce a safe automatic fix. Apply the suggestion manually.");
     return;
   }
-  const range = new vscode.Range(window.start, 0, window.end, original[original.length - 1].length);
+  const start = window.start + fit.start, end = window.start + fit.end;
+  const range = new vscode.Range(start, 0, end, original[fit.end].length);
   const edit = new vscode.WorkspaceEdit();
   edit.replace(doc.uri, range, replacement);
   const full = doc.getText().split(/\r?\n/);
-  full.splice(window.start, original.length, ...replacement.split("\n"));
+  full.splice(start, fit.end - fit.start + 1, ...replacement.split("\n"));
   // A read-only virtual document: discarding the preview never asks to save an untitled file.
   const name = doc.uri.path.split("/").pop() ?? "file";
   const preview = vscode.Uri.from({scheme: PREVIEW_SCHEME, path: "/" + ++previewCount + "/" + name});

@@ -681,7 +681,7 @@ let syntaxFiles: ReadonlyMap<string, SyntaxFile> = new Map();
 const parsed = new Map<string, JavaFile | SyntaxFile>();
 let parsedSize = 0;
 function cachedParse<T extends JavaFile | SyntaxFile>(path: string, text: string, parse: () => T | undefined): T | undefined {
-  const key = path + "\0" + createHash("sha1").update(text).digest("hex"), hit = parsed.get(key);
+  const key = path + "\0" + createHash("sha256").update(text).digest("hex"), hit = parsed.get(key);
   if (hit) { parsed.delete(key); parsed.set(key, hit); return hit as T; }
   const tree = parse();
   if (!tree) return undefined;
