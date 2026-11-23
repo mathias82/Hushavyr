@@ -209,12 +209,14 @@ Patterns are regular expressions on code (string literals are blanked); `call` a
 
 **Measured:** on Hushavyr's 120 benchmark fixtures (bugs and clean twins, about 20 per language in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects). 24 of them are held out: they were never used to tune Hushavyr. Fast review mode, default settings, on a 24 GB MacBook:
 
-| Reviewer | Precision | Recall | Held-out P / R |
-| --- | --- | --- | --- |
-| Hushavyr, `qwen2.5-coder:14b` | 0.67 | 0.77 | 0.46 / 0.50 |
-| Hushavyr, `qwen2.5-coder:7b` | 0.83 | 0.49 | 1.00 / 0.33 |
-| GPT 6.1 (cloud) | 0.75 | 0.95 | 0.65 / 0.92 |
-| Claude Sonnet 5.5 (cloud) | 0.63 | 1.00 | 0.57 / 1.00 |
+| Reviewer | Precision | Recall | F1 | Held-out P / R / F1 |
+| --- | --- | --- | --- | --- |
+| Hushavyr, `qwen2.5-coder:14b` | 0.67 | 0.77 | **0.72** | 0.46 / 0.50 / 0.48 |
+| Hushavyr, `qwen2.5-coder:7b` | 0.83 | 0.49 | 0.62 | 1.00 / 0.33 / 0.50 |
+| GPT 6.1 (cloud) | 0.75 | 0.95 | **0.84** | 0.65 / 0.92 / 0.76 |
+| Claude Sonnet 5.5 (cloud) | 0.63 | 1.00 | 0.77 | 0.57 / 1.00 / 0.73 |
+
+F1 combines precision and recall into one score; it is the fairest single number for comparing reviewers. The held-out set has only 12 bugs, so one bug moves its recall by 0.08.
 
 Precision and recall per language (P / R):
 
@@ -224,7 +226,7 @@ Precision and recall per language (P / R):
 | Hushavyr 7b | 0.86 / 0.55 | 0.89 / 0.80 | 1.00 / 0.30 | 0.83 / 0.50 | 0.63 / 0.50 | 1.00 / 0.30 |
 | GPT 6.1 | 1.00 / 0.91 | 0.75 / 0.90 | 0.77 / 1.00 | 0.59 / 1.00 | 0.77 / 1.00 | 0.75 / 0.90 |
 
-Findings the local checks disagree on are listed under **Possible**, not counted above; with them the 14b reaches recall 0.82 and the 7b 0.56. The cloud models find more bugs, above all in code the local models were not tuned on. The 7b keeps only findings it states as facts, so it reports few false alarms but misses half the bugs; use the 14b when your machine has the memory. `qwen2.5-coder:32b` could not be measured on 24 GB (every review took over 5 minutes), so Hushavyr uses it as a judge only on machines with 48 GB or more. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
+Findings the local checks disagree on are listed under **Possible**, not counted above; with them the 14b reaches recall 0.82 and the 7b 0.56. The cloud models find more bugs, above all in code the local models were not tuned on. The 7b keeps only findings it states as facts, so its precision is higher but it misses half the bugs (lower F1); use the 14b when your machine has the memory. `qwen2.5-coder:32b` could not be measured on 24 GB (every review took over 5 minutes), so Hushavyr uses it as a judge only on machines with 48 GB or more. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
 
 ## FAQ
 
