@@ -1,7 +1,8 @@
 # Changelog
 
-## 1.0.20 (unreleased)
+## 1.0.20
 - **Chat `/review` → Fix:** after a review with findings, Chat shows **Fix or dismiss a finding** and **Explain a finding** buttons, as after a scan. Before, the fix was only reachable through the Quick Fix on the marked line.
+- **README:** the top demo now shows the chat Fix button (`/review` → Fix → diff → Apply), with an HD MP4.
 
 ## 1.0.19
 - **README:** new short demo at the top (`/review` → Quick Fix → diff → Apply) and an install demo (Marketplace → Setup) under Install. The full tour moved below them.

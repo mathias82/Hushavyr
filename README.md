@@ -13,7 +13,9 @@ Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)**
 
 **Works with:** Java, Kotlin, Python, JavaScript, TypeScript, Go, Rust, C#, PHP and Ruby.
 
-![Hushavyr demo: @ai-privacy /review finds a SQL injection with the local model, Quick Fix proposes a PreparedStatement fix as a diff, and Apply fix changes the file](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-review-fix.gif)
+![Hushavyr demo: @ai-privacy /review finds a SQL injection with the local model, the Fix button in chat proposes a PreparedStatement fix as a diff, and Apply fix changes the file](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-chat-fix.gif)
+
+▶️ [Watch it in HD (MP4)](https://github.com/mathias82/Hushavyr/releases/download/v1.0.20/hushavyr-chat-fix.mp4)
 
 📰 [Read the announcement on LinkedIn](https://www.linkedin.com/pulse/hushavyr-free-private-ai-code-review-security-scanner-stavrou-htyzf/)
 
