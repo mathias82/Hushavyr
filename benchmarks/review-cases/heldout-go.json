@@ -1,0 +1,229 @@
+[
+  {
+    "id": "go-ho-healthz-body-leak-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "health.go",
+        "text": "package health\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"time\"\n)\n\n// Client checks the health endpoint of a backend service.\ntype Client struct {\n\tbaseURL string\n\thttp    *http.Client\n}\n\n// New returns a Client for the service at baseURL.\nfunc New(baseURL string) *Client {\n\treturn &Client{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}}\n}\n\n// Ping is called every few seconds by the load balancer probe and reports\n// whether the service answered 200 OK.\nfunc (c *Client) Ping(ctx context.Context) error {\n\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+\"/healthz\", nil)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"ping: %w\", err)\n\t}\n\tresp, err := c.http.Do(req)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"ping: %w\", err)\n\t}\n\tif resp.StatusCode != http.StatusOK {\n\t\treturn fmt.Errorf(\"ping: unexpected status %s\", resp.Status)\n\t}\n\treturn nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "health.go",
+      "line": 28,
+      "alsoLines": [
+        33,
+        35
+      ],
+      "mechanism": "body|close|leak|connection|resource|socket|descriptor|reuse"
+    }
+  },
+  {
+    "id": "go-ho-healthz-body-leak-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "health.go",
+        "text": "package health\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"time\"\n)\n\n// Client checks the health endpoint of a backend service.\ntype Client struct {\n\tbaseURL string\n\thttp    *http.Client\n}\n\n// New returns a Client for the service at baseURL.\nfunc New(baseURL string) *Client {\n\treturn &Client{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}}\n}\n\n// Ping is called every few seconds by the load balancer probe and reports\n// whether the service answered 200 OK.\nfunc (c *Client) Ping(ctx context.Context) error {\n\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+\"/healthz\", nil)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"ping: %w\", err)\n\t}\n\tresp, err := c.http.Do(req)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"ping: %w\", err)\n\t}\n\tdefer resp.Body.Close()\n\tif resp.StatusCode != http.StatusOK {\n\t\treturn fmt.Errorf(\"ping: unexpected status %s\", resp.Status)\n\t}\n\treturn nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-shadowed-settings-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "settings.go",
+        "text": "package settings\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io/fs\"\n\t\"os\"\n)\n\n// Settings holds user preferences persisted on disk.\ntype Settings struct {\n\tTheme    string `json:\"theme\"`\n\tFontSize int    `json:\"fontSize\"`\n}\n\nfunc defaults() Settings {\n\treturn Settings{Theme: \"light\", FontSize: 12}\n}\n\n// Load reads settings from path. A missing or empty file yields the\n// defaults; values present in the file override them.\nfunc Load(path string) (Settings, error) {\n\ts := defaults()\n\tdata, err := os.ReadFile(path)\n\tif errors.Is(err, fs.ErrNotExist) {\n\t\treturn s, nil\n\t}\n\tif err != nil {\n\t\treturn Settings{}, fmt.Errorf(\"read settings: %w\", err)\n\t}\n\tif len(data) > 0 {\n\t\ts, err := parse(data)\n\t\tif err != nil {\n\t\t\treturn Settings{}, fmt.Errorf(\"parse settings %s: %w\", path, err)\n\t\t}\n\t\tif s.FontSize <= 0 {\n\t\t\treturn Settings{}, fmt.Errorf(\"parse settings %s: invalid font size %d\", path, s.FontSize)\n\t\t}\n\t}\n\treturn s, nil\n}\n\nfunc parse(data []byte) (Settings, error) {\n\ts := defaults()\n\tif err := json.Unmarshal(data, &s); err != nil {\n\t\treturn Settings{}, err\n\t}\n\treturn s, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "settings.go",
+      "line": 33,
+      "alsoLines": [
+        41
+      ],
+      "mechanism": "shadow|:=|redeclar|new variable|outer|scope|default|discard|lost|ignor|never (used|returned|assigned)"
+    }
+  },
+  {
+    "id": "go-ho-shadowed-settings-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "settings.go",
+        "text": "package settings\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io/fs\"\n\t\"os\"\n)\n\n// Settings holds user preferences persisted on disk.\ntype Settings struct {\n\tTheme    string `json:\"theme\"`\n\tFontSize int    `json:\"fontSize\"`\n}\n\nfunc defaults() Settings {\n\treturn Settings{Theme: \"light\", FontSize: 12}\n}\n\n// Load reads settings from path. A missing or empty file yields the\n// defaults; values present in the file override them.\nfunc Load(path string) (Settings, error) {\n\ts := defaults()\n\tdata, err := os.ReadFile(path)\n\tif errors.Is(err, fs.ErrNotExist) {\n\t\treturn s, nil\n\t}\n\tif err != nil {\n\t\treturn Settings{}, fmt.Errorf(\"read settings: %w\", err)\n\t}\n\tif len(data) > 0 {\n\t\ts, err = parse(data)\n\t\tif err != nil {\n\t\t\treturn Settings{}, fmt.Errorf(\"parse settings %s: %w\", path, err)\n\t\t}\n\t\tif s.FontSize <= 0 {\n\t\t\treturn Settings{}, fmt.Errorf(\"parse settings %s: invalid font size %d\", path, s.FontSize)\n\t\t}\n\t}\n\treturn s, nil\n}\n\nfunc parse(data []byte) (Settings, error) {\n\ts := defaults()\n\tif err := json.Unmarshal(data, &s); err != nil {\n\t\treturn Settings{}, err\n\t}\n\treturn s, nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-typed-nil-error-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "signup.go",
+        "text": "package signup\n\nimport (\n\t\"net/mail\"\n\t\"strings\"\n)\n\n// FieldError describes a single invalid form field.\ntype FieldError struct {\n\tField  string\n\tReason string\n}\n\nfunc (e *FieldError) Error() string {\n\treturn e.Field + \": \" + e.Reason\n}\n\n// Form is the data submitted on the signup page.\ntype Form struct {\n\tUsername string\n\tEmail    string\n\tAge      int\n}\n\n// Validate returns nil when f is valid, or a *FieldError for the first\n// invalid field.\nfunc Validate(f Form) error {\n\tvar fe *FieldError\n\tswitch {\n\tcase strings.TrimSpace(f.Username) == \"\":\n\t\tfe = &FieldError{Field: \"username\", Reason: \"required\"}\n\tcase len(f.Username) > 32:\n\t\tfe = &FieldError{Field: \"username\", Reason: \"at most 32 characters\"}\n\tcase f.Age < 13:\n\t\tfe = &FieldError{Field: \"age\", Reason: \"must be at least 13\"}\n\tdefault:\n\t\tif _, err := mail.ParseAddress(f.Email); err != nil {\n\t\t\tfe = &FieldError{Field: \"email\", Reason: \"invalid address\"}\n\t\t}\n\t}\n\treturn fe\n}"
+      }
+    ],
+    "expected": {
+      "path": "signup.go",
+      "line": 41,
+      "alsoLines": [
+        28
+      ],
+      "mechanism": "nil|interface|typed|non-nil|never nil|always"
+    }
+  },
+  {
+    "id": "go-ho-typed-nil-error-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "signup.go",
+        "text": "package signup\n\nimport (\n\t\"net/mail\"\n\t\"strings\"\n)\n\n// FieldError describes a single invalid form field.\ntype FieldError struct {\n\tField  string\n\tReason string\n}\n\nfunc (e *FieldError) Error() string {\n\treturn e.Field + \": \" + e.Reason\n}\n\n// Form is the data submitted on the signup page.\ntype Form struct {\n\tUsername string\n\tEmail    string\n\tAge      int\n}\n\n// Validate returns nil when f is valid, or a *FieldError for the first\n// invalid field.\nfunc Validate(f Form) error {\n\tvar fe *FieldError\n\tswitch {\n\tcase strings.TrimSpace(f.Username) == \"\":\n\t\tfe = &FieldError{Field: \"username\", Reason: \"required\"}\n\tcase len(f.Username) > 32:\n\t\tfe = &FieldError{Field: \"username\", Reason: \"at most 32 characters\"}\n\tcase f.Age < 13:\n\t\tfe = &FieldError{Field: \"age\", Reason: \"must be at least 13\"}\n\tdefault:\n\t\tif _, err := mail.ParseAddress(f.Email); err != nil {\n\t\t\tfe = &FieldError{Field: \"email\", Reason: \"invalid address\"}\n\t\t}\n\t}\n\tif fe == nil {\n\t\treturn nil\n\t}\n\treturn fe\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-waitgroup-add-in-goroutine-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "thumbs.go",
+        "text": "package thumbs\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\n// ResizeAll resizes every image concurrently. It waits for all of them to\n// finish and returns one of the errors, if any occurred.\nfunc ResizeAll(paths []string, resize func(path string) error) error {\n\tvar wg sync.WaitGroup\n\terrs := make(chan error, len(paths))\n\tfor _, p := range paths {\n\t\tgo func(p string) {\n\t\t\twg.Add(1)\n\t\t\tdefer wg.Done()\n\t\t\tif err := resize(p); err != nil {\n\t\t\t\terrs <- fmt.Errorf(\"resize %s: %w\", p, err)\n\t\t\t}\n\t\t}(p)\n\t}\n\twg.Wait()\n\tclose(errs)\n\treturn <-errs\n}"
+      }
+    ],
+    "expected": {
+      "path": "thumbs.go",
+      "line": 15,
+      "alsoLines": [
+        22,
+        23
+      ],
+      "mechanism": "waitgroup|wg\\.Add|race|before|goroutine|wait|closed channel|send on closed|panic"
+    }
+  },
+  {
+    "id": "go-ho-waitgroup-add-in-goroutine-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "thumbs.go",
+        "text": "package thumbs\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\n// ResizeAll resizes every image concurrently. It waits for all of them to\n// finish and returns one of the errors, if any occurred.\nfunc ResizeAll(paths []string, resize func(path string) error) error {\n\tvar wg sync.WaitGroup\n\terrs := make(chan error, len(paths))\n\tfor _, p := range paths {\n\t\twg.Add(1)\n\t\tgo func(p string) {\n\t\t\tdefer wg.Done()\n\t\t\tif err := resize(p); err != nil {\n\t\t\t\terrs <- fmt.Errorf(\"resize %s: %w\", p, err)\n\t\t\t}\n\t\t}(p)\n\t}\n\twg.Wait()\n\tclose(errs)\n\treturn <-errs\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-append-alias-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "deploy.go",
+        "text": "package deploy\n\n// Plan returns one argument list per host: the deploy command, the shared\n// flags, and then \"--host\" followed by the host name.\nfunc Plan(flags []string, hosts []string) [][]string {\n\tbase := make([]string, 0, len(flags)+4)\n\tbase = append(base, \"deploy\", \"--quiet\")\n\tbase = append(base, flags...)\n\n\tplans := make([][]string, 0, len(hosts))\n\tfor _, h := range hosts {\n\t\tplans = append(plans, append(base, \"--host\", h))\n\t}\n\treturn plans\n}\n\n// Run executes every planned invocation in order and stops at the first\n// failure.\nfunc Run(plans [][]string, exec func(args []string) error) error {\n\tfor _, args := range plans {\n\t\tif err := exec(args); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "deploy.go",
+      "line": 12,
+      "alsoLines": [
+        6
+      ],
+      "mechanism": "alias|shar|backing|capacity|overwrit|append|same (underlying )?array|clobber|copy|last host"
+    }
+  },
+  {
+    "id": "go-ho-append-alias-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "deploy.go",
+        "text": "package deploy\n\n// Plan returns one argument list per host: the deploy command, the shared\n// flags, and then \"--host\" followed by the host name.\nfunc Plan(flags []string, hosts []string) [][]string {\n\tbase := make([]string, 0, len(flags)+2)\n\tbase = append(base, \"deploy\", \"--quiet\")\n\tbase = append(base, flags...)\n\n\tplans := make([][]string, 0, len(hosts))\n\tfor _, h := range hosts {\n\t\targs := make([]string, 0, len(base)+2)\n\t\targs = append(args, base...)\n\t\targs = append(args, \"--host\", h)\n\t\tplans = append(plans, args)\n\t}\n\treturn plans\n}\n\n// Run executes every planned invocation in order and stops at the first\n// failure.\nfunc Run(plans [][]string, exec func(args []string) error) error {\n\tfor _, args := range plans {\n\t\tif err := exec(args); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-port-truncation-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "listener.go",
+        "text": "package netcfg\n\nimport (\n\t\"fmt\"\n\t\"net\"\n\t\"strconv\"\n)\n\n// Listener is the address configuration read from the environment.\ntype Listener struct {\n\tHost string\n\tPort string\n}\n\n// Addr builds the host:port listen address. Port must be a decimal number\n// between 1 and 65535; anything else is rejected.\nfunc (l Listener) Addr() (string, error) {\n\tn, err := strconv.Atoi(l.Port)\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"invalid port %q: %w\", l.Port, err)\n\t}\n\tp := uint16(n)\n\tif p == 0 {\n\t\treturn \"\", fmt.Errorf(\"invalid port %q: must be 1-65535\", l.Port)\n\t}\n\treturn net.JoinHostPort(l.Host, strconv.Itoa(int(p))), nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "listener.go",
+      "line": 22,
+      "alsoLines": [
+        23
+      ],
+      "mechanism": "overflow|truncat|wrap|uint16|conver|range|65535|bound|narrow|modulo|cast"
+    }
+  },
+  {
+    "id": "go-ho-port-truncation-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "listener.go",
+        "text": "package netcfg\n\nimport (\n\t\"fmt\"\n\t\"net\"\n\t\"strconv\"\n)\n\n// Listener is the address configuration read from the environment.\ntype Listener struct {\n\tHost string\n\tPort string\n}\n\n// Addr builds the host:port listen address. Port must be a decimal number\n// between 1 and 65535; anything else is rejected.\nfunc (l Listener) Addr() (string, error) {\n\tn, err := strconv.Atoi(l.Port)\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"invalid port %q: %w\", l.Port, err)\n\t}\n\tif n < 1 || n > 65535 {\n\t\treturn \"\", fmt.Errorf(\"invalid port %q: must be 1-65535\", l.Port)\n\t}\n\treturn net.JoinHostPort(l.Host, strconv.Itoa(n)), nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-hmac-timing-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "verify.go",
+        "text": "package webhook\n\nimport (\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n)\n\n// ErrBadSignature is returned when a delivery is not signed with our secret.\nvar ErrBadSignature = errors.New(\"webhook: bad signature\")\n\nconst maxBody = 1 << 20\n\n// Verify reads the request body and checks the X-Signature header, which\n// carries the hex-encoded HMAC-SHA256 of the body under secret. It returns\n// the body only when the signature is valid.\nfunc Verify(r *http.Request, secret []byte) ([]byte, error) {\n\tbody, err := io.ReadAll(io.LimitReader(r.Body, maxBody))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tmac := hmac.New(sha256.New, secret)\n\tmac.Write(body)\n\texpected := hex.EncodeToString(mac.Sum(nil))\n\tif r.Header.Get(\"X-Signature\") != expected {\n\t\treturn nil, ErrBadSignature\n\t}\n\treturn body, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "verify.go",
+      "line": 28,
+      "alsoLines": [
+        27
+      ],
+      "mechanism": "timing|constant.time|hmac\\.Equal|subtle|side.channel|compar"
+    }
+  },
+  {
+    "id": "go-ho-hmac-timing-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "verify.go",
+        "text": "package webhook\n\nimport (\n\t\"crypto/hmac\"\n\t\"crypto/sha256\"\n\t\"encoding/hex\"\n\t\"errors\"\n\t\"io\"\n\t\"net/http\"\n)\n\n// ErrBadSignature is returned when a delivery is not signed with our secret.\nvar ErrBadSignature = errors.New(\"webhook: bad signature\")\n\nconst maxBody = 1 << 20\n\n// Verify reads the request body and checks the X-Signature header, which\n// carries the hex-encoded HMAC-SHA256 of the body under secret. It returns\n// the body only when the signature is valid.\nfunc Verify(r *http.Request, secret []byte) ([]byte, error) {\n\tbody, err := io.ReadAll(io.LimitReader(r.Body, maxBody))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tmac := hmac.New(sha256.New, secret)\n\tmac.Write(body)\n\tgot, err := hex.DecodeString(r.Header.Get(\"X-Signature\"))\n\tif err != nil || !hmac.Equal(got, mac.Sum(nil)) {\n\t\treturn nil, ErrBadSignature\n\t}\n\treturn body, nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ho-rlock-map-write-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "patterns.go",
+        "text": "package routing\n\nimport (\n\t\"regexp\"\n\t\"sync\"\n)\n\n// Patterns compiles route patterns on first use. Patterns come from the\n// static routing table, so the set is small and fixed. A Patterns is safe\n// for concurrent use by multiple goroutines.\ntype Patterns struct {\n\tmu       sync.RWMutex\n\tcompiled map[string]*regexp.Regexp\n}\n\n// NewPatterns returns an empty pattern cache.\nfunc NewPatterns() *Patterns {\n\treturn &Patterns{compiled: make(map[string]*regexp.Regexp)}\n}\n\n// Get returns the compiled form of pattern, compiling and caching it on\n// the first request.\nfunc (p *Patterns) Get(pattern string) (*regexp.Regexp, error) {\n\tp.mu.RLock()\n\tdefer p.mu.RUnlock()\n\tif re, ok := p.compiled[pattern]; ok {\n\t\treturn re, nil\n\t}\n\tre, err := regexp.Compile(pattern)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tp.compiled[pattern] = re\n\treturn re, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "patterns.go",
+      "line": 33,
+      "alsoLines": [
+        24,
+        25
+      ],
+      "mechanism": "race|rlock|read lock|rwmutex|lock|mutex|concurren|synchroni|map write|write"
+    }
+  },
+  {
+    "id": "go-ho-rlock-map-write-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "patterns.go",
+        "text": "package routing\n\nimport (\n\t\"regexp\"\n\t\"sync\"\n)\n\n// Patterns compiles route patterns on first use. Patterns come from the\n// static routing table, so the set is small and fixed. A Patterns is safe\n// for concurrent use by multiple goroutines.\ntype Patterns struct {\n\tmu       sync.RWMutex\n\tcompiled map[string]*regexp.Regexp\n}\n\n// NewPatterns returns an empty pattern cache.\nfunc NewPatterns() *Patterns {\n\treturn &Patterns{compiled: make(map[string]*regexp.Regexp)}\n}\n\n// Get returns the compiled form of pattern, compiling and caching it on\n// the first request.\nfunc (p *Patterns) Get(pattern string) (*regexp.Regexp, error) {\n\tp.mu.RLock()\n\tre, ok := p.compiled[pattern]\n\tp.mu.RUnlock()\n\tif ok {\n\t\treturn re, nil\n\t}\n\tre, err := regexp.Compile(pattern)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tp.mu.Lock()\n\tp.compiled[pattern] = re\n\tp.mu.Unlock()\n\treturn re, nil\n}"
+      }
+    ]
+  }
+]

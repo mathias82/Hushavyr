@@ -1,0 +1,218 @@
+[
+  {
+    "id": "javascript-ho-webhook-closure-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.js",
+        "text": "\"use strict\";\n\n// Sends each webhook in order, spacing the requests delayMs apart.\n// Returns a function that cancels any webhooks not yet sent.\nfunction scheduleWebhooks(urls, delayMs, send) {\n  if (!Array.isArray(urls)) throw new TypeError(\"urls must be an array\");\n  if (!Number.isFinite(delayMs) || delayMs < 0) throw new RangeError(\"delayMs must be a non-negative number\");\n  const timers = [];\n  for (var i = 0; i < urls.length; i++) {\n    timers.push(setTimeout(() => send(urls[i]), i * delayMs));\n  }\n  return function cancel() {\n    for (const timer of timers) clearTimeout(timer);\n  };\n}\n\nmodule.exports = { scheduleWebhooks };"
+      }
+    ],
+    "expected": {
+      "path": "webhooks.js",
+      "line": 9,
+      "alsoLines": [
+        10
+      ],
+      "mechanism": "\\bvar\\b|\\blet\\b|closure|captur|loop (variable|index|counter)|same (index|url|value)|undefined|function.scop|block.scop|urls\\[i\\]|final value"
+    }
+  },
+  {
+    "id": "javascript-ho-webhook-closure-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.js",
+        "text": "\"use strict\";\n\n// Sends each webhook in order, spacing the requests delayMs apart.\n// Returns a function that cancels any webhooks not yet sent.\nfunction scheduleWebhooks(urls, delayMs, send) {\n  if (!Array.isArray(urls)) throw new TypeError(\"urls must be an array\");\n  if (!Number.isFinite(delayMs) || delayMs < 0) throw new RangeError(\"delayMs must be a non-negative number\");\n  const timers = [];\n  for (let i = 0; i < urls.length; i++) {\n    timers.push(setTimeout(() => send(urls[i]), i * delayMs));\n  }\n  return function cancel() {\n    for (const timer of timers) clearTimeout(timer);\n  };\n}\n\nmodule.exports = { scheduleWebhooks };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-missing-return-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "rename-user.js",
+        "text": "\"use strict\";\nconst express = require(\"express\");\n\nconst router = express.Router();\n\n// Updates a user's display name. Names must be 1-64 characters.\n// This router is mounted behind the admin authentication middleware.\nrouter.patch(\"/users/:id/name\", async (req, res, next) => {\n  try {\n    const raw = req.body && req.body.name;\n    const name = typeof raw === \"string\" ? raw.trim() : \"\";\n    if (name.length === 0 || name.length > 64) {\n      res.status(400).json({ error: \"name must be 1-64 characters\" });\n    }\n    const user = await req.app.locals.users.updateName(req.params.id, name);\n    if (!user) return res.status(404).json({ error: \"user not found\" });\n    res.json({ id: user.id, name: user.name });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = router;"
+      }
+    ],
+    "expected": {
+      "path": "rename-user.js",
+      "line": 13,
+      "alsoLines": [
+        12,
+        15
+      ],
+      "mechanism": "return|fall.?s? ?through|continu|headers? (already )?sent|ERR_HTTP_HEADERS_SENT|double|twice|multiple respons|second respons|invalid name|still (updat|sav|persist|execut|run)|validation.*(bypass|ignored|not enforced)"
+    }
+  },
+  {
+    "id": "javascript-ho-missing-return-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "rename-user.js",
+        "text": "\"use strict\";\nconst express = require(\"express\");\n\nconst router = express.Router();\n\n// Updates a user's display name. Names must be 1-64 characters.\n// This router is mounted behind the admin authentication middleware.\nrouter.patch(\"/users/:id/name\", async (req, res, next) => {\n  try {\n    const raw = req.body && req.body.name;\n    const name = typeof raw === \"string\" ? raw.trim() : \"\";\n    if (name.length === 0 || name.length > 64) {\n      return res.status(400).json({ error: \"name must be 1-64 characters\" });\n    }\n    const user = await req.app.locals.users.updateName(req.params.id, name);\n    if (!user) return res.status(404).json({ error: \"user not found\" });\n    res.json({ id: user.id, name: user.name });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = router;"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-stat-error-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "dir-size.js",
+        "text": "\"use strict\";\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\n// Calls back with the total size in bytes of the regular files directly inside dir.\nfunction directorySize(dir, callback) {\n  fs.readdir(dir, { withFileTypes: true }, (err, entries) => {\n    if (err) return callback(err);\n    const files = entries.filter((entry) => entry.isFile());\n    if (files.length === 0) return callback(null, 0);\n    let pending = files.length;\n    let total = 0;\n    for (const file of files) {\n      fs.stat(path.join(dir, file.name), (statErr, stats) => {\n        total += stats.size;\n        if (--pending === 0) callback(null, total);\n      });\n    }\n  });\n}\n\nmodule.exports = { directorySize };"
+      }
+    ],
+    "expected": {
+      "path": "dir-size.js",
+      "line": 15,
+      "alsoLines": [
+        14
+      ],
+      "mechanism": "statErr|error|\\berr\\b|not (checked|handled|propagat|passed)|unchecked|unhandled|ignor|swallow|undefined|null|crash|TypeError|race|deleted"
+    }
+  },
+  {
+    "id": "javascript-ho-stat-error-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "dir-size.js",
+        "text": "\"use strict\";\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\n// Calls back with the total size in bytes of the regular files directly inside dir.\nfunction directorySize(dir, callback) {\n  fs.readdir(dir, { withFileTypes: true }, (err, entries) => {\n    if (err) return callback(err);\n    const files = entries.filter((entry) => entry.isFile());\n    if (files.length === 0) return callback(null, 0);\n    let pending = files.length;\n    let total = 0;\n    let failed = false;\n    for (const file of files) {\n      fs.stat(path.join(dir, file.name), (statErr, stats) => {\n        if (failed) return;\n        if (statErr) {\n          failed = true;\n          return callback(statErr);\n        }\n        total += stats.size;\n        if (--pending === 0) callback(null, total);\n      });\n    }\n  });\n}\n\nmodule.exports = { directorySize };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-env-flag-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "settings.js",
+        "text": "\"use strict\";\n\n// Builds runtime settings from environment variables.\n// Set CACHE_ENABLED=true to turn on response caching.\nfunction loadSettings(env = process.env) {\n  const port = Number(env.PORT || 3000);\n  if (!Number.isInteger(port) || port < 1 || port > 65535) {\n    throw new RangeError(`invalid PORT: ${env.PORT}`);\n  }\n  return {\n    port,\n    cacheEnabled: env.CACHE_ENABLED == true,\n    logLevel: env.LOG_LEVEL || \"info\",\n  };\n}\n\nmodule.exports = { loadSettings };"
+      }
+    ],
+    "expected": {
+      "path": "settings.js",
+      "line": 12,
+      "mechanism": "==|coerc|loose|string|\"true\"|'true'|always (be )?false|never (be )?(true|enabled|on)|NaN|strict(ly)? equal|type conversion|compar"
+    }
+  },
+  {
+    "id": "javascript-ho-env-flag-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "settings.js",
+        "text": "\"use strict\";\n\n// Builds runtime settings from environment variables.\n// Set CACHE_ENABLED=true to turn on response caching.\nfunction loadSettings(env = process.env) {\n  const port = Number(env.PORT || 3000);\n  if (!Number.isInteger(port) || port < 1 || port > 65535) {\n    throw new RangeError(`invalid PORT: ${env.PORT}`);\n  }\n  return {\n    port,\n    cacheEnabled: env.CACHE_ENABLED === \"true\",\n    logLevel: env.LOG_LEVEL || \"info\",\n  };\n}\n\nmodule.exports = { loadSettings };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-shared-defaults-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "price-format.js",
+        "text": "\"use strict\";\n\nconst DEFAULTS = { currency: \"EUR\", locale: \"en-US\", currencyDisplay: \"symbol\" };\n\n// Returns a price formatter; options override the defaults for this formatter only.\nfunction createPriceFormatter(options = {}) {\n  const config = Object.assign(DEFAULTS, options);\n  const format = new Intl.NumberFormat(config.locale, {\n    style: \"currency\",\n    currency: config.currency,\n    currencyDisplay: config.currencyDisplay,\n  });\n  return (amount) => {\n    if (typeof amount !== \"number\" || !Number.isFinite(amount)) {\n      throw new TypeError(\"amount must be a finite number\");\n    }\n    return format.format(amount);\n  };\n}\n\nmodule.exports = { createPriceFormatter };"
+      }
+    ],
+    "expected": {
+      "path": "price-format.js",
+      "line": 7,
+      "mechanism": "mutat|Object\\.assign|DEFAULTS|shared|global|modif|overwrit|leak|persist|spread|\\{\\}|subsequent|later (call|formatter)|other (call|formatter)"
+    }
+  },
+  {
+    "id": "javascript-ho-shared-defaults-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "price-format.js",
+        "text": "\"use strict\";\n\nconst DEFAULTS = { currency: \"EUR\", locale: \"en-US\", currencyDisplay: \"symbol\" };\n\n// Returns a price formatter; options override the defaults for this formatter only.\nfunction createPriceFormatter(options = {}) {\n  const config = { ...DEFAULTS, ...options };\n  const format = new Intl.NumberFormat(config.locale, {\n    style: \"currency\",\n    currency: config.currency,\n    currencyDisplay: config.currencyDisplay,\n  });\n  return (amount) => {\n    if (typeof amount !== \"number\" || !Number.isFinite(amount)) {\n      throw new TypeError(\"amount must be a finite number\");\n    }\n    return format.format(amount);\n  };\n}\n\nmodule.exports = { createPriceFormatter };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-sse-listener-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "notifications.js",
+        "text": "\"use strict\";\nconst express = require(\"express\");\nconst { EventEmitter } = require(\"node:events\");\n\nconst notifications = new EventEmitter();\nnotifications.setMaxListeners(0);\nconst router = express.Router();\n\n// Streams notifications to the client as server-sent events until it disconnects.\nrouter.get(\"/notifications/stream\", (req, res) => {\n  res.set({ \"Content-Type\": \"text/event-stream\", \"Cache-Control\": \"no-cache\" });\n  res.flushHeaders();\n\n  const send = (event) => {\n    res.write(`data: ${JSON.stringify(event)}\\n\\n`);\n  };\n  notifications.on(\"notification\", send);\n});\n\n// Publishes a public announcement to every connected client.\nfunction publish(event) {\n  notifications.emit(\"notification\", event);\n}\n\nmodule.exports = { router, publish };"
+      }
+    ],
+    "expected": {
+      "path": "notifications.js",
+      "line": 17,
+      "mechanism": "leak|listener|remove|\\boff\\b|unsubscrib|subscri|close|disconnect|clean ?up|never (cleaned|removed|released)|write after end|accumulat|grow"
+    }
+  },
+  {
+    "id": "javascript-ho-sse-listener-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "notifications.js",
+        "text": "\"use strict\";\nconst express = require(\"express\");\nconst { EventEmitter } = require(\"node:events\");\n\nconst notifications = new EventEmitter();\nnotifications.setMaxListeners(0);\nconst router = express.Router();\n\n// Streams notifications to the client as server-sent events until it disconnects.\nrouter.get(\"/notifications/stream\", (req, res) => {\n  res.set({ \"Content-Type\": \"text/event-stream\", \"Cache-Control\": \"no-cache\" });\n  res.flushHeaders();\n\n  const send = (event) => {\n    res.write(`data: ${JSON.stringify(event)}\\n\\n`);\n  };\n  notifications.on(\"notification\", send);\n  req.on(\"close\", () => notifications.off(\"notification\", send));\n});\n\n// Publishes a public announcement to every connected client.\nfunction publish(event) {\n  notifications.emit(\"notification\", event);\n}\n\nmodule.exports = { router, publish };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-deep-merge-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "deep-merge.js",
+        "text": "\"use strict\";\n\nfunction isPlainObject(value) {\n  return value !== null && typeof value === \"object\" && !Array.isArray(value);\n}\n\n// Recursively merges source into target and returns target.\n// Used to apply user preference patches from the request body to stored preferences.\nfunction deepMerge(target, source) {\n  for (const key of Object.keys(source)) {\n    if (isPlainObject(source[key])) {\n      if (!isPlainObject(target[key])) target[key] = {};\n      deepMerge(target[key], source[key]);\n    } else {\n      target[key] = source[key];\n    }\n  }\n  return target;\n}\n\nmodule.exports = { deepMerge };"
+      }
+    ],
+    "expected": {
+      "path": "deep-merge.js",
+      "line": 13,
+      "alsoLines": [
+        10,
+        11,
+        12,
+        15
+      ],
+      "mechanism": "prototype|__proto__|pollut|constructor|Object\\.prototype"
+    }
+  },
+  {
+    "id": "javascript-ho-deep-merge-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "deep-merge.js",
+        "text": "\"use strict\";\n\nconst FORBIDDEN_KEYS = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n\nfunction isPlainObject(value) {\n  return value !== null && typeof value === \"object\" && !Array.isArray(value);\n}\n\n// Recursively merges source into target and returns target.\n// Used to apply user preference patches from the request body to stored preferences.\nfunction deepMerge(target, source) {\n  for (const key of Object.keys(source)) {\n    if (FORBIDDEN_KEYS.has(key)) continue;\n    if (isPlainObject(source[key])) {\n      if (!isPlainObject(target[key])) target[key] = {};\n      deepMerge(target[key], source[key]);\n    } else {\n      target[key] = source[key];\n    }\n  }\n  return target;\n}\n\nmodule.exports = { deepMerge };"
+      }
+    ]
+  },
+  {
+    "id": "javascript-ho-page-count-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "paginate.js",
+        "text": "\"use strict\";\n\n// Returns one page of items plus paging metadata. Pages are numbered from 1.\nfunction paginate(items, page, pageSize) {\n  if (!Number.isInteger(pageSize) || pageSize < 1) throw new RangeError(\"pageSize must be a positive integer\");\n  const totalPages = Math.max(1, Math.floor(items.length / pageSize));\n  if (!Number.isInteger(page) || page < 1 || page > totalPages) throw new RangeError(\"page out of range\");\n  const start = (page - 1) * pageSize;\n  return {\n    items: items.slice(start, start + pageSize),\n    page,\n    totalPages,\n    hasNext: page < totalPages,\n  };\n}\n\nmodule.exports = { paginate };"
+      }
+    ],
+    "expected": {
+      "path": "paginate.js",
+      "line": 6,
+      "mechanism": "floor|ceil|round|partial|last page|remain|off.by.one|unreachable|truncat|missing|lost|drop|totalPages|undercount|too few"
+    }
+  },
+  {
+    "id": "javascript-ho-page-count-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "paginate.js",
+        "text": "\"use strict\";\n\n// Returns one page of items plus paging metadata. Pages are numbered from 1.\nfunction paginate(items, page, pageSize) {\n  if (!Number.isInteger(pageSize) || pageSize < 1) throw new RangeError(\"pageSize must be a positive integer\");\n  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));\n  if (!Number.isInteger(page) || page < 1 || page > totalPages) throw new RangeError(\"page out of range\");\n  const start = (page - 1) * pageSize;\n  return {\n    items: items.slice(start, start + pageSize),\n    page,\n    totalPages,\n    hasNext: page < totalPages,\n  };\n}\n\nmodule.exports = { paginate };"
+      }
+    ]
+  }
+]

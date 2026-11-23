@@ -1,0 +1,218 @@
+[
+  {
+    "id": "typescript-ho-async-filter-predicate-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "exportable.ts",
+        "text": "export interface StoredDocument {\n  id: string;\n  ownerId: string;\n  title: string;\n  archived: boolean;\n}\n\nexport interface AccessPolicy {\n  canRead(userId: string, documentId: string): Promise<boolean>;\n}\n\nexport interface ExportRow {\n  id: string;\n  title: string;\n}\n\n// Returns the non-archived documents the user is allowed to read, in input order.\nexport async function exportableDocuments(\n  policy: AccessPolicy,\n  userId: string,\n  documents: readonly StoredDocument[],\n): Promise<ExportRow[]> {\n  const active = documents.filter(doc => !doc.archived);\n  const readable = active.filter(async doc => await policy.canRead(userId, doc.id));\n  return readable.map(doc => ({id: doc.id, title: doc.title}));\n}"
+      }
+    ],
+    "expected": {
+      "path": "exportable.ts",
+      "line": 24,
+      "mechanism": "async|promise|await|truthy|always (true|pass|kept|includ)|every document|access check|permission|authoriz|filter"
+    }
+  },
+  {
+    "id": "typescript-ho-async-filter-predicate-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "exportable.ts",
+        "text": "export interface StoredDocument {\n  id: string;\n  ownerId: string;\n  title: string;\n  archived: boolean;\n}\n\nexport interface AccessPolicy {\n  canRead(userId: string, documentId: string): Promise<boolean>;\n}\n\nexport interface ExportRow {\n  id: string;\n  title: string;\n}\n\n// Returns the non-archived documents the user is allowed to read, in input order.\nexport async function exportableDocuments(\n  policy: AccessPolicy,\n  userId: string,\n  documents: readonly StoredDocument[],\n): Promise<ExportRow[]> {\n  const active = documents.filter(doc => !doc.archived);\n  const allowed = await Promise.all(active.map(doc => policy.canRead(userId, doc.id)));\n  const readable = active.filter((_, index) => allowed[index]);\n  return readable.map(doc => ({id: doc.id, title: doc.title}));\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-one-based-page-offset-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "paginate.ts",
+        "text": "export interface Page<T> {\n  items: T[];\n  page: number;\n  pageSize: number;\n  totalPages: number;\n}\n\nconst MAX_PAGE_SIZE = 100;\n\n// `page` is 1-based; pages past the end return an empty item list.\nexport function paginate<T>(rows: readonly T[], page: number, pageSize: number): Page<T> {\n  if (!Number.isInteger(page) || page < 1) {\n    throw new RangeError(`invalid page: ${page}`);\n  }\n  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {\n    throw new RangeError(`invalid page size: ${pageSize}`);\n  }\n  const start = page * pageSize;\n  return {\n    items: rows.slice(start, start + pageSize),\n    page,\n    pageSize,\n    totalPages: Math.ceil(rows.length / pageSize),\n  };\n}"
+      }
+    ],
+    "expected": {
+      "path": "paginate.ts",
+      "line": 18,
+      "mechanism": "off.?by.?one|1-based|one-based|0-based|zero-based|skip|first page|page - 1|page-1|offset|start index|wrong (page|slice|start)"
+    }
+  },
+  {
+    "id": "typescript-ho-one-based-page-offset-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "paginate.ts",
+        "text": "export interface Page<T> {\n  items: T[];\n  page: number;\n  pageSize: number;\n  totalPages: number;\n}\n\nconst MAX_PAGE_SIZE = 100;\n\n// `page` is 1-based; pages past the end return an empty item list.\nexport function paginate<T>(rows: readonly T[], page: number, pageSize: number): Page<T> {\n  if (!Number.isInteger(page) || page < 1) {\n    throw new RangeError(`invalid page: ${page}`);\n  }\n  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {\n    throw new RangeError(`invalid page size: ${pageSize}`);\n  }\n  const start = (page - 1) * pageSize;\n  return {\n    items: rows.slice(start, start + pageSize),\n    page,\n    pageSize,\n    totalPages: Math.ceil(rows.length / pageSize),\n  };\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-float-invoice-total-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "invoice.ts",
+        "text": "export interface LineItem {\n  sku: string;\n  unitPrice: number; // dollars, e.g. 19.99\n  quantity: number;\n}\n\nexport interface Payment {\n  id: string;\n  amount: number; // dollars\n}\n\nexport type InvoiceStatus = \"unpaid\" | \"partial\" | \"paid\";\n\n// An invoice is paid once the payments cover the full total.\nexport function invoiceStatus(items: readonly LineItem[], payments: readonly Payment[]): InvoiceStatus {\n  if (payments.length === 0) {\n    return \"unpaid\";\n  }\n  const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);\n  const paid = payments.reduce((sum, payment) => sum + payment.amount, 0);\n  return paid >= total ? \"paid\" : \"partial\";\n}"
+      }
+    ],
+    "expected": {
+      "path": "invoice.ts",
+      "line": 21,
+      "alsoLines": [
+        19,
+        20
+      ],
+      "mechanism": "float|floating|precision|round|cents|decimal|epsilon|integer|IEEE|binary|money|currency"
+    }
+  },
+  {
+    "id": "typescript-ho-float-invoice-total-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "invoice.ts",
+        "text": "export interface LineItem {\n  sku: string;\n  unitPriceCents: number; // integer cents, e.g. 1999\n  quantity: number;\n}\n\nexport interface Payment {\n  id: string;\n  amountCents: number; // integer cents\n}\n\nexport type InvoiceStatus = \"unpaid\" | \"partial\" | \"paid\";\n\n// An invoice is paid once the payments cover the full total.\nexport function invoiceStatus(items: readonly LineItem[], payments: readonly Payment[]): InvoiceStatus {\n  if (payments.length === 0) {\n    return \"unpaid\";\n  }\n  const total = items.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);\n  const paid = payments.reduce((sum, payment) => sum + payment.amountCents, 0);\n  return paid >= total ? \"paid\" : \"partial\";\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-cache-timer-not-cleared-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "expiring-cache.ts",
+        "text": "export class ExpiringCache<V> {\n  private readonly values = new Map<string, V>();\n  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();\n\n  constructor(private readonly ttlMs: number) {}\n\n  get(key: string): V | undefined {\n    return this.values.get(key);\n  }\n\n  // Every set restarts the key's time-to-live.\n  set(key: string, value: V): void {\n    this.values.set(key, value);\n    const timer = setTimeout(() => {\n      this.values.delete(key);\n      this.timers.delete(key);\n    }, this.ttlMs);\n    this.timers.set(key, timer);\n  }\n\n  delete(key: string): void {\n    clearTimeout(this.timers.get(key));\n    this.timers.delete(key);\n    this.values.delete(key);\n  }\n\n  clear(): void {\n    for (const timer of this.timers.values()) {\n      clearTimeout(timer);\n    }\n    this.timers.clear();\n    this.values.clear();\n  }\n}"
+      }
+    ],
+    "expected": {
+      "path": "expiring-cache.ts",
+      "line": 14,
+      "alsoLines": [
+        12,
+        18,
+        13
+      ],
+      "mechanism": "clearTimeout|clear(ed)? (the )?(old|previous|existing|prior)|(old|previous|existing|prior|stale|earlier) (timer|timeout)|not cleared|never cleared|leak|expir\\w* (early|prematurely|too soon)|evict\\w* (early|prematurely)|prematurely|restart|reset|ttl"
+    }
+  },
+  {
+    "id": "typescript-ho-cache-timer-not-cleared-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "expiring-cache.ts",
+        "text": "export class ExpiringCache<V> {\n  private readonly values = new Map<string, V>();\n  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();\n\n  constructor(private readonly ttlMs: number) {}\n\n  get(key: string): V | undefined {\n    return this.values.get(key);\n  }\n\n  // Every set restarts the key's time-to-live.\n  set(key: string, value: V): void {\n    clearTimeout(this.timers.get(key));\n    this.values.set(key, value);\n    const timer = setTimeout(() => {\n      this.values.delete(key);\n      this.timers.delete(key);\n    }, this.ttlMs);\n    this.timers.set(key, timer);\n  }\n\n  delete(key: string): void {\n    clearTimeout(this.timers.get(key));\n    this.timers.delete(key);\n    this.values.delete(key);\n  }\n\n  clear(): void {\n    for (const timer of this.timers.values()) {\n      clearTimeout(timer);\n    }\n    this.timers.clear();\n    this.values.clear();\n  }\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-token-refresh-race-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "token-provider.ts",
+        "text": "export interface Session {\n  accessToken: string;\n  refreshToken: string;\n  expiresAt: number; // epoch milliseconds\n}\n\nexport interface AuthClient {\n  // The identity provider rotates refresh tokens: each one can be redeemed only once.\n  refresh(refreshToken: string): Promise<Session>;\n}\n\nconst EXPIRY_MARGIN_MS = 30_000;\n\nexport class TokenProvider {\n  constructor(private readonly auth: AuthClient, private session: Session) {}\n\n  async accessToken(): Promise<string> {\n    if (Date.now() < this.session.expiresAt - EXPIRY_MARGIN_MS) {\n      return this.session.accessToken;\n    }\n    this.session = await this.auth.refresh(this.session.refreshToken);\n    return this.session.accessToken;\n  }\n}"
+      }
+    ],
+    "expected": {
+      "path": "token-provider.ts",
+      "line": 21,
+      "mechanism": "race|concurren|parallel|simultaneous|in.?flight|duplicate|multiple (refresh|request|call)|dedup|single.?flight|shar|stampede|twice|rotat|reus|redeem|already used|invalidat"
+    }
+  },
+  {
+    "id": "typescript-ho-token-refresh-race-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "token-provider.ts",
+        "text": "export interface Session {\n  accessToken: string;\n  refreshToken: string;\n  expiresAt: number; // epoch milliseconds\n}\n\nexport interface AuthClient {\n  // The identity provider rotates refresh tokens: each one can be redeemed only once.\n  refresh(refreshToken: string): Promise<Session>;\n}\n\nconst EXPIRY_MARGIN_MS = 30_000;\n\nexport class TokenProvider {\n  private refreshing: Promise<Session> | undefined;\n\n  constructor(private readonly auth: AuthClient, private session: Session) {}\n\n  async accessToken(): Promise<string> {\n    if (Date.now() < this.session.expiresAt - EXPIRY_MARGIN_MS) {\n      return this.session.accessToken;\n    }\n    if (this.refreshing === undefined) {\n      this.refreshing = this.auth.refresh(this.session.refreshToken).finally(() => {\n        this.refreshing = undefined;\n      });\n    }\n    this.session = await this.refreshing;\n    return this.session.accessToken;\n  }\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-webhook-handler-assertion-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.ts",
+        "text": "export interface WebhookEvent {\n  id: string;\n  type: string;\n  createdAt: string;\n  data: Record<string, unknown>;\n}\n\nexport type WebhookHandler = (event: WebhookEvent) => Promise<void>;\n\nexport class WebhookDispatcher {\n  private readonly handlers = new Map<string, WebhookHandler>();\n\n  on(type: string, handler: WebhookHandler): void {\n    this.handlers.set(type, handler);\n  }\n\n  off(type: string): void {\n    this.handlers.delete(type);\n  }\n\n  // The provider adds new event types over time; events without a registered\n  // handler are acknowledged and skipped. Returns whether a handler ran.\n  async dispatch(event: WebhookEvent): Promise<boolean> {\n    const handler = this.handlers.get(event.type)!;\n    await handler(event);\n    return true;\n  }\n}"
+      }
+    ],
+    "expected": {
+      "path": "webhooks.ts",
+      "line": 24,
+      "alsoLines": [
+        25
+      ],
+      "mechanism": "non.?null|assert|undefined|unregistered|unknown (event|type)|no (registered )?handler|missing handler|not a function|TypeError|crash|throw|skip"
+    }
+  },
+  {
+    "id": "typescript-ho-webhook-handler-assertion-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.ts",
+        "text": "export interface WebhookEvent {\n  id: string;\n  type: string;\n  createdAt: string;\n  data: Record<string, unknown>;\n}\n\nexport type WebhookHandler = (event: WebhookEvent) => Promise<void>;\n\nexport class WebhookDispatcher {\n  private readonly handlers = new Map<string, WebhookHandler>();\n\n  on(type: string, handler: WebhookHandler): void {\n    this.handlers.set(type, handler);\n  }\n\n  off(type: string): void {\n    this.handlers.delete(type);\n  }\n\n  // The provider adds new event types over time; events without a registered\n  // handler are acknowledged and skipped. Returns whether a handler ran.\n  async dispatch(event: WebhookEvent): Promise<boolean> {\n    const handler = this.handlers.get(event.type);\n    if (handler === undefined) {\n      return false;\n    }\n    await handler(event);\n    return true;\n  }\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-order-by-injection-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "orders.ts",
+        "text": "export interface Db {\n  query<T>(sql: string, params: readonly unknown[]): Promise<T[]>;\n}\n\nexport interface OrderSummary {\n  id: string;\n  customerName: string;\n  totalCents: number;\n  createdAt: Date;\n}\n\nexport interface ListOrdersQuery {\n  customerId: string;\n  sortBy?: string; // taken from the request query string, e.g. \"created_at\"\n  descending?: boolean;\n}\n\nexport async function listOrders(db: Db, query: ListOrdersQuery): Promise<OrderSummary[]> {\n  const sortBy = query.sortBy ?? \"created_at\";\n  const direction = query.descending ? \"DESC\" : \"ASC\";\n  const sql = `SELECT id, customer_name AS \"customerName\", total_cents AS \"totalCents\", created_at AS \"createdAt\"\n     FROM orders\n    WHERE customer_id = $1\n    ORDER BY ${sortBy} ${direction}\n    LIMIT 100`;\n  return db.query<OrderSummary>(sql, [query.customerId]);\n}"
+      }
+    ],
+    "expected": {
+      "path": "orders.ts",
+      "line": 24,
+      "alsoLines": [
+        19,
+        21
+      ],
+      "mechanism": "sql|inject|order by|interpolat|sanitiz|whitelist|allow.?list|untrusted|unvalidated|user.?(input|controlled|supplied)"
+    }
+  },
+  {
+    "id": "typescript-ho-order-by-injection-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "orders.ts",
+        "text": "export interface Db {\n  query<T>(sql: string, params: readonly unknown[]): Promise<T[]>;\n}\n\nexport interface OrderSummary {\n  id: string;\n  customerName: string;\n  totalCents: number;\n  createdAt: Date;\n}\n\nexport interface ListOrdersQuery {\n  customerId: string;\n  sortBy?: string; // taken from the request query string, e.g. \"created_at\"\n  descending?: boolean;\n}\n\nconst SORTABLE_COLUMNS: ReadonlySet<string> = new Set([\"created_at\", \"total_cents\", \"customer_name\"]);\n\nexport async function listOrders(db: Db, query: ListOrdersQuery): Promise<OrderSummary[]> {\n  const sortBy = query.sortBy !== undefined && SORTABLE_COLUMNS.has(query.sortBy) ? query.sortBy : \"created_at\";\n  const direction = query.descending ? \"DESC\" : \"ASC\";\n  const sql = `SELECT id, customer_name AS \"customerName\", total_cents AS \"totalCents\", created_at AS \"createdAt\"\n     FROM orders\n    WHERE customer_id = $1\n    ORDER BY ${sortBy} ${direction}\n    LIMIT 100`;\n  return db.query<OrderSummary>(sql, [query.customerId]);\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ho-numeric-enum-values-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "plans.ts",
+        "text": "export enum Plan {\n  Free,\n  Team,\n  Enterprise,\n}\n\nexport interface PlanOption {\n  label: string;\n  value: Plan;\n}\n\nconst LABELS: Record<Plan, string> = {\n  [Plan.Free]: \"Free\",\n  [Plan.Team]: \"Team\",\n  [Plan.Enterprise]: \"Enterprise\",\n};\n\n// One option per plan, in declaration order, for the billing settings dropdown.\nexport function planOptions(): PlanOption[] {\n  return Object.values(Plan).map(value => ({label: LABELS[value as Plan], value: value as Plan}));\n}"
+      }
+    ],
+    "expected": {
+      "path": "plans.ts",
+      "line": 20,
+      "mechanism": "reverse.?map|numeric enum|enum|Object\\.values|member names|string (keys|names|values)|duplicate|six|twice|undefined|cast|as Plan"
+    }
+  },
+  {
+    "id": "typescript-ho-numeric-enum-values-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "plans.ts",
+        "text": "export enum Plan {\n  Free,\n  Team,\n  Enterprise,\n}\n\nexport interface PlanOption {\n  label: string;\n  value: Plan;\n}\n\nconst LABELS: Record<Plan, string> = {\n  [Plan.Free]: \"Free\",\n  [Plan.Team]: \"Team\",\n  [Plan.Enterprise]: \"Enterprise\",\n};\n\n// One option per plan, in declaration order, for the billing settings dropdown.\nexport function planOptions(): PlanOption[] {\n  return Object.values(Plan)\n    .filter((value): value is Plan => typeof value === \"number\")\n    .map(value => ({label: LABELS[value], value}));\n}"
+      }
+    ]
+  }
+]

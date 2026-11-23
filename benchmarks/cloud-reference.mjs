@@ -1,5 +1,6 @@
 // D3: scores cloud models on the synthetic benchmark fixtures only (never user code), next to the local model, with the same prompt.
 // Usage: node benchmarks/cloud-reference.mjs [out.json]   env: CLOUD_MODELS=claude-sonnet-5.5,gpt-6.1-sol  OLLAMA_MODEL=qwen2.5-coder:14b
+// CLOUD_IDS=<regex> runs and scores only the matching fixture ids.
 import {execFileSync, spawn} from "node:child_process";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -29,7 +30,8 @@ async function ollama(prompt) {
   return (await res.json()).response ?? "";
 }
 
-const ids = Object.keys(prompts);
+const allIds = Object.keys(prompts), only = process.env.CLOUD_IDS && new RegExp(process.env.CLOUD_IDS);
+const ids = only ? allIds.filter(id => only.test(id)) : allIds;
 const providers = {};
 const timing = {};
 const cloudRuns = cloud.map(async model => {
@@ -48,9 +50,17 @@ const localRun = (async () => {
 await Promise.all([...cloudRuns, localRun]);
 
 const file = join(mkdtempSync(join(tmpdir(), "hush-d3-")), "providers.json");
+const empty = JSON.stringify({findings: []});
+for (const name of Object.keys(providers)) for (const id of allIds) providers[name][id] ??= empty;
 writeFileSync(file, JSON.stringify({providers}));
 const report = JSON.parse(execFileSync(process.execPath, [bench, "--compare", file], {maxBuffer: 1 << 26}).toString());
 rmSync(dirname(file), {recursive: true, force: true});
+for (const p of report.providers) {
+  p.cases = p.cases.filter(c => ids.includes(c.id));
+  p.totals = p.cases.reduce((t, c) => ({truePositive: t.truePositive + c.truePositive, falsePositive: t.falsePositive + c.falsePositive, falseNegative: t.falseNegative + c.falseNegative}), {truePositive: 0, falsePositive: 0, falseNegative: 0});
+  const {truePositive: tp, falsePositive: fp, falseNegative: fn} = p.totals;
+  p.precision = tp + fp ? tp / (tp + fp) : null; p.recall = tp + fn ? tp / (tp + fn) : null;
+}
 const summary = report.providers.map(p => ({model: p.name, precision: p.precision, recall: p.recall, ...p.totals, seconds: timing[p.name]}));
 console.table(summary);
 if (process.argv[2]) writeFileSync(process.argv[2], JSON.stringify({summary, cases: Object.fromEntries(report.providers.map(p => [p.name, p.cases]))}, null, 2));

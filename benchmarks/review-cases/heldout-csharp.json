@@ -1,0 +1,222 @@
+[
+  {
+    "id": "csharp-ho-for-closure-index-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ThumbnailWarmer.cs",
+        "text": "using System.Collections.Generic;\nusing System.Net.Http;\nusing System.Threading.Tasks;\n\npublic sealed class ThumbnailWarmer\n{\n    private readonly HttpClient _http;\n\n    public ThumbnailWarmer(HttpClient http) => _http = http;\n\n    // Requests every thumbnail concurrently so the CDN caches them and returns how many succeeded.\n    // Callers pass at most 50 URLs; network failures propagate to the caller.\n    public async Task<int> WarmAsync(IReadOnlyList<string> urls)\n    {\n        var requests = new List<Task<bool>>(urls.Count);\n        for (int i = 0; i < urls.Count; i++)\n        {\n            requests.Add(Task.Run(() => FetchAsync(urls[i])));\n        }\n\n        bool[] results = await Task.WhenAll(requests);\n        int warmed = 0;\n        foreach (bool ok in results)\n        {\n            if (ok) warmed++;\n        }\n        return warmed;\n    }\n\n    private async Task<bool> FetchAsync(string url)\n    {\n        using HttpResponseMessage response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);\n        return response.IsSuccessStatusCode;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "ThumbnailWarmer.cs",
+      "line": 18,
+      "mechanism": "closure|captur|loop variable|\\bi\\b.*(shared|modified|final|last|end)|index ?out ?of ?range|ArgumentOutOfRange|out of (range|bounds)|copy.*(local|variable)|local copy"
+    }
+  },
+  {
+    "id": "csharp-ho-for-closure-index-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ThumbnailWarmer.cs",
+        "text": "using System.Collections.Generic;\nusing System.Net.Http;\nusing System.Threading.Tasks;\n\npublic sealed class ThumbnailWarmer\n{\n    private readonly HttpClient _http;\n\n    public ThumbnailWarmer(HttpClient http) => _http = http;\n\n    // Requests every thumbnail concurrently so the CDN caches them and returns how many succeeded.\n    // Callers pass at most 50 URLs; network failures propagate to the caller.\n    public async Task<int> WarmAsync(IReadOnlyList<string> urls)\n    {\n        var requests = new List<Task<bool>>(urls.Count);\n        for (int i = 0; i < urls.Count; i++)\n        {\n            requests.Add(FetchAsync(urls[i]));\n        }\n\n        bool[] results = await Task.WhenAll(requests);\n        int warmed = 0;\n        foreach (bool ok in results)\n        {\n            if (ok) warmed++;\n        }\n        return warmed;\n    }\n\n    private async Task<bool> FetchAsync(string url)\n    {\n        using HttpResponseMessage response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);\n        return response.IsSuccessStatusCode;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-ui-result-deadlock-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "CustomerForm.cs",
+        "text": "using System;\nusing System.Threading.Tasks;\nusing System.Windows.Forms;\n\npublic sealed record Customer(int Id, string Name);\npublic sealed class CustomerApiException(string message) : Exception(message);\n\n// Faults with CustomerApiException when the customer cannot be loaded.\npublic interface ICustomerApi { Task<Customer> GetCustomerAsync(int id); }\n\npublic sealed class CustomerForm : Form\n{\n    private readonly ICustomerApi _api;\n    private readonly TextBox _idBox = new() { Dock = DockStyle.Top };\n    private readonly Button _loadButton = new() { Text = \"Load\", Dock = DockStyle.Top };\n    private readonly Label _nameLabel = new() { Dock = DockStyle.Top };\n\n    public CustomerForm(ICustomerApi api)\n    {\n        _api = api;\n        Controls.AddRange(new Control[] { _nameLabel, _loadButton, _idBox });\n        _loadButton.Click += OnLoadClicked;\n    }\n\n    private void OnLoadClicked(object? sender, EventArgs e)\n    {\n        if (!int.TryParse(_idBox.Text, out int id)) { _nameLabel.Text = \"Invalid id\"; return; }\n\n        _loadButton.Enabled = false;\n        try\n        {\n            Customer customer = _api.GetCustomerAsync(id).Result;\n            _nameLabel.Text = customer.Name;\n        }\n        catch (CustomerApiException ex)\n        {\n            _nameLabel.Text = \"Load failed: \" + ex.Message;\n        }\n        finally\n        {\n            _loadButton.Enabled = true;\n        }\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "CustomerForm.cs",
+      "line": 32,
+      "alsoLines": [
+        35
+      ],
+      "mechanism": "deadlock|\\.Result|sync.over.async|block(s|ing)? (the )?(UI|thread|on)|synchroniz(ation)? ?context|freez|hang|await|AggregateException"
+    }
+  },
+  {
+    "id": "csharp-ho-ui-result-deadlock-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "CustomerForm.cs",
+        "text": "using System;\nusing System.Threading.Tasks;\nusing System.Windows.Forms;\n\npublic sealed record Customer(int Id, string Name);\npublic sealed class CustomerApiException(string message) : Exception(message);\n\n// Faults with CustomerApiException when the customer cannot be loaded.\npublic interface ICustomerApi { Task<Customer> GetCustomerAsync(int id); }\n\npublic sealed class CustomerForm : Form\n{\n    private readonly ICustomerApi _api;\n    private readonly TextBox _idBox = new() { Dock = DockStyle.Top };\n    private readonly Button _loadButton = new() { Text = \"Load\", Dock = DockStyle.Top };\n    private readonly Label _nameLabel = new() { Dock = DockStyle.Top };\n\n    public CustomerForm(ICustomerApi api)\n    {\n        _api = api;\n        Controls.AddRange(new Control[] { _nameLabel, _loadButton, _idBox });\n        _loadButton.Click += OnLoadClicked;\n    }\n\n    private async void OnLoadClicked(object? sender, EventArgs e)\n    {\n        if (!int.TryParse(_idBox.Text, out int id)) { _nameLabel.Text = \"Invalid id\"; return; }\n\n        _loadButton.Enabled = false;\n        try\n        {\n            Customer customer = await _api.GetCustomerAsync(id);\n            _nameLabel.Text = customer.Name;\n        }\n        catch (CustomerApiException ex)\n        {\n            _nameLabel.Text = \"Load failed: \" + ex.Message;\n        }\n        finally\n        {\n            _loadButton.Enabled = true;\n        }\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-deferred-insert-twice-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "InvoiceBatchCreator.cs",
+        "text": "using System.Collections.Generic;\nusing System.Linq;\n\npublic sealed record Timesheet(int CustomerId, decimal BillableHours, decimal HourlyRate);\npublic sealed record Invoice(int CustomerId, decimal Amount);\npublic interface IInvoiceRepository { Invoice Insert(Invoice invoice); }\npublic interface IAuditLog { void Record(string message); }\n\npublic sealed class InvoiceBatchCreator\n{\n    private readonly IInvoiceRepository _repository;\n    private readonly IAuditLog _audit;\n\n    public InvoiceBatchCreator(IInvoiceRepository repository, IAuditLog audit)\n    {\n        _repository = repository;\n        _audit = audit;\n    }\n\n    // Inserts one invoice per billable timesheet and returns the stored invoices.\n    // Inserts are independent: a failure stops the batch and earlier invoices stay stored.\n    public IReadOnlyList<Invoice> CreateInvoices(IEnumerable<Timesheet> timesheets)\n    {\n        IEnumerable<Invoice> created = timesheets\n            .Where(t => t.BillableHours > 0)\n            .Select(t => _repository.Insert(new Invoice(t.CustomerId, t.BillableHours * t.HourlyRate)));\n\n        _audit.Record($\"Created {created.Count()} invoices\");\n        return created.ToList();\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "InvoiceBatchCreator.cs",
+      "line": 28,
+      "alsoLines": [
+        24,
+        26,
+        29
+      ],
+      "mechanism": "deferred|lazy|lazily|multiple enumeration|enumerat\\w* (twice|more than once|multiple|again)|(evaluat|execut|run)\\w* (twice|again|more than once|multiple)|re-?evaluat|re-?execut|twice|duplicate|ToList|materializ"
+    }
+  },
+  {
+    "id": "csharp-ho-deferred-insert-twice-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "InvoiceBatchCreator.cs",
+        "text": "using System.Collections.Generic;\nusing System.Linq;\n\npublic sealed record Timesheet(int CustomerId, decimal BillableHours, decimal HourlyRate);\npublic sealed record Invoice(int CustomerId, decimal Amount);\npublic interface IInvoiceRepository { Invoice Insert(Invoice invoice); }\npublic interface IAuditLog { void Record(string message); }\n\npublic sealed class InvoiceBatchCreator\n{\n    private readonly IInvoiceRepository _repository;\n    private readonly IAuditLog _audit;\n\n    public InvoiceBatchCreator(IInvoiceRepository repository, IAuditLog audit)\n    {\n        _repository = repository;\n        _audit = audit;\n    }\n\n    // Inserts one invoice per billable timesheet and returns the stored invoices.\n    // Inserts are independent: a failure stops the batch and earlier invoices stay stored.\n    public IReadOnlyList<Invoice> CreateInvoices(IEnumerable<Timesheet> timesheets)\n    {\n        List<Invoice> created = timesheets\n            .Where(t => t.BillableHours > 0)\n            .Select(t => _repository.Insert(new Invoice(t.CustomerId, t.BillableHours * t.HourlyRate)))\n            .ToList();\n\n        _audit.Record($\"Created {created.Count} invoices\");\n        return created;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-culture-toupper-key-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "FeatureFlagParser.cs",
+        "text": "using System;\nusing System.Collections.Generic;\n\npublic static class FeatureFlagParser\n{\n    // Parses \"NAME=on|off\" lines. Names are ASCII identifiers, matched case-insensitively:\n    // they are normalized to upper case and callers look flags up as e.g. \"DARK_MODE\".\n    // Blank lines and '#' comments are skipped; a later line overrides an earlier one.\n    public static Dictionary<string, bool> Parse(IEnumerable<string> lines)\n    {\n        var flags = new Dictionary<string, bool>(StringComparer.Ordinal);\n        foreach (string raw in lines)\n        {\n            string line = raw.Trim();\n            if (line.Length == 0 || line.StartsWith('#')) continue;\n\n            int eq = line.IndexOf('=');\n            if (eq <= 0) throw new FormatException($\"Invalid flag line: {line}\");\n\n            string name = line.Substring(0, eq).Trim().ToUpper();\n            string value = line.Substring(eq + 1).Trim();\n            flags[name] = value.Equals(\"on\", StringComparison.OrdinalIgnoreCase) ? true\n                : value.Equals(\"off\", StringComparison.OrdinalIgnoreCase) ? false\n                : throw new FormatException($\"Invalid value for {name}: {value}\");\n        }\n        return flags;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "FeatureFlagParser.cs",
+      "line": 20,
+      "mechanism": "cultur|locale|Turk|ToUpperInvariant|invariant|CurrentCulture|\\u0130|dotted|i18n|internationali"
+    }
+  },
+  {
+    "id": "csharp-ho-culture-toupper-key-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "FeatureFlagParser.cs",
+        "text": "using System;\nusing System.Collections.Generic;\n\npublic static class FeatureFlagParser\n{\n    // Parses \"NAME=on|off\" lines. Names are ASCII identifiers, matched case-insensitively:\n    // they are normalized to upper case and callers look flags up as e.g. \"DARK_MODE\".\n    // Blank lines and '#' comments are skipped; a later line overrides an earlier one.\n    public static Dictionary<string, bool> Parse(IEnumerable<string> lines)\n    {\n        var flags = new Dictionary<string, bool>(StringComparer.Ordinal);\n        foreach (string raw in lines)\n        {\n            string line = raw.Trim();\n            if (line.Length == 0 || line.StartsWith('#')) continue;\n\n            int eq = line.IndexOf('=');\n            if (eq <= 0) throw new FormatException($\"Invalid flag line: {line}\");\n\n            string name = line.Substring(0, eq).Trim().ToUpperInvariant();\n            string value = line.Substring(eq + 1).Trim();\n            flags[name] = value.Equals(\"on\", StringComparison.OrdinalIgnoreCase) ? true\n                : value.Equals(\"off\", StringComparison.OrdinalIgnoreCase) ? false\n                : throw new FormatException($\"Invalid value for {name}: {value}\");\n        }\n        return flags;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-local-vs-utc-expiry-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "SubscriptionGate.cs",
+        "text": "using System;\n\npublic sealed record Subscription(string CustomerId, DateTime StartsAtUtc, DateTime EndsAtUtc, bool Cancelled);\n\npublic enum AccessLevel { None, ReadOnly, Full }\n\npublic sealed class SubscriptionGate\n{\n    private static readonly TimeSpan GracePeriod = TimeSpan.FromDays(3);\n\n    // Subscription timestamps come from the billing database in UTC.\n    // Paid period: full access. Grace period after it ends: read-only. Cancelled: no access.\n    public AccessLevel Evaluate(Subscription subscription)\n    {\n        if (subscription.Cancelled) return AccessLevel.None;\n\n        DateTime now = DateTime.Now;\n        if (now < subscription.StartsAtUtc) return AccessLevel.None;\n        if (now <= subscription.EndsAtUtc) return AccessLevel.Full;\n        if (now <= subscription.EndsAtUtc + GracePeriod) return AccessLevel.ReadOnly;\n        return AccessLevel.None;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "SubscriptionGate.cs",
+      "line": 17,
+      "alsoLines": [
+        18,
+        19,
+        20
+      ],
+      "mechanism": "UtcNow|DateTime\\.Now|local (time|clock)|time ?zone|UTC|offset|DateTimeKind"
+    }
+  },
+  {
+    "id": "csharp-ho-local-vs-utc-expiry-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "SubscriptionGate.cs",
+        "text": "using System;\n\npublic sealed record Subscription(string CustomerId, DateTime StartsAtUtc, DateTime EndsAtUtc, bool Cancelled);\n\npublic enum AccessLevel { None, ReadOnly, Full }\n\npublic sealed class SubscriptionGate\n{\n    private static readonly TimeSpan GracePeriod = TimeSpan.FromDays(3);\n\n    // Subscription timestamps come from the billing database in UTC.\n    // Paid period: full access. Grace period after it ends: read-only. Cancelled: no access.\n    public AccessLevel Evaluate(Subscription subscription)\n    {\n        if (subscription.Cancelled) return AccessLevel.None;\n\n        DateTime now = DateTime.UtcNow;\n        if (now < subscription.StartsAtUtc) return AccessLevel.None;\n        if (now <= subscription.EndsAtUtc) return AccessLevel.Full;\n        if (now <= subscription.EndsAtUtc + GracePeriod) return AccessLevel.ReadOnly;\n        return AccessLevel.None;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-event-subscription-leak-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ChartViewModel.cs",
+        "text": "using System;\nusing System.Collections.Generic;\n\npublic sealed class PriceChangedEventArgs : EventArgs\n{\n    public PriceChangedEventArgs(string symbol, decimal price) { Symbol = symbol; Price = price; }\n    public string Symbol { get; }\n    public decimal Price { get; }\n}\n\n// Application-wide singleton; raises PriceChanged on the UI thread.\npublic sealed class PriceTicker\n{\n    public event EventHandler<PriceChangedEventArgs>? PriceChanged;\n    public void Publish(string symbol, decimal price) => PriceChanged?.Invoke(this, new PriceChangedEventArgs(symbol, price));\n}\n\n// One instance per open chart window; disposed when the window closes.\npublic sealed class ChartViewModel : IDisposable\n{\n    private readonly PriceTicker _ticker;\n    private readonly string _symbol;\n    private readonly List<decimal> _history = new();\n\n    public ChartViewModel(PriceTicker ticker, string symbol)\n    {\n        _ticker = ticker;\n        _symbol = symbol;\n        _ticker.PriceChanged += OnPriceChanged;\n    }\n\n    public IReadOnlyList<decimal> History => _history;\n\n    private void OnPriceChanged(object? sender, PriceChangedEventArgs e)\n    {\n        if (e.Symbol == _symbol) _history.Add(e.Price);\n    }\n\n    public void Dispose()\n    {\n        _history.Clear();\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "ChartViewModel.cs",
+      "line": 29,
+      "alsoLines": [
+        39,
+        41
+      ],
+      "mechanism": "leak|unsubscrib|-=|detach|never (removed|released|collected)|keeps? .*alive|garbage.collect|still (receiv|subscrib|referenc)|event handler"
+    }
+  },
+  {
+    "id": "csharp-ho-event-subscription-leak-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ChartViewModel.cs",
+        "text": "using System;\nusing System.Collections.Generic;\n\npublic sealed class PriceChangedEventArgs : EventArgs\n{\n    public PriceChangedEventArgs(string symbol, decimal price) { Symbol = symbol; Price = price; }\n    public string Symbol { get; }\n    public decimal Price { get; }\n}\n\n// Application-wide singleton; raises PriceChanged on the UI thread.\npublic sealed class PriceTicker\n{\n    public event EventHandler<PriceChangedEventArgs>? PriceChanged;\n    public void Publish(string symbol, decimal price) => PriceChanged?.Invoke(this, new PriceChangedEventArgs(symbol, price));\n}\n\n// One instance per open chart window; disposed when the window closes.\npublic sealed class ChartViewModel : IDisposable\n{\n    private readonly PriceTicker _ticker;\n    private readonly string _symbol;\n    private readonly List<decimal> _history = new();\n\n    public ChartViewModel(PriceTicker ticker, string symbol)\n    {\n        _ticker = ticker;\n        _symbol = symbol;\n        _ticker.PriceChanged += OnPriceChanged;\n    }\n\n    public IReadOnlyList<decimal> History => _history;\n\n    private void OnPriceChanged(object? sender, PriceChangedEventArgs e)\n    {\n        if (e.Symbol == _symbol) _history.Add(e.Price);\n    }\n\n    public void Dispose()\n    {\n        _ticker.PriceChanged -= OnPriceChanged;\n        _history.Clear();\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-report-path-traversal-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ReportDownloadController.cs",
+        "text": "using System.IO;\nusing Microsoft.AspNetCore.Authorization;\nusing Microsoft.AspNetCore.Mvc;\n\npublic sealed class ReportOptions\n{\n    public string Directory { get; set; } = \"\";\n}\n\n// Serves generated PDF reports, which are stored flat (no subfolders) in the configured report directory.\n[ApiController]\n[Authorize]\n[Route(\"api/reports\")]\npublic sealed class ReportDownloadController : ControllerBase\n{\n    private readonly string _reportRoot;\n\n    public ReportDownloadController(ReportOptions options) =>\n        _reportRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.Directory));\n\n    [HttpGet(\"download\")]\n    public IActionResult Download([FromQuery] string name)\n    {\n        string path = Path.Combine(_reportRoot, name);\n        if (!System.IO.File.Exists(path)) return NotFound();\n        return PhysicalFile(path, \"application/pdf\", Path.GetFileName(path));\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "ReportDownloadController.cs",
+      "line": 24,
+      "alsoLines": [
+        26
+      ],
+      "mechanism": "path traversal|directory traversal|traversal|\\.\\./|\\.\\.|outside (the )?(report|root|base|director)|escape|arbitrary file|absolute path|rooted|GetFullPath|canonical|sanitiz|validat"
+    }
+  },
+  {
+    "id": "csharp-ho-report-path-traversal-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ReportDownloadController.cs",
+        "text": "using System.IO;\nusing Microsoft.AspNetCore.Authorization;\nusing Microsoft.AspNetCore.Mvc;\n\npublic sealed class ReportOptions\n{\n    public string Directory { get; set; } = \"\";\n}\n\n// Serves generated PDF reports, which are stored flat (no subfolders) in the configured report directory.\n[ApiController]\n[Authorize]\n[Route(\"api/reports\")]\npublic sealed class ReportDownloadController : ControllerBase\n{\n    private readonly string _reportRoot;\n\n    public ReportDownloadController(ReportOptions options) =>\n        _reportRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.Directory));\n\n    [HttpGet(\"download\")]\n    public IActionResult Download([FromQuery] string name)\n    {\n        string path = Path.Combine(_reportRoot, Path.GetFileName(name));\n        if (!System.IO.File.Exists(path)) return NotFound();\n        return PhysicalFile(path, \"application/pdf\", Path.GetFileName(path));\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-ho-page-skip-off-by-one-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "Paginator.cs",
+        "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\npublic sealed record Page<T>(IReadOnlyList<T> Items, int PageNumber, int TotalPages);\n\npublic static class Paginator\n{\n    public const int MaxPageSize = 500;\n\n    // pageNumber is 1-based: page 1 holds the first pageSize items.\n    // Pages past the end are returned empty.\n    public static Page<T> GetPage<T>(IReadOnlyList<T> source, int pageNumber, int pageSize)\n    {\n        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));\n        if (pageSize < 1 || pageSize > MaxPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));\n\n        int totalPages = (source.Count + pageSize - 1) / pageSize;\n        if (pageNumber > totalPages) return new Page<T>(Array.Empty<T>(), pageNumber, totalPages);\n\n        List<T> items = source.Skip(pageNumber * pageSize).Take(pageSize).ToList();\n        return new Page<T>(items, pageNumber, totalPages);\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "Paginator.cs",
+      "line": 21,
+      "mechanism": "off.by.one|pageNumber ?- ?1|page - 1|1-based|one-based|zero-based|0-based|skip(s|ping)? (the )?first|first page|wrong page|next page|extra page|last page"
+    }
+  },
+  {
+    "id": "csharp-ho-page-skip-off-by-one-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "Paginator.cs",
+        "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\npublic sealed record Page<T>(IReadOnlyList<T> Items, int PageNumber, int TotalPages);\n\npublic static class Paginator\n{\n    public const int MaxPageSize = 500;\n\n    // pageNumber is 1-based: page 1 holds the first pageSize items.\n    // Pages past the end are returned empty.\n    public static Page<T> GetPage<T>(IReadOnlyList<T> source, int pageNumber, int pageSize)\n    {\n        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));\n        if (pageSize < 1 || pageSize > MaxPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));\n\n        int totalPages = (source.Count + pageSize - 1) / pageSize;\n        if (pageNumber > totalPages) return new Page<T>(Array.Empty<T>(), pageNumber, totalPages);\n\n        List<T> items = source.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();\n        return new Page<T>(items, pageNumber, totalPages);\n    }\n}"
+      }
+    ]
+  }
+]

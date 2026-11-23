@@ -1,0 +1,217 @@
+[
+  {
+    "id": "java-ho-partial-last-page-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "InvoicePager.java",
+        "text": "import java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\nfinal class InvoicePager {\n    private final int pageSize;\n\n    InvoicePager(int pageSize) {\n        if (pageSize <= 0) {\n            throw new IllegalArgumentException(\"pageSize must be positive\");\n        }\n        this.pageSize = pageSize;\n    }\n\n    // Returns a copy of the zero-based page of invoice ids. The last page may hold fewer\n    // than pageSize ids, and any page past the end is empty.\n    List<String> page(List<String> invoiceIds, int pageIndex) {\n        Objects.requireNonNull(invoiceIds, \"invoiceIds\");\n        if (pageIndex < 0) {\n            throw new IllegalArgumentException(\"pageIndex must not be negative\");\n        }\n        long from = (long) pageIndex * pageSize;\n        if (from >= invoiceIds.size()) {\n            return new ArrayList<>();\n        }\n        int start = (int) from;\n        return new ArrayList<>(invoiceIds.subList(start, start + pageSize));\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "InvoicePager.java",
+      "line": 27,
+      "mechanism": "bound|index|out.of.range|IndexOutOfBounds|last page|partial|size|exceed|off.by.one|Math\\.min|clamp|past the end"
+    }
+  },
+  {
+    "id": "java-ho-partial-last-page-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "InvoicePager.java",
+        "text": "import java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\nfinal class InvoicePager {\n    private final int pageSize;\n\n    InvoicePager(int pageSize) {\n        if (pageSize <= 0) {\n            throw new IllegalArgumentException(\"pageSize must be positive\");\n        }\n        this.pageSize = pageSize;\n    }\n\n    // Returns a copy of the zero-based page of invoice ids. The last page may hold fewer\n    // than pageSize ids, and any page past the end is empty.\n    List<String> page(List<String> invoiceIds, int pageIndex) {\n        Objects.requireNonNull(invoiceIds, \"invoiceIds\");\n        if (pageIndex < 0) {\n            throw new IllegalArgumentException(\"pageIndex must not be negative\");\n        }\n        long from = (long) pageIndex * pageSize;\n        if (from >= invoiceIds.size()) {\n            return new ArrayList<>();\n        }\n        int start = (int) from;\n        int end = start + Math.min(pageSize, invoiceIds.size() - start);\n        return new ArrayList<>(invoiceIds.subList(start, end));\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-boxed-version-compare-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "DocumentVersions.java",
+        "text": "import java.util.HashMap;\nimport java.util.Map;\nimport java.util.Objects;\n\nfinal class DocumentVersions {\n    private final Map<String, Integer> versions = new HashMap<>();\n\n    synchronized void create(String docId) {\n        Objects.requireNonNull(docId, \"docId\");\n        versions.putIfAbsent(docId, 1);\n    }\n\n    // Returns the latest version of the document, or null if the document is unknown.\n    synchronized Integer current(String docId) {\n        return versions.get(docId);\n    }\n\n    // Optimistic locking: an edit is accepted only if the client saw the latest version.\n    // expectedVersion comes from the request body and is null when the client omitted it.\n    synchronized boolean tryAdvance(String docId, Integer expectedVersion) {\n        Integer current = versions.get(docId);\n        if (current == null || expectedVersion == null) {\n            return false;\n        }\n        if (current != expectedVersion) {\n            return false;\n        }\n        versions.put(docId, current + 1);\n        return true;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "DocumentVersions.java",
+      "line": 25,
+      "mechanism": "==|!=|equals|reference|identity|box|Integer cache|unbox|127|object comparison"
+    }
+  },
+  {
+    "id": "java-ho-boxed-version-compare-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "DocumentVersions.java",
+        "text": "import java.util.HashMap;\nimport java.util.Map;\nimport java.util.Objects;\n\nfinal class DocumentVersions {\n    private final Map<String, Integer> versions = new HashMap<>();\n\n    synchronized void create(String docId) {\n        Objects.requireNonNull(docId, \"docId\");\n        versions.putIfAbsent(docId, 1);\n    }\n\n    // Returns the latest version of the document, or null if the document is unknown.\n    synchronized Integer current(String docId) {\n        return versions.get(docId);\n    }\n\n    // Optimistic locking: an edit is accepted only if the client saw the latest version.\n    // expectedVersion comes from the request body and is null when the client omitted it.\n    synchronized boolean tryAdvance(String docId, Integer expectedVersion) {\n        Integer current = versions.get(docId);\n        if (current == null || expectedVersion == null) {\n            return false;\n        }\n        if (!current.equals(expectedVersion)) {\n            return false;\n        }\n        versions.put(docId, current + 1);\n        return true;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-connection-leak-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "CustomerRepository.java",
+        "text": "import java.sql.Connection;\nimport java.sql.PreparedStatement;\nimport java.sql.ResultSet;\nimport java.sql.SQLException;\nimport java.util.Optional;\nimport javax.sql.DataSource;\n\nfinal class CustomerRepository {\n    private final DataSource dataSource;\n\n    CustomerRepository(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    // Called on every request; connections come from a bounded pool.\n    Optional<String> findEmail(long customerId) throws SQLException {\n        Connection connection = dataSource.getConnection();\n        try (PreparedStatement statement = connection.prepareStatement(\n                \"SELECT email FROM customers WHERE id = ?\")) {\n            statement.setLong(1, customerId);\n            try (ResultSet rs = statement.executeQuery()) {\n                return rs.next() ? Optional.ofNullable(rs.getString(\"email\")) : Optional.empty();\n            }\n        }\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "CustomerRepository.java",
+      "line": 17,
+      "alsoLines": [
+        18
+      ],
+      "mechanism": "leak|close|try.with.resources|pool|exhaust|release|never returned|not returned"
+    }
+  },
+  {
+    "id": "java-ho-connection-leak-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "CustomerRepository.java",
+        "text": "import java.sql.Connection;\nimport java.sql.PreparedStatement;\nimport java.sql.ResultSet;\nimport java.sql.SQLException;\nimport java.util.Optional;\nimport javax.sql.DataSource;\n\nfinal class CustomerRepository {\n    private final DataSource dataSource;\n\n    CustomerRepository(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    // Called on every request; connections come from a bounded pool.\n    Optional<String> findEmail(long customerId) throws SQLException {\n        try (Connection connection = dataSource.getConnection();\n             PreparedStatement statement = connection.prepareStatement(\n                \"SELECT email FROM customers WHERE id = ?\")) {\n            statement.setLong(1, customerId);\n            try (ResultSet rs = statement.executeQuery()) {\n                return rs.next() ? Optional.ofNullable(rs.getString(\"email\")) : Optional.empty();\n            }\n        }\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-lost-failure-count-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "LoginAttemptTracker.java",
+        "text": "import java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.ConcurrentMap;\n\nfinal class LoginAttemptTracker {\n    private static final int MAX_FAILURES = 5;\n    private final ConcurrentMap<String, Integer> failures = new ConcurrentHashMap<>();\n\n    // Invoked concurrently by request threads; every failed login must be counted.\n    void recordFailure(String username) {\n        int count = failures.getOrDefault(username, 0);\n        failures.put(username, count + 1);\n    }\n\n    boolean isLocked(String username) {\n        return failures.getOrDefault(username, 0) >= MAX_FAILURES;\n    }\n\n    void recordSuccess(String username) {\n        failures.remove(username);\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "LoginAttemptTracker.java",
+      "line": 11,
+      "alsoLines": [
+        10
+      ],
+      "mechanism": "race|atomic|concurren|thread|lost update|check.then.act|read.modify.write|merge|compute|synchroniz|interleav"
+    }
+  },
+  {
+    "id": "java-ho-lost-failure-count-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "LoginAttemptTracker.java",
+        "text": "import java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.ConcurrentMap;\n\nfinal class LoginAttemptTracker {\n    private static final int MAX_FAILURES = 5;\n    private final ConcurrentMap<String, Integer> failures = new ConcurrentHashMap<>();\n\n    // Invoked concurrently by request threads; every failed login must be counted.\n    void recordFailure(String username) {\n        failures.merge(username, 1, Integer::sum);\n    }\n\n    boolean isLocked(String username) {\n        return failures.getOrDefault(username, 0) >= MAX_FAILURES;\n    }\n\n    void recordSuccess(String username) {\n        failures.remove(username);\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-bigdecimal-zero-scale-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "RefundPolicy.java",
+        "text": "import java.math.BigDecimal;\nimport java.util.List;\nimport java.util.Objects;\n\nfinal class RefundPolicy {\n    private RefundPolicy() {\n    }\n\n    // Only orders that were actually charged get a refund; zero-total (free) orders are skipped.\n    // Charged amounts are loaded from a NUMERIC(12,2) column, so they always carry two decimal places.\n    static boolean requiresRefund(BigDecimal chargedAmount) {\n        return chargedAmount != null && !chargedAmount.equals(BigDecimal.ZERO);\n    }\n\n    static List<CancelledOrder> refundable(List<CancelledOrder> cancelled) {\n        Objects.requireNonNull(cancelled, \"cancelled\");\n        return cancelled.stream()\n                .filter(order -> requiresRefund(order.charged()))\n                .toList();\n    }\n}\n\nrecord CancelledOrder(String id, BigDecimal charged) {}"
+      }
+    ],
+    "expected": {
+      "path": "RefundPolicy.java",
+      "line": 12,
+      "mechanism": "equals|scale|compareTo|signum|0\\.00|precision|decimal places"
+    }
+  },
+  {
+    "id": "java-ho-bigdecimal-zero-scale-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "RefundPolicy.java",
+        "text": "import java.math.BigDecimal;\nimport java.util.List;\nimport java.util.Objects;\n\nfinal class RefundPolicy {\n    private RefundPolicy() {\n    }\n\n    // Only orders that were actually charged get a refund; zero-total (free) orders are skipped.\n    // Charged amounts are loaded from a NUMERIC(12,2) column, so they always carry two decimal places.\n    static boolean requiresRefund(BigDecimal chargedAmount) {\n        return chargedAmount != null && chargedAmount.signum() != 0;\n    }\n\n    static List<CancelledOrder> refundable(List<CancelledOrder> cancelled) {\n        Objects.requireNonNull(cancelled, \"cancelled\");\n        return cancelled.stream()\n                .filter(order -> requiresRefund(order.charged()))\n                .toList();\n    }\n}\n\nrecord CancelledOrder(String id, BigDecimal charged) {}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-swallowed-config-error-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "GatewayConfigLoader.java",
+        "text": "import java.io.IOException;\nimport java.io.InputStream;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.util.Properties;\n\nfinal class GatewayConfigLoader {\n    private GatewayConfigLoader() {\n    }\n\n    // Startup must abort if the payment gateway configuration cannot be read; running\n    // with missing settings would send payments to the wrong endpoint.\n    static Properties load(Path file) {\n        Properties props = new Properties();\n        try (InputStream in = Files.newInputStream(file)) {\n            props.load(in);\n        } catch (IOException e) {\n            return new Properties();\n        }\n        return props;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "GatewayConfigLoader.java",
+      "line": 18,
+      "alsoLines": [
+        17
+      ],
+      "mechanism": "swallow|ignor|silent|suppress|hid|mask|empty|rethrow|propagat|abort|fail|discard"
+    }
+  },
+  {
+    "id": "java-ho-swallowed-config-error-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "GatewayConfigLoader.java",
+        "text": "import java.io.IOException;\nimport java.io.InputStream;\nimport java.io.UncheckedIOException;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.util.Properties;\n\nfinal class GatewayConfigLoader {\n    private GatewayConfigLoader() {\n    }\n\n    // Startup must abort if the payment gateway configuration cannot be read; running\n    // with missing settings would send payments to the wrong endpoint.\n    static Properties load(Path file) {\n        Properties props = new Properties();\n        try (InputStream in = Files.newInputStream(file)) {\n            props.load(in);\n        } catch (IOException e) {\n            throw new UncheckedIOException(\"Cannot read gateway config \" + file, e);\n        }\n        return props;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-report-path-traversal-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ReportDownloads.java",
+        "text": "import java.io.IOException;\nimport java.nio.file.Files;\nimport java.nio.file.NoSuchFileException;\nimport java.nio.file.Path;\n\nfinal class ReportDownloads {\n    private final Path reportsRoot;\n\n    ReportDownloads(Path reportsRoot) {\n        this.reportsRoot = reportsRoot.toAbsolutePath().normalize();\n    }\n\n    // fileName comes straight from the download URL; only files under reportsRoot may be served.\n    byte[] read(String fileName) throws IOException {\n        Path file = reportsRoot.resolve(fileName);\n        if (!Files.isRegularFile(file)) {\n            throw new NoSuchFileException(fileName);\n        }\n        return Files.readAllBytes(file);\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "ReportDownloads.java",
+      "line": 15,
+      "alsoLines": [
+        19
+      ],
+      "mechanism": "travers|\\.\\.|director|escape|outside|normaliz|canonical|startsWith|arbitrary file|path injection"
+    }
+  },
+  {
+    "id": "java-ho-report-path-traversal-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ReportDownloads.java",
+        "text": "import java.io.IOException;\nimport java.nio.file.LinkOption;\nimport java.nio.file.Files;\nimport java.nio.file.NoSuchFileException;\nimport java.nio.file.Path;\n\nfinal class ReportDownloads {\n    private final Path reportsRoot;\n\n    ReportDownloads(Path reportsRoot) {\n        this.reportsRoot = reportsRoot.toAbsolutePath().normalize();\n    }\n\n    // fileName comes straight from the download URL; only files under reportsRoot may be served.\n    byte[] read(String fileName) throws IOException {\n        Path file = reportsRoot.resolve(fileName).normalize();\n        if (!file.startsWith(reportsRoot) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {\n            throw new NoSuchFileException(fileName);\n        }\n        return Files.readAllBytes(file);\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-ho-week-year-pattern-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "StatementNaming.java",
+        "text": "import java.time.LocalDate;\nimport java.time.YearMonth;\nimport java.time.format.DateTimeFormatter;\nimport java.util.Objects;\n\nfinal class StatementNaming {\n    // Statement files are named after the calendar date they cover, e.g. statement-2026-12-31.pdf,\n    // and archived in a folder for that calendar month, e.g. 2026-12/statement-2026-12-31.pdf.\n    private static final DateTimeFormatter FILE_DATE = DateTimeFormatter.ofPattern(\"YYYY-MM-dd\");\n    private static final DateTimeFormatter FOLDER_MONTH = DateTimeFormatter.ofPattern(\"uuuu-MM\");\n\n    private StatementNaming() {\n    }\n\n    static String fileName(LocalDate statementDate) {\n        Objects.requireNonNull(statementDate, \"statementDate\");\n        return \"statement-\" + FILE_DATE.format(statementDate) + \".pdf\";\n    }\n\n    static String archivePath(LocalDate statementDate) {\n        Objects.requireNonNull(statementDate, \"statementDate\");\n        return FOLDER_MONTH.format(YearMonth.from(statementDate)) + \"/\" + fileName(statementDate);\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "StatementNaming.java",
+      "line": 9,
+      "alsoLines": [
+        17
+      ],
+      "mechanism": "YYYY|week.based|week.year|week-of-year|yyyy|uuuu|calendar year|wrong year|year boundary|December|January"
+    }
+  },
+  {
+    "id": "java-ho-week-year-pattern-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "StatementNaming.java",
+        "text": "import java.time.LocalDate;\nimport java.time.YearMonth;\nimport java.time.format.DateTimeFormatter;\nimport java.util.Objects;\n\nfinal class StatementNaming {\n    // Statement files are named after the calendar date they cover, e.g. statement-2026-12-31.pdf,\n    // and archived in a folder for that calendar month, e.g. 2026-12/statement-2026-12-31.pdf.\n    private static final DateTimeFormatter FILE_DATE = DateTimeFormatter.ofPattern(\"uuuu-MM-dd\");\n    private static final DateTimeFormatter FOLDER_MONTH = DateTimeFormatter.ofPattern(\"uuuu-MM\");\n\n    private StatementNaming() {\n    }\n\n    static String fileName(LocalDate statementDate) {\n        Objects.requireNonNull(statementDate, \"statementDate\");\n        return \"statement-\" + FILE_DATE.format(statementDate) + \".pdf\";\n    }\n\n    static String archivePath(LocalDate statementDate) {\n        Objects.requireNonNull(statementDate, \"statementDate\");\n        return FOLDER_MONTH.format(YearMonth.from(statementDate)) + \"/\" + fileName(statementDate);\n    }\n}"
+      }
+    ]
+  }
+]

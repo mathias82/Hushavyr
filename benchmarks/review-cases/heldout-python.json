@@ -1,0 +1,216 @@
+[
+  {
+    "id": "python-ho-batch-boundary-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "batching.py",
+        "text": "from typing import Iterator, Sequence, TypeVar\n\nT = TypeVar(\"T\")\n\n\ndef batched(records: Sequence[T], batch_size: int) -> Iterator[Sequence[T]]:\n    \"\"\"Yield consecutive batches of at most ``batch_size`` records.\n\n    Every record appears in exactly one batch, in the original order; the last\n    batch may be shorter than ``batch_size``.\n    \"\"\"\n    if batch_size <= 0:\n        raise ValueError(\"batch_size must be positive\")\n    for start in range(0, len(records) - batch_size, batch_size):\n        yield records[start:start + batch_size]\n\n\ndef upload_all(client, records: Sequence[dict], batch_size: int = 100) -> int:\n    sent = 0\n    for batch in batched(records, batch_size):\n        client.post(\"/bulk\", json=list(batch))\n        sent += len(batch)\n    return sent\n"
+      }
+    ],
+    "expected": {
+      "path": "batching.py",
+      "line": 14,
+      "mechanism": "off.by.one|last|final|trailing|remainder|partial|drop|skip|miss|lost|range|boundary|bound|fewer|empty"
+    }
+  },
+  {
+    "id": "python-ho-batch-boundary-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "batching.py",
+        "text": "from typing import Iterator, Sequence, TypeVar\n\nT = TypeVar(\"T\")\n\n\ndef batched(records: Sequence[T], batch_size: int) -> Iterator[Sequence[T]]:\n    \"\"\"Yield consecutive batches of at most ``batch_size`` records.\n\n    Every record appears in exactly one batch, in the original order; the last\n    batch may be shorter than ``batch_size``.\n    \"\"\"\n    if batch_size <= 0:\n        raise ValueError(\"batch_size must be positive\")\n    for start in range(0, len(records), batch_size):\n        yield records[start:start + batch_size]\n\n\ndef upload_all(client, records: Sequence[dict], batch_size: int = 100) -> int:\n    sent = 0\n    for batch in batched(records, batch_size):\n        client.post(\"/bulk\", json=list(batch))\n        sent += len(batch)\n    return sent\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-coupon-none-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "pricing.py",
+        "text": "from __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom decimal import ROUND_HALF_UP, Decimal\n\n\n@dataclass(frozen=True)\nclass Coupon:\n    code: str\n    percent_off: Decimal\n    active: bool\n\n\nclass PricingService:\n    def __init__(self, coupons: dict[str, Coupon]):\n        self._coupons = coupons\n\n    def final_price(self, subtotal: Decimal, coupon_code: str | None) -> Decimal:\n        \"\"\"Apply the coupon if it exists and is active; unknown or inactive codes are ignored.\"\"\"\n        if not coupon_code:\n            return subtotal\n        coupon = self._coupons.get(coupon_code.strip().upper())\n        if not coupon.active:\n            return subtotal\n        discount = subtotal * coupon.percent_off / Decimal(100)\n        return (subtotal - discount).quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n"
+      }
+    ],
+    "expected": {
+      "path": "pricing.py",
+      "line": 23,
+      "mechanism": "none|null|nonetype|attributeerror|unknown|missing|not found|nonexist|\\.get|lookup"
+    }
+  },
+  {
+    "id": "python-ho-coupon-none-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "pricing.py",
+        "text": "from __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom decimal import ROUND_HALF_UP, Decimal\n\n\n@dataclass(frozen=True)\nclass Coupon:\n    code: str\n    percent_off: Decimal\n    active: bool\n\n\nclass PricingService:\n    def __init__(self, coupons: dict[str, Coupon]):\n        self._coupons = coupons\n\n    def final_price(self, subtotal: Decimal, coupon_code: str | None) -> Decimal:\n        \"\"\"Apply the coupon if it exists and is active; unknown or inactive codes are ignored.\"\"\"\n        if not coupon_code:\n            return subtotal\n        coupon = self._coupons.get(coupon_code.strip().upper())\n        if coupon is None or not coupon.active:\n            return subtotal\n        discount = subtotal * coupon.percent_off / Decimal(100)\n        return (subtotal - discount).quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-segment-file-leak-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "segments.py",
+        "text": "import os\nfrom typing import Iterable\n\nSEGMENT_MAGIC = b\"HSEG1\\n\"\n\n\nclass CorruptSegmentError(Exception):\n    pass\n\n\ndef read_segment_ids(paths: Iterable[str]) -> list[int]:\n    \"\"\"Return the numeric id stored on the second line of each segment file.\n\n    Raises CorruptSegmentError if a file does not start with SEGMENT_MAGIC, or\n    ValueError if its id line is not an integer.\n    \"\"\"\n    ids = []\n    for path in paths:\n        handle = open(path, \"rb\")\n        if handle.readline() != SEGMENT_MAGIC:\n            raise CorruptSegmentError(f\"{os.path.basename(path)}: bad header\")\n        ids.append(int(handle.readline().strip()))\n        handle.close()\n    return ids\n"
+      }
+    ],
+    "expected": {
+      "path": "segments.py",
+      "line": 19,
+      "alsoLines": [
+        21,
+        23
+      ],
+      "mechanism": "leak|clos|context manager|with |resource|file handle|handle|descriptor|open"
+    }
+  },
+  {
+    "id": "python-ho-segment-file-leak-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "segments.py",
+        "text": "import os\nfrom typing import Iterable\n\nSEGMENT_MAGIC = b\"HSEG1\\n\"\n\n\nclass CorruptSegmentError(Exception):\n    pass\n\n\ndef read_segment_ids(paths: Iterable[str]) -> list[int]:\n    \"\"\"Return the numeric id stored on the second line of each segment file.\n\n    Raises CorruptSegmentError if a file does not start with SEGMENT_MAGIC, or\n    ValueError if its id line is not an integer.\n    \"\"\"\n    ids = []\n    for path in paths:\n        with open(path, \"rb\") as handle:\n            if handle.readline() != SEGMENT_MAGIC:\n                raise CorruptSegmentError(f\"{os.path.basename(path)}: bad header\")\n            ids.append(int(handle.readline().strip()))\n    return ids\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-rate-window-class-attr-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "rate_window.py",
+        "text": "import time\nfrom collections import deque\nfrom typing import Callable\n\n\nclass RateWindow:\n    \"\"\"Sliding-window limiter; each instance tracks the requests of one client.\"\"\"\n\n    window_seconds = 60.0\n    timestamps: deque = deque()\n\n    def __init__(self, limit: int, clock: Callable[[], float] = time.monotonic):\n        self.limit = limit\n        self._clock = clock\n\n    def allow(self) -> bool:\n        now = self._clock()\n        while self.timestamps and self.timestamps[0] <= now - self.window_seconds:\n            self.timestamps.popleft()\n        if len(self.timestamps) >= self.limit:\n            return False\n        self.timestamps.append(now)\n        return True\n"
+      }
+    ],
+    "expected": {
+      "path": "rate_window.py",
+      "line": 10,
+      "mechanism": "class.?(level|attribute|variable|attr)|shared|all instances|across instances|every instance|between instances|instance|mutable"
+    }
+  },
+  {
+    "id": "python-ho-rate-window-class-attr-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "rate_window.py",
+        "text": "import time\nfrom collections import deque\nfrom typing import Callable\n\n\nclass RateWindow:\n    \"\"\"Sliding-window limiter; each instance tracks the requests of one client.\"\"\"\n\n    window_seconds = 60.0\n\n    def __init__(self, limit: int, clock: Callable[[], float] = time.monotonic):\n        self.limit = limit\n        self._clock = clock\n        self.timestamps: deque[float] = deque()\n\n    def allow(self) -> bool:\n        now = self._clock()\n        while self.timestamps and self.timestamps[0] <= now - self.window_seconds:\n            self.timestamps.popleft()\n        if len(self.timestamps) >= self.limit:\n            return False\n        self.timestamps.append(now)\n        return True\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-session-naive-datetime-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "sessions.py",
+        "text": "from dataclasses import dataclass\nfrom datetime import datetime, timedelta, timezone\n\nIDLE_TIMEOUT = timedelta(minutes=30)\n\n\n@dataclass\nclass Session:\n    user_id: int\n    # Written by the auth service as ISO-8601 with an explicit UTC offset, e.g. \"2026-03-01T12:00:00+00:00\".\n    last_seen: str\n\n\nclass SessionExpired(Exception):\n    pass\n\n\ndef touch(session: Session) -> Session:\n    \"\"\"Reject sessions idle for longer than IDLE_TIMEOUT, otherwise refresh last_seen.\"\"\"\n    last_seen = datetime.fromisoformat(session.last_seen)\n    now = datetime.now()\n    if now - last_seen > IDLE_TIMEOUT:\n        raise SessionExpired(f\"session for user {session.user_id} expired\")\n    session.last_seen = now.isoformat()\n    return session\n"
+      }
+    ],
+    "expected": {
+      "path": "sessions.py",
+      "line": 21,
+      "alsoLines": [
+        22,
+        24
+      ],
+      "mechanism": "naive|aware|time.?zone|tz|utc|offset|typeerror|local time|subtract"
+    }
+  },
+  {
+    "id": "python-ho-session-naive-datetime-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "sessions.py",
+        "text": "from dataclasses import dataclass\nfrom datetime import datetime, timedelta, timezone\n\nIDLE_TIMEOUT = timedelta(minutes=30)\n\n\n@dataclass\nclass Session:\n    user_id: int\n    # Written by the auth service as ISO-8601 with an explicit UTC offset, e.g. \"2026-03-01T12:00:00+00:00\".\n    last_seen: str\n\n\nclass SessionExpired(Exception):\n    pass\n\n\ndef touch(session: Session) -> Session:\n    \"\"\"Reject sessions idle for longer than IDLE_TIMEOUT, otherwise refresh last_seen.\"\"\"\n    last_seen = datetime.fromisoformat(session.last_seen)\n    now = datetime.now(timezone.utc)\n    if now - last_seen > IDLE_TIMEOUT:\n        raise SessionExpired(f\"session for user {session.user_id} expired\")\n    session.last_seen = now.isoformat()\n    return session\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-retry-backoff-await-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "http_retry.py",
+        "text": "import asyncio\nimport logging\n\nimport aiohttp\n\nlog = logging.getLogger(__name__)\n\nRETRYABLE = {429, 502, 503, 504}\n\n\nasync def fetch_json(session: aiohttp.ClientSession, url: str, attempts: int = 4) -> dict:\n    \"\"\"GET url, retrying retryable statuses with exponential backoff (0.5s, 1s, 2s, ...).\"\"\"\n    delay = 0.5\n    for attempt in range(1, attempts + 1):\n        async with session.get(url) as response:\n            if response.status not in RETRYABLE:\n                response.raise_for_status()\n                return await response.json()\n        if attempt == attempts:\n            break\n        log.warning(\"retryable status %s from %s (attempt %d)\", response.status, url, attempt)\n        asyncio.sleep(delay)\n        delay *= 2\n    raise RuntimeError(f\"{url}: still failing after {attempts} attempts\")\n"
+      }
+    ],
+    "expected": {
+      "path": "http_retry.py",
+      "line": 22,
+      "mechanism": "await|coroutine|never awaited|not awaited|sleep|backoff|delay|no wait|without wait|immediately"
+    }
+  },
+  {
+    "id": "python-ho-retry-backoff-await-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "http_retry.py",
+        "text": "import asyncio\nimport logging\n\nimport aiohttp\n\nlog = logging.getLogger(__name__)\n\nRETRYABLE = {429, 502, 503, 504}\n\n\nasync def fetch_json(session: aiohttp.ClientSession, url: str, attempts: int = 4) -> dict:\n    \"\"\"GET url, retrying retryable statuses with exponential backoff (0.5s, 1s, 2s, ...).\"\"\"\n    delay = 0.5\n    for attempt in range(1, attempts + 1):\n        async with session.get(url) as response:\n            if response.status not in RETRYABLE:\n                response.raise_for_status()\n                return await response.json()\n        if attempt == attempts:\n            break\n        log.warning(\"retryable status %s from %s (attempt %d)\", response.status, url, attempt)\n        await asyncio.sleep(delay)\n        delay *= 2\n    raise RuntimeError(f\"{url}: still failing after {attempts} attempts\")\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-bill-split-remainder-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "billing.py",
+        "text": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Share:\n    member_id: str\n    amount_cents: int\n\n\ndef split_bill(total_cents: int, member_ids: list[str]) -> list[Share]:\n    \"\"\"Split a bill evenly between members.\n\n    Amounts are whole cents and must add up exactly to total_cents; when the\n    total does not divide evenly, the first members pay one extra cent each.\n    \"\"\"\n    if not member_ids:\n        raise ValueError(\"at least one member is required\")\n    if total_cents < 0:\n        raise ValueError(\"total must not be negative\")\n    base = total_cents // len(member_ids)\n    return [Share(member_id, base) for member_id in member_ids]\n"
+      }
+    ],
+    "expected": {
+      "path": "billing.py",
+      "line": 20,
+      "alsoLines": [
+        21
+      ],
+      "mechanism": "remainder|leftover|left over|rounding|round|truncat|floor|integer division|lost|sum|add up|divmod|extra cent|cents|evenly"
+    }
+  },
+  {
+    "id": "python-ho-bill-split-remainder-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "billing.py",
+        "text": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Share:\n    member_id: str\n    amount_cents: int\n\n\ndef split_bill(total_cents: int, member_ids: list[str]) -> list[Share]:\n    \"\"\"Split a bill evenly between members.\n\n    Amounts are whole cents and must add up exactly to total_cents; when the\n    total does not divide evenly, the first members pay one extra cent each.\n    \"\"\"\n    if not member_ids:\n        raise ValueError(\"at least one member is required\")\n    if total_cents < 0:\n        raise ValueError(\"total must not be negative\")\n    base, remainder = divmod(total_cents, len(member_ids))\n    return [Share(member_id, base + (1 if index < remainder else 0)) for index, member_id in enumerate(member_ids)]\n"
+      }
+    ]
+  },
+  {
+    "id": "python-ho-reset-token-random-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "reset_tokens.py",
+        "text": "import hashlib\nimport random\nimport string\nfrom datetime import datetime, timedelta, timezone\n\nRESET_TOKEN_TTL = timedelta(hours=1)\nALPHABET = string.ascii_letters + string.digits\n\n\ndef issue_reset_token(store, user_id: int) -> str:\n    \"\"\"Create a single-use, unguessable password-reset token; only its digest is persisted.\"\"\"\n    token = \"\".join(random.choice(ALPHABET) for _ in range(32))\n    store.save_reset_token(\n        user_id=user_id,\n        token_digest=hashlib.sha256(token.encode()).hexdigest(),\n        expires_at=datetime.now(timezone.utc) + RESET_TOKEN_TTL,\n    )\n    return token\n"
+      }
+    ],
+    "expected": {
+      "path": "reset_tokens.py",
+      "line": 12,
+      "alsoLines": [
+        2
+      ],
+      "mechanism": "random|predictab|guess|secrets|cryptograph|csprng|prng|insecure|mersenne|entropy"
+    }
+  },
+  {
+    "id": "python-ho-reset-token-random-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "reset_tokens.py",
+        "text": "import hashlib\nimport secrets\nimport string\nfrom datetime import datetime, timedelta, timezone\n\nRESET_TOKEN_TTL = timedelta(hours=1)\nALPHABET = string.ascii_letters + string.digits\n\n\ndef issue_reset_token(store, user_id: int) -> str:\n    \"\"\"Create a single-use, unguessable password-reset token; only its digest is persisted.\"\"\"\n    token = \"\".join(secrets.choice(ALPHABET) for _ in range(32))\n    store.save_reset_token(\n        user_id=user_id,\n        token_digest=hashlib.sha256(token.encode()).hexdigest(),\n        expires_at=datetime.now(timezone.utc) + RESET_TOKEN_TTL,\n    )\n    return token\n"
+      }
+    ]
+  }
+]
