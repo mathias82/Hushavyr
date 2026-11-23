@@ -157,3 +157,33 @@ test("Java serialized object response does not produce local JSON-concatenation 
  const result=await runLocalReview(scripted(['{"findings":[]}','{"findings":[]}']).client,"review",input);
  assert.equal(result?.findings.length,0);
 });
+
+test("a stronger local judge re-checks only disputed findings: yes confirms the finding, no leaves it as possible", async () => {
+  const fake = (real: boolean) => ({generate: async (prompt: string) =>
+    /skeptical second reviewer/.test(prompt) ? '{"verdicts":[{"index":0,"supported":false}]}' : /Check one bug report/.test(prompt) ? JSON.stringify({real}) : json(valid)});
+  for (const verdict of [true, false]) {
+    const judged: string[] = [];
+    const judge = async () => ({generate: async (prompt: string) => { judged.push(prompt); return JSON.stringify({real: verdict}); }});
+    const result = await runLocalReview(fake(true), "review", source, () => false, fake(true), {depth: "fast", judge});
+    assert.equal(judged.length, 1);
+    assert.match(judged[0], /Check one bug report/);
+    assert.equal(result?.findings.length, verdict ? 1 : 0);
+    assert.equal(result?.disputed?.length ?? 0, verdict ? 0 : 1);
+  }
+  let asked = 0;
+  await runLocalReview(fake(false), "review", source, () => false, fake(false), {depth: "fast", judge: async () => { asked++; return undefined; }});
+  assert.equal(asked, 0, "no disputed finding, so the judge is never looked up");
+});
+
+test("HUSHAVYR_CONFIRM=1: a kept finding the narrow recheck rejects moves to Possible", async () => {
+  const fake = (real: boolean) => ({generate: async (prompt: string) =>
+    /skeptical second reviewer/.test(prompt) ? '{"verdicts":[{"index":0,"supported":true}]}' : /Check one bug report/.test(prompt) ? JSON.stringify({real}) : json(valid)});
+  process.env.HUSHAVYR_CONFIRM = "1";
+  try {
+    for (const real of [true, false]) {
+      const result = await runLocalReview(fake(real), "review", source, () => false, fake(real), {depth: "fast"});
+      assert.equal(result?.findings.length, real ? 1 : 0);
+      assert.equal(result?.disputed?.length ?? 0, real ? 0 : 1);
+    }
+  } finally { delete process.env.HUSHAVYR_CONFIRM; }
+});

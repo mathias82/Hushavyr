@@ -8,6 +8,20 @@ export function recommendedModel(memoryBytes: number): string {
   return gb >= 30 ? "qwen3-coder:30b" : gb >= 20 ? "qwen2.5-coder:14b" : gb >= 12 ? "qwen2.5-coder:7b" : "qwen2.5-coder:3b";
 }
 
+/** The stronger local model that re-judges only the findings the smaller model's own checks disagree on. */
+export const JUDGE_MODEL = "qwen2.5-coder:32b";
+/** True when the main model is smaller than the judge and the machine can hold the judge (about 20 GB). */
+export function judgeFits(model: string, memoryBytes = totalmem()): boolean {
+  const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
+  return memoryBytes / 1024 ** 3 >= 22 && Number.isFinite(size) && size < 32;
+}
+/** The judge client when the setting allows it, it fits and it is already installed (never downloaded implicitly). */
+export async function localJudge(client: LocalOllama, model: string, setting = "auto", memoryBytes = totalmem(), signal?: AbortSignal): Promise<LocalOllama | undefined> {
+  if (setting === "off" || !judgeFits(model, memoryBytes)) return undefined;
+  const installed = await client.listModels(signal).catch(() => [] as string[]);
+  return installed.includes(JUDGE_MODEL) ? client.withModel(JUDGE_MODEL, 600_000) : undefined;
+}
+
 /** Review passes that fit the machine: several focused passes need memory and time that 8 GB laptops do not have. */
 export function autoDepth(memoryBytes = totalmem()): "thorough" | "fast" | "light" {
   const gb = memoryBytes / 1024 ** 3;

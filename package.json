@@ -241,6 +241,13 @@
           "description": "Optional second locally installed model for the verification pass. Empty uses the review model.",
           "scope": "application"
         },
+        "aiPrivacyRouter.reviewJudge": {
+          "type": "string",
+          "enum": ["auto", "off"],
+          "default": "auto",
+          "description": "auto: when qwen2.5-coder:32b is installed, fits in memory and the review model is smaller, it re-checks only the findings the review model's own checks disagree on (local, slower). off: never.",
+          "scope": "application"
+        },
         "aiPrivacyRouter.mandatoryLocalOnly": {
           "type": "boolean",
           "default": false,

@@ -11,9 +11,10 @@ import {auditDependenciesWithOsv} from "../scan/codeScanners";
 import {MAX_CONTEXT_BYTES, ReviewSource, sourcePrompt} from "../review/context";
 import {editPrompt, editSchema, parseEdit, parseSummary} from "../fix/codeEdit";
 import {acceptManifestEdit, dependencyEditInstruction, findDependencyLine, groupVulnerabilities, parseDependencyFinding, planDependencyFix, resolveManifest} from "../deps/dependencyAudit";
+import type {Finding} from "../review/review";
 import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, replacementSchema} from "../fix/fixEdit";
 import {runLocalReview} from "../review/localReview";
-import {autoDepth} from "../model/model";
+import {autoDepth, localJudge} from "../model/model";
 import {localEndpoint, LocalOllama} from "../model/ollama";
 import {explainFindingPrompt} from "../vscode/reportFindings";
 import {staticReview} from "../scan/staticReview";
@@ -23,6 +24,7 @@ import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
 import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
+import {draftPrText, type PrText} from "../git/prText";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
 import {proofFixPrompt, proofProfile, proofTestPrompt} from "../fix/proofPrompts";
 import {FixSandbox} from "../fix/fixSandbox";
@@ -43,8 +45,10 @@ const paint = (code: string) => (text: string) => color ? "\x1b[" + code + "m" +
 const red = paint("31"), green = paint("32"), yellow = paint("33"), cyan = paint("36"), dim = paint("2"), bold = paint("1");
 const out = (text = ""): void => { process.stdout.write(text + "\n"); };
 
-interface Stored {path: string; display: string; line: number; message: string; level: string; title?: string; fix?: string; evidence?: string}
-interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>; autoUpdateVulnDb?: boolean; suggestEscalation?: boolean;
+interface Stored {path: string; display: string; line: number; message: string; level: string; title?: string; fix?: string; evidence?: string;
+  /** Low confidence: the second local check disagrees. Shown apart from confirmed findings. */
+  possible?: boolean}
+interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>; autoUpdateVulnDb?: boolean; suggestEscalation?: boolean; reviewJudge?: "auto" | "off";
   /** Search by meaning with a small local embedding model: undefined until the user is asked once. */
   searchByMeaning?: boolean}
 const configDir = (): string => process.env.HUSHAVYR_CONFIG_DIR ?? join(homedir(), ".hushavyr");
@@ -94,10 +98,20 @@ class Session {
     this.wake = undefined;
     return this.queue.shift();
   }
+  /** An answer to a question; a slash command typed instead is not an answer: it runs next and the question counts as declined. */
+  private async reply(prompt: string): Promise<string | undefined> {
+    const answer = await this.read(prompt);
+    this.declinedByCommand = answer !== undefined && /^\s*\//.test(answer);
+    if (!this.declinedByCommand) return answer;
+    this.queue.unshift(answer!);
+    out(dim("(not answered: " + answer!.trim().split(/\s+/)[0] + " runs next)"));
+    return undefined;
+  }
+  private declinedByCommand = false;
   private async ask(question: string, yes = false): Promise<boolean> {
     const hint = yes ? " [Y/n] " : " [y/N] ";
-    const answer = await this.read(bold(question) + hint);
-    if (!this.interactive) out(question + hint + (answer ?? ""));
+    const answer = await this.reply(bold(question) + hint);
+    if (!this.interactive && !this.declinedByCommand) out(question + hint + (answer ?? ""));
     // Enter takes the default; closed input (undefined) never counts as yes.
     if (yes && answer !== undefined && !answer.trim()) return true;
     return /^\s*(?:y|yes|ναι|nai)\s*$/i.test(answer ?? "");
@@ -139,7 +153,7 @@ class Session {
         case "setup": return await this.setup(signal);
         case "update-db": return await this.updateDb(rest, signal);
         case "gitleaks": return await this.gitleaks(rest, signal);
-        case "pr": return await this.pullRequest(rest);
+        case "pr": return await this.pullRequest(rest, signal);
         case "prove": return await this.prove(rest, signal);
         case "escalate": return await this.escalate(rest, signal);
         default: out("Unknown command /" + command + ". Type /help for the list.");
@@ -240,6 +254,7 @@ class Session {
     this.meaningOffered = true;
     if ((await this.client.listModels(signal).catch(() => [] as string[])).some(m => m.split(":")[0] === EMBED_MODEL)) return;
     const yes = await this.ask("Search your code by meaning? It needs the small local model " + EMBED_MODEL + " (about 270 MB, from ollama.com). Download it now?");
+    if (this.declinedByCommand) return;
     this.config = {...this.config, searchByMeaning: yes};
     await saveConfig(this.config);
     if (!yes) { out(dim("OK. Hushavyr searches by name and with " + this.model + " instead.")); return; }
@@ -294,14 +309,16 @@ class Session {
     }
     if (signal.aborted) return undefined;
     if (!hits.length) throw new Error("Nothing in " + basename(finder.root) + " matches \"" + arg + "\". Give a file path, or a class or method name.");
+    // A class and its own constructors/members share the name: the class is the answer, not a choice.
+    hits = hits.filter((h, i) => i === 0 || !(h.path === hits[0].path && hits[0].kind === "class" && h.line >= hits[0].line && h.endLine <= hits[0].endLine && h.name === hits[0].name));
     let hit = hits[0];
     const clear = hit.via === "name" && (hits.length === 1 || hit.score - hits[1].score >= 0.05);
     if (clear) out(dim("Using " + describeHit(hit)));
     else {
       const shown = hits.slice(0, 5);
       shown.forEach((h, i) => out(bold(("[" + (i + 1) + "]").padStart(5)) + " " + cyan(describeHit(h))));
-      const answer = (await this.read(bold("Which one? ") + "[1-" + shown.length + ", Enter = 1, n = cancel] ") ?? "n").trim();
-      if (!this.interactive) out("Which one? " + answer);
+      const answer = (await this.reply(bold("Which one? ") + "[1-" + shown.length + ", Enter = 1, n = cancel] ") ?? "n").trim();
+      if (!this.interactive && !this.declinedByCommand) out("Which one? " + answer);
       if (/^(?:n|no|όχι|οχι|q)$/i.test(answer)) return undefined;
       hit = shown[(Number(answer) || 1) - 1] ?? shown[0];
     }
@@ -374,11 +391,13 @@ class Session {
   private printFindings(): void {
     if (!this.findings.length) { out(green("No findings.")); return; }
     this.findings.forEach((f, i) => {
+      if (f.possible && !this.findings[i - 1]?.possible) out(yellow("\nPossible (low confidence: the local checks disagree; verify before fixing)"));
       out(bold(("[" + (i + 1) + "]").padStart(5)) + " " + levelLabel(f.level) + " " + cyan(f.display + ":" + f.line) + "  " + f.message.split("\n")[0]);
       if (f.evidence) out(dim(f.evidence.split("\n").slice(0, 3).map(l => "         " + l).join("\n")));
       if (f.fix) out("         " + green("Fix: ") + f.fix.split("\n")[0]);
     });
-    out(dim("\n" + this.findings.length + " finding(s). /fix N fixes one with local AI (diff to approve) · /explain N explains it · /dismiss N hides a false positive."));
+    const possible = this.findings.filter(f => f.possible).length;
+    out(dim("\n" + (this.findings.length - possible) + " finding(s)" + (possible ? " + " + possible + " possible" : "") + ". /fix N fixes one with local AI (diff to approve) · /explain N explains it · /dismiss N hides a false positive."));
   }
 
   private async review(arg: string, signal: AbortSignal): Promise<void> {
@@ -396,10 +415,11 @@ class Session {
     const instruction = withTeamRules("Review this code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests.", await loadTeamRules(this.cwd).catch(() => ""));
     out(dim("Reviewing " + (hit ? describeHit(hit) : file.display) + " with " + this.model + " and the static rules… (Ctrl+C cancels)"));
     const result = await runLocalReview(this.client, instruction, sources, () => signal.aborted, this.client,
-      {depth: autoDepth(), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
+      {depth: autoDepth(), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
     if (!result || signal.aborted) return;
     if (result.error) out(yellow(result.error));
-    this.findings = await this.withoutDismissed(result.findings.map(f => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence})));
+    const stored = (f: Finding, possible: boolean): Stored => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence, ...(possible ? {possible} : {})});
+    this.findings = await this.withoutDismissed([...result.findings.map(f => stored(f, false)), ...(result.disputed ?? []).map(f => stored(f, true))]);
     this.printFindings();
     await this.offerEscalation(reviewDifficulty(result, part.text), file, "Find bugs and security issues in this fragment.", signal,
       (result.disputed?.[0] ?? result.findings.find(f => f.verification !== "supported") ?? result.findings[0])?.line);
@@ -602,18 +622,42 @@ class Session {
     else if (!history) out(dim("/gitleaks history also checks every past commit."));
   }
 
-  private async pullRequest(arg: string): Promise<void> {
+  private async pullRequest(arg: string, signal: AbortSignal): Promise<void> {
     const plan = await planPullRequest(this.cwd);
     if (typeof plan === "string") { out(yellow(plan) + " Nothing was pushed."); return; }
     out(bold("Changes") + dim(" (" + plan.files.length + " files, branch " + plan.current + "):"));
     out((plan.stat || plan.files.join("\n")).slice(0, 4000));
     const secrets = await secretsInChanges(plan);
     if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed or pushed.")); return; }
-    const title = (arg || this.prDraft?.title || "Changes prepared with Hushavyr").split("\n")[0].slice(0, 72);
-    out(dim("Title: ") + title);
+    let text: PrText = {commit: "", title: (arg || this.prDraft?.title || "").split("\n")[0].slice(0, 72), body: this.prDraft?.body ?? ""};
+    if (!text.title) {
+      out(dim("Writing the commit message and pull request text with " + this.model + " from the diff… (Ctrl+C cancels)"));
+      try { text = await draftPrText(plan, this.client, signal) ?? text; } catch (error) {
+        if (signal.aborted) return;
+        out(yellow("The local model could not write the text (" + String((error as Error).message ?? error).split("\n")[0].slice(0, 160) + ")."));
+      }
+      if (signal.aborted) return;
+      if (!text.title) text.title = "Changes prepared with Hushavyr";
+    }
+    text.commit ||= text.title;
     out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
-    if (!await this.ask("Commit all " + plan.files.length + " changed files, push to origin and open a pull request?")) { out("Cancelled. Nothing was committed or pushed."); return; }
-    const result = await createPullRequest(plan, title, undefined, this.prDraft?.body ?? "");
+    for (;;) {
+      out(dim("Commit: ") + text.commit);
+      out(dim("Title:  ") + text.title);
+      if (text.body) out(dim(text.body.slice(0, 2000)));
+      const answer = (await this.reply(bold("Commit all " + plan.files.length + " changed files, push to origin and open a pull request?") + " [y/e/N] (e edits the text) ")) ?? "";
+      if (!this.interactive && !this.declinedByCommand) out("Commit all " + plan.files.length + " changed files, push to origin and open a pull request? [y/e/N] " + answer);
+      if (/^\s*e(dit)?\s*$/i.test(answer)) {
+        const commit = (await this.read(bold("Commit message") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
+        const title = (await this.read(bold("Pull request title") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
+        if (commit) text.commit = commit.slice(0, 200);
+        if (title) text.title = title.slice(0, 72);
+        continue;
+      }
+      if (!/^\s*(?:y|yes|ναι|nai)\s*$/i.test(answer)) { out("Cancelled. Nothing was committed or pushed."); return; }
+      break;
+    }
+    const result = await createPullRequest(plan, text.title, undefined, text.body, text.commit);
     this.prDraft = undefined;
     out(green(result.created && result.url ? "Pull request opened: " + result.url
       : "Pushed branch " + result.branch + "." + (result.url ? " Open the pull request: " + result.url : " Open a pull request on your git host.") + (result.created ? "" : " (Log in with the gh CLI to open it automatically.)")));

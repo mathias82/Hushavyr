@@ -38,7 +38,9 @@ const cloudRuns = cloud.map(async model => {
     await Promise.all(ids.slice(i, i + 4).map(async id => { out[id] = await copilot(model, prompts[id]); }));
   providers[model] = out; timing[model] = Math.round((Date.now() - started) / 1000);
 });
+// CLOUD_ONLY=1 leaves Ollama free for a concurrent local benchmark.
 const localRun = (async () => {
+  if (process.env.CLOUD_ONLY === "1") return;
   const started = Date.now(), out = {};
   for (const id of ids) out[id] = await ollama(prompts[id]);
   providers[local + " (single pass)"] = out; timing[local + " (single pass)"] = Math.round((Date.now() - started) / 1000);

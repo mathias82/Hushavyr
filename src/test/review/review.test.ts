@@ -76,3 +76,20 @@ test("a review cut off by the token limit keeps its complete findings and the fi
   assert.ok(result.findings.some(f => f.title === "Null dereference of s"));
   assert.equal(salvageFindings('{"findings":[{"title":"x'), undefined);
 });
+test("disputed findings appear in a separate low-confidence Possible section with location and fix", () => {
+  const text = formatReview({findings: [], rejected: 0, verifierRejected: 1,
+    disputed: [{...finding("Integer overflow in total", "return price * qty;"), path: "Price.java", line: 3, status: "potential", verification: "unverified"}]});
+  assert.match(text, /#### Possible \(low confidence\)[\s\S]*- \*\*Integer overflow in total\*\* · `Price\.java:3` · high\n  Use a JSON DTO/);
+  assert.doesNotMatch(formatReview({findings: [], rejected: 0}), /Possible/);
+});
+test("rejects claims the code contradicts: an exception reaching the caller, a checked Go error, a guarded division; keeps the real ones", () => {
+  const kept = (title: string, evidence: string, code: string) => validateReview(JSON.stringify({findings: [finding(title, evidence)]}), code).findings.length;
+  assert.equal(kept("JSON.parse can throw SyntaxError for malformed JSON", "JSON.parse(raw)", "const data = JSON.parse(raw);"), 0);
+  assert.equal(kept("Potential IOException if file is inaccessible", "File.ReadAllText(path)", "var t = File.ReadAllText(path);"), 0);
+  const checked = "data, err := os.ReadFile(path)\nif err := json.Unmarshal(data, &cfg); err != nil {\n  return cfg, err\n}";
+  assert.equal(kept("JSON unmarshal error not handled", "json.Unmarshal(data, &cfg)", checked), 0);
+  const ignored = "data, err := os.ReadFile(path)\njson.Unmarshal(data, &cfg)\nreturn cfg, nil";
+  assert.equal(kept("JSON unmarshal error not handled", "json.Unmarshal(data, &cfg)", ignored), 1);
+  assert.equal(kept("Division by zero when total is zero", "completed * 100.0 / total", "if (total <= 0) return 0;\nreturn completed * 100.0 / total;"), 0);
+  assert.equal(kept("Division by zero when total is zero", "completed * 100.0 / total", "return completed * 100.0 / total;"), 1);
+});

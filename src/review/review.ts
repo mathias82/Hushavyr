@@ -39,6 +39,7 @@ export function reviewPrompt(instruction: string, code: ReviewInput): string {
     "Apply language-specific semantics, not Java assumptions: Java/Kotlin nullability, transactions and resource ownership; JavaScript/TypeScript async errors, truthiness and type coercion; Python mutable defaults, exception paths and subprocess handling; Go ignored errors and goroutine/channel lifecycle; Rust Result/Option handling and unsafe boundaries; C/C++ ownership, bounds and undefined behavior; C# async disposal and null handling; SQL joins, null semantics and parameter binding; shell quoting and exit status. For other languages infer only from visible syntax.",
     "Inspect each file for a reproducible input -> operation -> incorrect output or side effect. Prioritize actual bugs over style, formatting and speculative vulnerabilities. For each finding include a precise trigger and a testable fix.",
     "A clean review is allowed, but first check boundary values (null, empty, zero, negative, duplicate, concurrent), error propagation, resource cleanup and data escaping where relevant to the language.",
+    "Report a boundary value only when the code then returns a wrong result, corrupts state, leaks a resource or performs an unsafe action. Not bugs: an exception that simply reaches the caller for invalid input (malformed JSON or XML, a missing file); input that the parameter type or an earlier visible check already excludes; a sink protected by a visible allow-list, containment or validation check. Read the lines before the sink for such checks.",
     "If evidence is insufficient, return an empty findings array. Do not invent tests, other files, or execution results.",
     "User request: " + instruction,
     sourcePrompt(code)
@@ -65,6 +66,26 @@ export function salvageFindings(raw: string): {findings: unknown[]} | undefined 
   }
   if (objectStart >= 0 && lastPair > objectStart) { try { findings.push(JSON.parse(raw.slice(objectStart, lastPair) + "}")); } catch { /* unrecoverable */ } }
   return findings.length ? {findings} : undefined;
+}
+
+/**
+ * Claims the code itself contradicts, in any language: an exception that merely reaches the caller, an error the
+ * next lines already check, or a division whose divisor is checked earlier. These were most false positives on clean code.
+ */
+function speculativeClaim(title: string, source: string, evidence: string): string | undefined {
+  if (/\b(?:can|may|could|might) (?:throw|raise)\b|\bpotential \w*(?:exception|error) (?:if|when|on)\b|^(?:[\w.]+ )*error handling(?: for [\w.]+)?$/i.test(title))
+    return "Speculative exception: it reaches the caller; report a concrete wrong result instead";
+  const at = source.indexOf(evidence);
+  if (at < 0) return undefined;
+  const before = source.slice(0, at), after = source.slice(at + evidence.length).split("\n").slice(0, 3).join("\n");
+  if (/error (?:handling|not (?:handled|checked)|ignored|unchecked)|(?:unchecked|ignored|unhandled) error/i.test(title) && /\berr\s*!=\s*nil\b/.test(evidence + after))
+    return "Error claim, but the error is checked right there";
+  if (/divi(?:de|sion) by zero|zero division/i.test(title)) {
+    const divisors = [...evidence.matchAll(/\/\s*([A-Za-z_]\w*)\b/g)].map(m => m[1]);
+    const guarded = (d: string) => new RegExp("\\b" + d + "\\s*(?:<=|==|===|<|!=|!==|>)\\s*0\\b|!\\s*" + d + "\\b|\\bnot\\s+" + d + "\\b").test(before);
+    if (divisors.length && divisors.every(guarded)) return "Division by zero claim, but the divisor is checked before";
+  }
+  return undefined;
 }
 
 export function validateReview(raw: string, source: ReviewInput): ReviewResult {
@@ -111,6 +132,7 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
       !/\bdef\s+\w+\s*\([^)]*=\s*(?:\[|\{|(?:set|list|dict)\s*\()/.test(combined);
     const unsupportedYaml = /yaml|deserializ/i.test(title) && /\byaml\b/i.test(combined) && !/\byaml\.(?:load|load_all|unsafe_load|full_load)\s*\(/.test(combined);
     const unsupportedGetter = /(?:exception handling|unhandled exception)/i.test(title) && /getTenantId\(\)/.test(evidence) && !/throw\s+new/.test(combined);
+    const speculative = speculativeClaim(title, normalizedSource, evidence.replace(/\r\n/g,"\n"));
     const reasons: string[] = [];
     if (!title || !fix || !regressionTest) reasons.push("Required title, fix or regressionTest is missing");
     if (!["high","medium","low"].includes(severity)) reasons.push("Severity must be high, medium or low");
@@ -122,6 +144,7 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
     if (unsupportedMutableDefault) reasons.push("Mutable default claim but no def has a mutable default value");
     if (unsupportedYaml) reasons.push("YAML deserialization claim but the code only uses yaml.safe_load");
     if (unsupportedGetter) reasons.push("Getter exception claim has no supporting throw in supplied source");
+    if (exactEvidence && speculative) reasons.push(speculative);
     if (reasons.length) { reject(reasons.join("; ")); continue; }
     const line = validRange ? start as number : normalizedSource.slice(0, normalizedSource.indexOf(evidence.replace(/\r\n/g,"\n"))).split("\n").length + (matched?.startLine ?? 1) - 1;
     findings.push({title,severity,evidence,fix,regressionTest,status:"potential",path:matched!.path,line});
@@ -181,7 +204,10 @@ export function formatReview(result: ReviewResult, displayPath: (path: string) =
   if (result.rejectionReasons?.length) lines.push("", "**Validation feedback:**", ...result.rejectionReasons.map(reason => "- " + reason));
   if (result.retryFailed) lines.push("", "The local repair attempt failed. These are the first attempt's validated results.");
   if (result.verifierRejected) lines.push("", "Second local pass rejected " + result.verifierRejected + " finding(s) as unsupported.");
-  for (const f of result.disputed ?? []) lines.push("", "Possible issue the local checks disagree on (not counted as a finding): " + f.title + (f.line ? " at line " + f.line : "") + ".");
+  if (result.disputed?.length) lines.push("", "#### Possible (low confidence)", "_The local checks disagree on these; verify before fixing. They are not counted as findings._");
+  for (const f of result.disputed ?? []) lines.push("",
+    "- **" + inlineText(f.title) + "** · \x60" + (f.path ? displayPath(f.path) : "selection").replace(/\x60/g, "") + ":" + (f.line ?? "?") + "\x60 · " + f.severity,
+    "  " + inlineText(f.fix));
   if (result.verifierFailed) lines.push("", "Second local pass was unavailable or invalid; findings remain unverified.");
   return lines.join("\n");
 }

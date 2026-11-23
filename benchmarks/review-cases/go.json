@@ -1,0 +1,183 @@
+[
+  {
+    "id": "go-defer-in-loop-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "lines.go",
+        "text": "package files\n\nimport (\n\t\"bufio\"\n\t\"os\"\n)\n\n// CountLines returns the total number of lines across all paths.\nfunc CountLines(paths []string) (int, error) {\n\ttotal := 0\n\tfor _, p := range paths {\n\t\tf, err := os.Open(p)\n\t\tif err != nil {\n\t\t\treturn 0, err\n\t\t}\n\t\tdefer f.Close()\n\t\ts := bufio.NewScanner(f)\n\t\tfor s.Scan() {\n\t\t\ttotal++\n\t\t}\n\t\tif err := s.Err(); err != nil {\n\t\t\treturn 0, err\n\t\t}\n\t}\n\treturn total, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "lines.go",
+      "line": 16,
+      "mechanism": "defer|loop|close|leak|file descriptor|too many open"
+    }
+  },
+  {
+    "id": "go-defer-per-file-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "lines.go",
+        "text": "package files\n\nimport (\n\t\"bufio\"\n\t\"os\"\n)\n\n// CountLines returns the total number of lines across all paths.\nfunc CountLines(paths []string) (int, error) {\n\ttotal := 0\n\tfor _, p := range paths {\n\t\tn, err := countFile(p)\n\t\tif err != nil {\n\t\t\treturn 0, err\n\t\t}\n\t\ttotal += n\n\t}\n\treturn total, nil\n}\n\nfunc countFile(path string) (int, error) {\n\tf, err := os.Open(path)\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\tdefer f.Close()\n\tn := 0\n\ts := bufio.NewScanner(f)\n\tfor s.Scan() {\n\t\tn++\n\t}\n\treturn n, s.Err()\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-concurrent-append-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "fetch.go",
+        "text": "package fetch\n\nimport \"sync\"\n\n// FetchAll calls get for every id concurrently and returns all results.\nfunc FetchAll(ids []string, get func(string) string) []string {\n\tvar wg sync.WaitGroup\n\tvar results []string\n\tfor _, id := range ids {\n\t\twg.Add(1)\n\t\tgo func(id string) {\n\t\t\tdefer wg.Done()\n\t\t\tresults = append(results, get(id))\n\t\t}(id)\n\t}\n\twg.Wait()\n\treturn results\n}"
+      }
+    ],
+    "expected": {
+      "path": "fetch.go",
+      "line": 13,
+      "mechanism": "race|mutex|concurren|synchroni|lock|goroutine"
+    }
+  },
+  {
+    "id": "go-indexed-results-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "fetch.go",
+        "text": "package fetch\n\nimport \"sync\"\n\n// FetchAll calls get for every id concurrently and returns all results.\nfunc FetchAll(ids []string, get func(string) string) []string {\n\tvar wg sync.WaitGroup\n\tresults := make([]string, len(ids))\n\tfor i, id := range ids {\n\t\twg.Add(1)\n\t\tgo func(i int, id string) {\n\t\t\tdefer wg.Done()\n\t\t\tresults[i] = get(id)\n\t\t}(i, id)\n\t}\n\twg.Wait()\n\treturn results\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-ignored-unmarshal-error-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "config.go",
+        "text": "package config\n\nimport (\n\t\"encoding/json\"\n\t\"os\"\n)\n\ntype Config struct {\n\tPort int `json:\"port\"`\n}\n\n// Load reads the JSON config file at path and reports malformed files as errors.\nfunc Load(path string) (Config, error) {\n\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn Config{}, err\n\t}\n\tvar cfg Config\n\tjson.Unmarshal(data, &cfg)\n\treturn cfg, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "config.go",
+      "line": 19,
+      "mechanism": "ignor|unchecked|discard|unhandled|Unmarshal|swallow"
+    }
+  },
+  {
+    "id": "go-checked-unmarshal-error-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "config.go",
+        "text": "package config\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"os\"\n)\n\ntype Config struct {\n\tPort int `json:\"port\"`\n}\n\n// Load reads the JSON config file at path and reports malformed files as errors.\nfunc Load(path string) (Config, error) {\n\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn Config{}, err\n\t}\n\tvar cfg Config\n\tif err := json.Unmarshal(data, &cfg); err != nil {\n\t\treturn Config{}, fmt.Errorf(\"parse %s: %w\", path, err)\n\t}\n\treturn cfg, nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-path-traversal-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "download.go",
+        "text": "package download\n\nimport (\n\t\"net/http\"\n\t\"path/filepath\"\n)\n\nconst baseDir = \"/srv/public\"\n\n// Serve returns a public file chosen by the ?name= query parameter.\nfunc Serve(w http.ResponseWriter, r *http.Request) {\n\tname := r.URL.Query().Get(\"name\")\n\thttp.ServeFile(w, r, filepath.Join(baseDir, name))\n}"
+      }
+    ],
+    "expected": {
+      "path": "download.go",
+      "line": 13,
+      "alsoLines": [
+        12
+      ],
+      "mechanism": "travers|\\.\\.|directory|IsLocal|path"
+    }
+  },
+  {
+    "id": "go-path-traversal-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "download.go",
+        "text": "package download\n\nimport (\n\t\"errors\"\n\t\"net/http\"\n\t\"path/filepath\"\n)\n\nconst baseDir = \"/srv/public\"\n\n// Serve returns a public file chosen by the ?name= query parameter.\nfunc Serve(w http.ResponseWriter, r *http.Request) {\n\tpath, err := validatedPath(r.URL.Query().Get(\"name\"))\n\tif err != nil {\n\t\thttp.Error(w, err.Error(), http.StatusBadRequest)\n\t\treturn\n\t}\n\thttp.ServeFile(w, r, path)\n}\n\n// validatedPath joins name onto baseDir and rejects names that would escape it.\nfunc validatedPath(name string) (string, error) {\n\tif !filepath.IsLocal(name) {\n\t\treturn \"\", errors.New(\"invalid file name\")\n\t}\n\treturn filepath.Join(baseDir, name), nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-md5-password-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "password.go",
+        "text": "package auth\n\nimport (\n\t\"crypto/md5\"\n\t\"encoding/hex\"\n)\n\n// PasswordDigest returns the value stored in the users table for a password.\nfunc PasswordDigest(password string) string {\n\tsum := md5.Sum([]byte(password))\n\treturn hex.EncodeToString(sum[:])\n}"
+      }
+    ],
+    "expected": {
+      "path": "password.go",
+      "line": 10,
+      "mechanism": "md5|weak|bcrypt|argon|scrypt|salt|brute"
+    }
+  },
+  {
+    "id": "go-bcrypt-password-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "password.go",
+        "text": "package auth\n\nimport \"golang.org/x/crypto/bcrypt\"\n\n// PasswordDigest returns the value stored in the users table for a password.\nfunc PasswordDigest(password string) (string, error) {\n\tdigest, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)\n\tif err != nil {\n\t\treturn \"\", err\n\t}\n\treturn string(digest), nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-avatar-ssrf-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "avatars.go",
+        "text": "package avatars\n\nimport (\n\t\"fmt\"\n\t\"io\"\n\t\"net/http\"\n\t\"time\"\n)\n\nconst avatarHost = \"avatars.example.com\"\nconst maxAvatarBytes = 1 << 20\n\nvar client = &http.Client{\n\tTimeout:       10 * time.Second,\n\tCheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },\n}\n\n// Fetch downloads the avatar at rawURL, which comes from the user's profile form.\nfunc Fetch(rawURL string) ([]byte, error) {\n\tresp, err := client.Get(rawURL)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tdefer resp.Body.Close()\n\tif resp.StatusCode != http.StatusOK {\n\t\treturn nil, fmt.Errorf(\"avatar fetch: status %d\", resp.StatusCode)\n\t}\n\tdata, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarBytes+1))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(data) > maxAvatarBytes {\n\t\treturn nil, fmt.Errorf(\"avatar larger than %d bytes\", maxAvatarBytes)\n\t}\n\treturn data, nil\n}"
+      }
+    ],
+    "expected": {
+      "path": "avatars.go",
+      "line": 20,
+      "mechanism": "ssrf|server.side request|forgery|hostname|allow.?list|whitelist|internal|avatarHost"
+    }
+  },
+  {
+    "id": "go-avatar-host-check-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "avatars.go",
+        "text": "package avatars\n\nimport (\n\t\"fmt\"\n\t\"io\"\n\t\"net/http\"\n\t\"net/url\"\n\t\"time\"\n)\n\nconst avatarHost = \"avatars.example.com\"\nconst maxAvatarBytes = 1 << 20\n\nvar client = &http.Client{\n\tTimeout:       10 * time.Second,\n\tCheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },\n}\n\n// Fetch downloads the avatar at rawURL, which comes from the user's profile form.\nfunc Fetch(rawURL string) ([]byte, error) {\n\tu, err := url.Parse(rawURL)\n\tif err != nil || u.Scheme != \"https\" || u.Hostname() != avatarHost {\n\t\treturn nil, fmt.Errorf(\"avatar URL must be https://%s/...\", avatarHost)\n\t}\n\tresp, err := client.Get(u.String())\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tdefer resp.Body.Close()\n\tif resp.StatusCode != http.StatusOK {\n\t\treturn nil, fmt.Errorf(\"avatar fetch: status %d\", resp.StatusCode)\n\t}\n\tdata, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarBytes+1))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(data) > maxAvatarBytes {\n\t\treturn nil, fmt.Errorf(\"avatar larger than %d bytes\", maxAvatarBytes)\n\t}\n\treturn data, nil\n}"
+      }
+    ]
+  },
+  {
+    "id": "go-missing-unlock-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "cache.go",
+        "text": "package cache\n\nimport \"sync\"\n\ntype Cache struct {\n\tmu    sync.Mutex\n\titems map[string]string\n}\n\n// Get returns the cached value for key and whether it was present.\nfunc (c *Cache) Get(key string) (string, bool) {\n\tc.mu.Lock()\n\tv, ok := c.items[key]\n\tif !ok {\n\t\treturn \"\", false\n\t}\n\tc.mu.Unlock()\n\treturn v, true\n}"
+      }
+    ],
+    "expected": {
+      "path": "cache.go",
+      "line": 15,
+      "alsoLines": [
+        12
+      ],
+      "mechanism": "unlock|deadlock|mutex|lock"
+    }
+  },
+  {
+    "id": "go-deferred-unlock-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "cache.go",
+        "text": "package cache\n\nimport \"sync\"\n\ntype Cache struct {\n\tmu    sync.Mutex\n\titems map[string]string\n}\n\n// Get returns the cached value for key and whether it was present.\nfunc (c *Cache) Get(key string) (string, bool) {\n\tc.mu.Lock()\n\tdefer c.mu.Unlock()\n\tv, ok := c.items[key]\n\treturn v, ok\n}"
+      }
+    ]
+  }
+]

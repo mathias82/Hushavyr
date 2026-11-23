@@ -249,3 +249,33 @@ test("Chat finds code by name in the workspace folder: /find with a typo, and a 
     assert.ok(prompt.includes("System.out.println(email)") && !prompt.includes("return p * 2"), "only the named method is sent to the local model");
   } finally { fake.workspace.workspaceFolders = undefined; }
 });
+
+test("chat /pr without a title: the local model writes the commit message and PR text; Edit text changes it before the commit", async () => {
+  const {mkdtempSync, writeFileSync} = require("node:fs") as typeof import("node:fs");
+  const {execFileSync} = require("node:child_process") as typeof import("node:child_process");
+  const root = mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "hush-chat-pr-"));
+  const git = (...args: string[]) => execFileSync("git", args, {cwd: root, encoding: "utf8"});
+  git("init", "-q", "-b", "main"); git("config", "user.email", "t@example.com"); git("config", "user.name", "T");
+  writeFileSync(root + "/a.js", "const limit = opts.limit || 20;\n");
+  git("add", "-A"); git("commit", "-qm", "init");
+  git("init", "-q", "--bare", root + "-origin.git"); git("remote", "add", "origin", root + "-origin.git");
+  writeFileSync(root + "/a.js", "const limit = opts.limit ?? 20;\n");
+  const answers = ["Edit text", "Create pull request"], inputs = ["fix(paging): keep a zero limit", ""];
+  const saved = {warn: fake.window.showWarningMessage, input: (fake.window as any).showInputBox, saveAll: (fake.workspace as any).saveAll};
+  fake.window.showWarningMessage = async () => answers.shift();
+  (fake.window as any).showInputBox = async () => inputs.shift();
+  (fake.workspace as any).saveAll = async () => true;
+  fake.workspace.workspaceFolders = [{uri: new Uri("file://" + root), name: "app"}];
+  try {
+    const result = await chat({}, [JSON.stringify({commit: "fix: use nullish default for limit", title: "Keep an explicit zero limit", body: "## What\n- Use ?? for the limit default\n\n## Why\nNot stated in the diff.\n\n## Tests\nNo test changes in this diff."})], "", [], "pr");
+    const prompt = result.requests.map(r => r.payload?.prompt ?? "").join("\n");
+    assert.match(prompt, /\+const limit = opts\.limit \?\? 20;/, "the diff goes to the local model only");
+    assert.ok(result.requests.every(r => r.url.startsWith("http://127.0.0.1:11434/")));
+    assert.match(result.output, /\*\*Commit:\*\* `fix: use nullish default for limit`[\s\S]*\*\*Commit:\*\* `fix\(paging\): keep a zero limit`/);
+    assert.equal(git("log", "-1", "--format=%s").trim(), "fix(paging): keep a zero limit");
+    assert.match(result.output, /Pushed branch `hushavyr\/keep-an-explicit-zero-limit-\d+`/);
+  } finally {
+    fake.window.showWarningMessage = saved.warn; (fake.window as any).showInputBox = saved.input; (fake.workspace as any).saveAll = saved.saveAll;
+    fake.workspace.workspaceFolders = undefined;
+  }
+});

@@ -77,6 +77,10 @@ export class LocalOllama {
       throw new Error("Configured model is not installed locally. Run npm run ai:serve or install it with Ollama. No cloud fallback.");
     }
   }
+  /** The same loopback server and transport with another installed model. */
+  withModel(model: string, timeoutMs = this.config.timeoutMs): LocalOllama {
+    return new LocalOllama({...this.config, model, timeoutMs}, this.transport);
+  }
   /** Names of models installed on this machine (remote and cloud models excluded). */
   async listModels(signal?: AbortSignal): Promise<string[]> {
     const data = await this.request("/api/tags", {method: "GET"}, signal) as {models?: Array<{name?: unknown; remote_model?: unknown; remote_host?: unknown}>};

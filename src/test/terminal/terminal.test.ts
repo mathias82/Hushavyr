@@ -79,6 +79,10 @@ async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts:
       const request = JSON.parse(body || "{}") as {prompt: string; stream?: boolean};
       prompts.push(request.prompt);
       if (request.stream) return res.end(JSON.stringify({response: request.prompt.includes("are you sure") ? "I'm not sure without more context. " : "Local "}) + "\n" + JSON.stringify({response: "answer.", done: true}) + "\n");
+      if (request.prompt.includes("You write the git commit message")) {
+        return res.end(JSON.stringify({response: JSON.stringify({commit: "fix(books): use a parameterized query", title: "Use a parameterized query for book lookup",
+          body: "## What\n- Bind the id parameter\n\n## Why\nNot stated in the diff.\n\n## Tests\nNo test changes in this diff."})}));
+      }
       if (request.prompt.includes("skeptical second reviewer")) {
         const candidates = JSON.parse(request.prompt.slice(request.prompt.indexOf("UNTRUSTED CANDIDATES:\n") + 22)) as unknown[];
         return res.end(JSON.stringify({response: JSON.stringify({verdicts: candidates.map((_, index) => ({index, supported: true}))})}));
@@ -255,5 +259,33 @@ test("hushavyr offers /escalate only when the local model is unsure, asks first,
     assert.ok(!(await readFile(sent, "utf8")).includes("SELECT"), "sent pseudonymized");
     const config = JSON.parse(await readFile(join(dir, ".config", "config.json"), "utf8")) as {cloudEscalation?: boolean; suggestEscalation?: boolean};
     assert.deepEqual([config.cloudEscalation, config.suggestEscalation], [true, false]);
+  } finally { server.close(); }
+});
+
+test("hushavyr /pr without a title: the local model writes the commit message and PR text from the diff; edit and cancel commit nothing, y commits with it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-pr-"));
+  const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "T");
+  await writeFile(join(dir, "books.js"), BOOKS);
+  await writeFile(join(dir, "OrderService.java"), "class OrderService {\n  OrderService() {}\n  OrderService(int n) {}\n  void place() {}\n}\n");
+  await git("add", "-A");
+  await git("commit", "-qm", "init");
+  await git("init", "-q", "--bare", join(dir, "..", "origin-" + dir.split(/[\\/]/).pop() + ".git"));
+  await git("remote", "add", "origin", join(dir, "..", "origin-" + dir.split(/[\\/]/).pop() + ".git"));
+  await writeFile(join(dir, "books.js"), BOOKS.replace('" + id,', '?", [id],'));
+  const {server, endpoint, prompts} = await fakeOllama();
+  try {
+    const output = await session(dir, endpoint, ["/pr", "/explain OrderService", "/pr", "e", "fix(api): bind the book id", "", "n", "/pr", "y"], {GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-pr-cfg-" + Date.now())});
+    const prompt = prompts.find(p => p.includes("You write the git commit message")) ?? "";
+    assert.match(prompt, /\+\s+db\.query\("SELECT \* FROM books WHERE id = \?", \[id\]/, "the diff is in the local prompt");
+    assert.match(output, /Commit: fix\(books\): use a parameterized query\nTitle:  Use a parameterized query for book lookup\n## What/);
+    assert.match(output, /Commit: fix\(api\): bind the book id\nTitle:  Use a parameterized query for book lookup/);
+    assert.match(output, /\(not answered: \/explain runs next\)\nCancelled\. Nothing was committed or pushed\.\nUsing OrderService  OrderService\.java:1-5/, "a command typed at a prompt runs; a class wins over its own constructors");
+    assert.doesNotMatch(output, /Which one\?/);
+    assert.equal((await git("log", "--all", "--format=%s")).trim().split("\n").length, 2, "one commit after y, none after cancel");
+    assert.equal((await git("log", "-1", "--format=%s")).trim(), "fix(books): use a parameterized query");
+    assert.match(output, /Pushed branch hushavyr\/use-a-parameterized-query-for-book-|Pull request opened/);
   } finally { server.close(); }
 });

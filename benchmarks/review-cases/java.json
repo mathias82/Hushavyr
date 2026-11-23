@@ -1,0 +1,73 @@
+[
+  {
+    "id": "java-string-reference-equality-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "Access.java",
+        "text": "class Access {\n    // Only users whose role is \"admin\" may delete records.\n    static boolean canDelete(String role) {\n        return role == \"admin\";\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "Access.java",
+      "line": 4,
+      "mechanism": "==|equals|reference|identity|intern"
+    }
+  },
+  {
+    "id": "java-open-redirect-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "LoginRedirect.java",
+        "text": "import java.io.IOException;\nimport javax.servlet.http.HttpServletRequest;\nimport javax.servlet.http.HttpServletResponse;\n\nclass LoginRedirect {\n    // After login, send the user back to the page they came from.\n    void afterLogin(HttpServletRequest request, HttpServletResponse response) throws IOException {\n        String next = request.getParameter(\"next\");\n        response.sendRedirect(next == null ? \"/home\" : next);\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "LoginRedirect.java",
+      "line": 9,
+      "alsoLines": [
+        8
+      ],
+      "mechanism": "redirect|allow.?list|whitelist|phishing"
+    }
+  },
+  {
+    "id": "java-open-redirect-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "LoginRedirect.java",
+        "text": "import java.io.IOException;\nimport java.util.Set;\nimport javax.servlet.http.HttpServletRequest;\nimport javax.servlet.http.HttpServletResponse;\n\nclass LoginRedirect {\n    private static final Set<String> ALLOWED = Set.of(\"/home\", \"/account\", \"/orders\");\n\n    // After login, send the user back to the page they came from if it is a known page.\n    void afterLogin(HttpServletRequest request, HttpServletResponse response) throws IOException {\n        String next = request.getParameter(\"next\");\n        response.sendRedirect(next != null && ALLOWED.contains(next) ? next : \"/home\");\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "java-remove-during-iteration-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "Cart.java",
+        "text": "import java.util.List;\n\nclass Cart {\n    // Drops every item whose quantity is zero.\n    static void removeEmpty(List<Item> items) {\n        for (Item item : items) {\n            if (item.quantity() == 0) {\n                items.remove(item);\n            }\n        }\n    }\n}\n\nrecord Item(String sku, int quantity) {}"
+      }
+    ],
+    "expected": {
+      "path": "Cart.java",
+      "line": 8,
+      "alsoLines": [
+        6
+      ],
+      "mechanism": "ConcurrentModification|concurrent|iterat|removeIf|modif"
+    }
+  },
+  {
+    "id": "java-remove-during-iteration-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "Cart.java",
+        "text": "import java.util.List;\n\nclass Cart {\n    // Drops every item whose quantity is zero.\n    static void removeEmpty(List<Item> items) {\n        items.removeIf(item -> item.quantity() == 0);\n    }\n}\n\nrecord Item(String sku, int quantity) {}"
+      }
+    ]
+  }
+]

@@ -1,14 +1,14 @@
 import { LocalOllama } from "./model/ollama";
 import { ReviewSource } from "./review/context";
 import { Finding, reviewPrompt, validateReview } from "./review/review";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { runLocalReview } from "./review/localReview";
 import { staticReview } from "./scan/staticReview";
 import { join } from "node:path";
 import { reviewDifficulty } from "./review/difficulty";
 
 // alsoLines: other lines where the same bug is correctly reported (e.g. a declaration and its use).
-export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: RegExp} }
+export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: RegExp}; heldOut?: boolean }
 // Synthetic, public examples. Scores measure this small fixture set only.
 export const benchmarkCases: BenchmarkCase[] = [
   {id: "json-escaping-bug", sources: [{path: "Mapper.java", text: String.raw`class Mapper {
@@ -321,6 +321,16 @@ class Tokens {
 
 ];
 
+interface StoredCase { id: string; heldOut?: boolean; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: string} }
+/** Extra fixtures in benchmarks/review-cases/*.json. Held-out cases are never used to tune prompts or guards. */
+export function loadStoredCases(dir = join(__dirname, "..", "benchmarks", "review-cases")): BenchmarkCase[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).filter(f => f.endsWith(".json")).sort().flatMap(file =>
+    (JSON.parse(readFileSync(join(dir, file), "utf8")) as StoredCase[]).map(c => ({...c,
+      expected: c.expected && {...c.expected, mechanism: new RegExp(c.expected.mechanism, "i")}})));
+}
+benchmarkCases.push(...loadStoredCases());
+
 const LANGUAGES: Record<string, string> = {java: "java", py: "python", js: "javascript", ts: "typescript", go: "go", cs: "csharp"};
 export function language(fixture: BenchmarkCase): string {
   const ext = fixture.sources[0].path.split(".").pop() ?? "";
@@ -405,6 +415,11 @@ export function staticGateProblems(report: Awaited<ReturnType<typeof staticBench
   return problems;
 }
 
+function rates(v: {truePositives: number; falsePositives: number; falseNegatives: number}) {
+  const {truePositives: tp, falsePositives: fp, falseNegatives: fn} = v;
+  return {precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null};
+}
+
 async function main(args: string[]) {
   if (args.length === 1 && args[0] === "--prompts") {
     console.log(JSON.stringify(Object.fromEntries(benchmarkCases.map(fixture =>
@@ -442,9 +457,13 @@ async function main(args: string[]) {
   const model = process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b";
   const verifierModel = process.env.OLLAMA_VERIFIER_MODEL ?? model;
   const endpoint = process.env.OLLAMA_ENDPOINT;
-  const client = new LocalOllama({model, endpoint, timeoutMs: 180000});
-  const verifier = new LocalOllama({model: verifierModel, endpoint, timeoutMs: 180000});
+  const timeoutMs = Number(process.env.BENCH_TIMEOUT_S ?? 180) * 1000;
+  const client = new LocalOllama({model, endpoint, timeoutMs});
+  const verifier = new LocalOllama({model: verifierModel, endpoint, timeoutMs});
+  const judgeModel = process.env.OLLAMA_JUDGE_MODEL;
+  const judge = judgeModel ? new LocalOllama({model: judgeModel, endpoint, timeoutMs: 300000}) : undefined;
   await client.ensureAvailable();
+  if (judge) await judge.ensureAvailable();
   if (verifierModel !== model) await verifier.ensureAvailable();
   const depth = process.env.REVIEW_DEPTH === "fast" ? "fast" : "thorough";
   const useStatic = process.env.REVIEW_STATIC !== "0";
@@ -453,11 +472,22 @@ async function main(args: string[]) {
   const byLanguage: Record<string, {truePositives: number; falsePositives: number; falseNegatives: number; cases: number}> = {};
   // How well "the local model is unsure" predicts its own mistakes (the escalation suggestion).
   const unsure = {mistakes: 0, onMistakes: 0, correct: 0, onCorrect: 0};
-  for (const fixture of benchmarkCases) {
+  // BENCH_SET=tuned|heldout and BENCH_LANG=java,go narrow a run; the default is every fixture.
+  const set = process.env.BENCH_SET, langs = process.env.BENCH_LANG?.split(",");
+  const selected = benchmarkCases.filter(f => (set === "tuned" ? !f.heldOut : set === "heldout" ? !!f.heldOut : true) &&
+    (!langs || langs.includes(language(f))));
+  const heldOut = {truePositives: 0, falsePositives: 0, falseNegatives: 0, cases: 0};
+  // Scores when the "Possible (low confidence)" findings also count: what a reader sees in both sections.
+  const withPossible: Record<string, {truePositives: number; falsePositives: number; falseNegatives: number; cases: number}> = {};
+  const addPossible = (key: string, s: {truePositive: number; falsePositive: number; falseNegative: number}) => {
+    const t = withPossible[key] ??= {truePositives: 0, falsePositives: 0, falseNegatives: 0, cases: 0};
+    t.truePositives += s.truePositive; t.falsePositives += s.falsePositive; t.falseNegatives += s.falseNegative; t.cases++;
+  };
+  for (const fixture of selected) {
     const started = Date.now();
     try {
       const staticFindings = useStatic ? staticReview(fixture.sources, rules).then(r => r.findings) : undefined;
-      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, staticFindings});
+      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, staticFindings, judge});
       if (!result || result.error) throw new Error("Review failed");
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;
@@ -470,15 +500,23 @@ async function main(args: string[]) {
       byLanguage[lang] ??= {truePositives: 0, falsePositives: 0, falseNegatives: 0, cases: 0};
       byLanguage[lang].truePositives += score.truePositive; byLanguage[lang].falsePositives += score.falsePositive;
       byLanguage[lang].falseNegatives += score.falseNegative; byLanguage[lang].cases++;
-      cases.push({id: fixture.id, ...score, verifierFailed: !!result.verifierFailed, findings: result.findings.map(f => f.line + " " + f.title), unsure: difficulty.reasons, durationMs: Date.now() - started});
+      if (fixture.heldOut) { heldOut.truePositives += score.truePositive; heldOut.falsePositives += score.falsePositive; heldOut.falseNegatives += score.falseNegative; heldOut.cases++; }
+      const both = scoreCase(fixture, [...result.findings, ...(result.disputed ?? [])]);
+      addPossible("all", both); addPossible(lang, both); if (fixture.heldOut) addPossible("heldOut", both);
+      cases.push({id: fixture.id, ...score, possible: (result.disputed ?? []).map(f => f.line + " " + f.title), verifierFailed: !!result.verifierFailed, findings: result.findings.map(f => f.line + " " + f.title), unsure: difficulty.reasons, durationMs: Date.now() - started});
     } catch {
       errors++; if (fixture.expected) fn++;
+      const missed = {truePositive: 0, falsePositive: 0, falseNegative: fixture.expected ? 1 : 0};
+      addPossible("all", missed); addPossible(language(fixture), missed); if (fixture.heldOut) addPossible("heldOut", missed);
       unsure.mistakes++; unsure.onMistakes++;
+      if (fixture.heldOut) { heldOut.cases++; if (fixture.expected) heldOut.falseNegatives++; }
       cases.push({id: fixture.id, error: true, durationMs: Date.now() - started});
     }
   }
-  console.log(JSON.stringify({model, verifierModel, depth, staticAnalysis: useStatic, fixtureCount: benchmarkCases.length, cases,
-    truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures, byLanguage,
+  console.log(JSON.stringify({model, verifierModel, judgeModel, targeted: process.env.HUSHAVYR_TARGETED !== "0", depth, staticAnalysis: useStatic, fixtureCount: selected.length, cases,
+    truePositives: tp, falsePositives: fp, falseNegatives: fn, errors, verifierFailures,
+    byLanguage: Object.fromEntries(Object.entries(byLanguage).map(([k, v]) => [k, {...v, ...rates(v)}])), heldOut: {...heldOut, ...rates(heldOut)},
+    withPossible: Object.fromEntries(Object.entries(withPossible).map(([k, v]) => [k, {...v, ...rates(v)}])),
     precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null,
     escalationSuggested: {onMistakes: unsure.onMistakes + "/" + unsure.mistakes, onCorrect: unsure.onCorrect + "/" + unsure.correct},
     limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. Finding titles are included; no raw source."}, null, 2));

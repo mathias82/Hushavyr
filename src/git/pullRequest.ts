@@ -52,12 +52,12 @@ export async function secretsInChanges(plan: PrPlan): Promise<string[]> {
 }
 
 export interface PrResult {branch: string; url?: string; created: boolean}
-export async function createPullRequest(plan: PrPlan, title: string, exec: Exec = defaultExec, body = ""): Promise<PrResult> {
+export async function createPullRequest(plan: PrPlan, title: string, exec: Exec = defaultExec, body = "", commit = title): Promise<PrResult> {
   const branch = DEFAULT_BRANCHES.has(plan.current) || plan.current === "HEAD" ? branchName(title) : plan.current;
   if (!/^[\w./-]+$/.test(branch)) throw new Error("Invalid branch name");
   if (branch !== plan.current) await exec("git", ["switch", "-c", branch], plan.root);
   await exec("git", ["add", "-A"], plan.root);
-  await exec("git", ["commit", "-m", title], plan.root);
+  await exec("git", ["commit", "-m", commit], plan.root);
   await exec("git", ["push", "-u", "origin", branch], plan.root);
   const base = plan.base === branch ? "main" : plan.base;
   try {

@@ -52,7 +52,7 @@ export async function scanFolder(root: string, rules: string, log: (line: string
       results.push({ruleId: issue.rule.replace(/\W+/g, "-").toLowerCase(), message: issue.rule + ": " + issue.advice, path, line: issue.line, level: sarifLevel(issue.severity)});
     // Lockfiles hold package names and integrity hashes, never credentials.
     if (!LOCKFILE.test(file)) for (const secret of scanSecrets(text, path))
-      results.push({ruleId: "hardcoded-credential", message: "Potential hardcoded credential (" + secret.rule + "); value redacted", path, line: secret.line, level: secret.severity === "HIGH" ? "error" : "warning"});
+      results.push({ruleId: "hardcoded-credential", message: "Potential hardcoded credential" + (secret.rule === "Potential hardcoded credential" ? "" : " (" + secret.rule + ")") + "; value redacted", path, line: secret.line, level: secret.severity === "HIGH" ? "error" : "warning"});
   }
   const handlers = new Set(taintFiles.filter(f => pythonHandler(f.path, f.text)).map(f => f.path));
   const decided = (r: SarifResult) => handlers.has(r.path) && TAINT_DECIDED.has(r.ruleId);

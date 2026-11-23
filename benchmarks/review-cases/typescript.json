@@ -1,0 +1,189 @@
+[
+  {
+    "id": "typescript-prototype-pollution-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "merge.ts",
+        "text": "function isPlainObject(value: unknown): value is Record<string, unknown> {\n  return typeof value === \"object\" && value !== null && !Array.isArray(value);\n}\n\n// Deep-merges user-supplied JSON settings into the defaults.\nexport function merge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {\n  for (const key of Object.keys(source)) {\n    const value = source[key];\n    const existing = target[key];\n    target[key] = isPlainObject(value) ? merge(isPlainObject(existing) ? existing : {}, value) : value;\n  }\n  return target;\n}"
+      }
+    ],
+    "expected": {
+      "path": "merge.ts",
+      "line": 10,
+      "alsoLines": [
+        7
+      ],
+      "mechanism": "prototype|__proto__|pollut|constructor"
+    }
+  },
+  {
+    "id": "typescript-prototype-pollution-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "merge.ts",
+        "text": "const UNSAFE_KEYS = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n\nfunction isPlainObject(value: unknown): value is Record<string, unknown> {\n  return typeof value === \"object\" && value !== null && !Array.isArray(value);\n}\n\n// Deep-merges user-supplied JSON settings into the defaults.\nexport function merge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {\n  for (const key of Object.keys(source)) {\n    if (UNSAFE_KEYS.has(key)) continue;\n    const value = source[key];\n    const existing = Object.prototype.hasOwnProperty.call(target, key) ? target[key] : undefined;\n    target[key] = isPlainObject(value) ? merge(isPlainObject(existing) ? existing : {}, value) : value;\n  }\n  return target;\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-ssrf-image-proxy-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "images.ts",
+        "text": "const CDN_HOST = \"cdn.example.com\";\n\n// Fetches an image from our CDN (CDN_HOST). The URL comes from the client.\nexport async function fetchImage(url: string): Promise<ArrayBuffer> {\n  const response = await fetch(url, {redirect: \"error\"});\n  if (!response.ok) throw new Error(`image fetch failed: ${response.status}`);\n  return response.arrayBuffer();\n}"
+      }
+    ],
+    "expected": {
+      "path": "images.ts",
+      "line": 5,
+      "mechanism": "ssrf|server.side request|forgery|hostname|allow.?list|whitelist|internal|CDN_HOST"
+    }
+  },
+  {
+    "id": "typescript-ssrf-image-proxy-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "images.ts",
+        "text": "const CDN_HOST = \"cdn.example.com\";\n\n// Fetches an image from our CDN (CDN_HOST). The URL comes from the client.\nexport async function fetchImage(url: string): Promise<ArrayBuffer> {\n  const parsed = new URL(url);\n  if (parsed.protocol !== \"https:\" || parsed.hostname !== CDN_HOST) throw new Error(\"image URL must point at the CDN\");\n  const response = await fetch(parsed, {redirect: \"error\"});\n  if (!response.ok) throw new Error(`image fetch failed: ${response.status}`);\n  return response.arrayBuffer();\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-sort-mutates-input-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "scores.ts",
+        "text": "// Returns the three highest scores without changing the caller's array.\nexport function topThree(scores: number[]): number[] {\n  return scores.sort((a, b) => b - a).slice(0, 3);\n}"
+      }
+    ],
+    "expected": {
+      "path": "scores.ts",
+      "line": 3,
+      "mechanism": "mutat|in.place|copy|side.effect|modif|toSorted"
+    }
+  },
+  {
+    "id": "typescript-sort-copy-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "scores.ts",
+        "text": "// Returns the three highest scores without changing the caller's array.\nexport function topThree(scores: number[]): number[] {\n  return [...scores].sort((a, b) => b - a).slice(0, 3);\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-regex-backtracking-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "names.ts",
+        "text": "// A display name is one or more letter-only words separated by single spaces.\nconst DISPLAY_NAME = /^([a-zA-Z]+\\s?)*$/;\n\nexport function isValidDisplayName(name: string): boolean {\n  return DISPLAY_NAME.test(name);\n}"
+      }
+    ],
+    "expected": {
+      "path": "names.ts",
+      "line": 2,
+      "alsoLines": [
+        5
+      ],
+      "mechanism": "redos|regex|backtrack|catastroph|denial|exponential"
+    }
+  },
+  {
+    "id": "typescript-regex-linear-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "names.ts",
+        "text": "// A display name is one or more letter-only words separated by single spaces.\nconst DISPLAY_NAME = /^[a-zA-Z]+( [a-zA-Z]+)*$/;\n\nexport function isValidDisplayName(name: string): boolean {\n  return DISPLAY_NAME.test(name);\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-hardcoded-jwt-secret-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "tokens.ts",
+        "text": "import jwt from \"jsonwebtoken\";\n\nconst SIGNING_KEY: string = \"prod-9f2c41e7a8b34d0c\";\n\n// Issues a one-hour access token for the user.\nexport function issueToken(userId: string): string {\n  return jwt.sign({sub: userId}, SIGNING_KEY, {algorithm: \"HS256\", expiresIn: \"1h\"});\n}"
+      }
+    ],
+    "expected": {
+      "path": "tokens.ts",
+      "line": 3,
+      "alsoLines": [
+        7
+      ],
+      "mechanism": "hard.?coded|secret|credential|environment|env\\b|vault|source code"
+    }
+  },
+  {
+    "id": "typescript-env-jwt-secret-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "tokens.ts",
+        "text": "import jwt from \"jsonwebtoken\";\n\nfunction signingKey(): string {\n  const key = process.env.JWT_SIGNING_KEY;\n  if (!key) throw new Error(\"JWT_SIGNING_KEY is not set\");\n  return key;\n}\nconst SIGNING_KEY: string = signingKey();\n\n// Issues a one-hour access token for the user.\nexport function issueToken(userId: string): string {\n  return jwt.sign({sub: userId}, SIGNING_KEY, {algorithm: \"HS256\", expiresIn: \"1h\"});\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-open-redirect-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "login.ts",
+        "text": "import type {Request, Response} from \"express\";\n\n// After login, return the user to the page they started from.\nexport function afterLogin(req: Request, res: Response): void {\n  const next = typeof req.query.next === \"string\" ? req.query.next : \"/\";\n  res.redirect(next);\n}"
+      }
+    ],
+    "expected": {
+      "path": "login.ts",
+      "line": 6,
+      "alsoLines": [
+        5
+      ],
+      "mechanism": "redirect|allow.?list|whitelist|phishing"
+    }
+  },
+  {
+    "id": "typescript-open-redirect-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "login.ts",
+        "text": "import type {Request, Response} from \"express\";\n\nconst ALLOWED_TARGETS = new Set([\"/\", \"/dashboard\", \"/settings\"]);\n\nfunction validatedTarget(next: unknown): string {\n  return typeof next === \"string\" && ALLOWED_TARGETS.has(next) ? next : \"/\";\n}\n\n// After login, return the user to the page they started from if it is a known page.\nexport function afterLogin(req: Request, res: Response): void {\n  res.redirect(validatedTarget(req.query.next));\n}"
+      }
+    ]
+  },
+  {
+    "id": "typescript-reduce-empty-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "cart.ts",
+        "text": "interface Line { priceCents: number; quantity: number }\n\n// Total price of the cart in cents; an empty cart costs 0.\nexport function cartTotal(lines: Line[]): number {\n  return lines.map(l => l.priceCents * l.quantity).reduce((sum, v) => sum + v);\n}"
+      }
+    ],
+    "expected": {
+      "path": "cart.ts",
+      "line": 5,
+      "mechanism": "reduce|initial|empty|TypeError"
+    }
+  },
+  {
+    "id": "typescript-reduce-empty-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "cart.ts",
+        "text": "interface Line { priceCents: number; quantity: number }\n\n// Total price of the cart in cents; an empty cart costs 0.\nexport function cartTotal(lines: Line[]): number {\n  return lines.map(l => l.priceCents * l.quantity).reduce((sum, v) => sum + v, 0);\n}"
+      }
+    ]
+  }
+]

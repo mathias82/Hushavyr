@@ -1,0 +1,161 @@
+[
+  {
+    "id": "python-late-binding-closure-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "callbacks.py",
+        "text": "# Build one callback per handler name; each callback must report its own name.\ndef make_callbacks(names):\n    callbacks = []\n    for name in names:\n        callbacks.append(lambda: \"handled \" + name)\n    return callbacks"
+      }
+    ],
+    "expected": {
+      "path": "callbacks.py",
+      "line": 5,
+      "mechanism": "late|bind|closure|captur|loop variable|default arg"
+    }
+  },
+  {
+    "id": "python-late-binding-closure-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "callbacks.py",
+        "text": "# Build one callback per handler name; each callback must report its own name.\ndef make_callbacks(names):\n    callbacks = []\n    for name in names:\n        callbacks.append(lambda name=name: \"handled \" + name)\n    return callbacks"
+      }
+    ]
+  },
+  {
+    "id": "python-pickle-upload-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "settings.py",
+        "text": "import pickle\n\n\n# Parse the settings file uploaded by the user.\ndef parse_settings(uploaded_bytes):\n    settings = pickle.loads(uploaded_bytes)\n    if not isinstance(settings, dict):\n        raise ValueError(\"settings must be a mapping\")\n    return settings"
+      }
+    ],
+    "expected": {
+      "path": "settings.py",
+      "line": 6,
+      "mechanism": "pickle|deserial|untrusted|arbitrary code|code execution"
+    }
+  },
+  {
+    "id": "python-pickle-upload-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "settings.py",
+        "text": "import json\n\n\n# Parse the settings file uploaded by the user.\ndef parse_settings(uploaded_bytes):\n    settings = json.loads(uploaded_bytes)\n    if not isinstance(settings, dict):\n        raise ValueError(\"settings must be a mapping\")\n    return settings"
+      }
+    ]
+  },
+  {
+    "id": "python-swallowed-exception-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "billing.py",
+        "text": "import logging\n\nlogger = logging.getLogger(__name__)\n\n\n# Charge the customer; callers rely on an exception when the charge fails.\ndef charge(gateway, customer_id, amount_cents):\n    try:\n        return gateway.charge(customer_id, amount_cents)\n    except Exception:\n        logger.debug(\"charge failed\")"
+      }
+    ],
+    "expected": {
+      "path": "billing.py",
+      "line": 11,
+      "alsoLines": [
+        10
+      ],
+      "mechanism": "swallow|silen|suppress|ignor|re-?raise|propagat|returns? None"
+    }
+  },
+  {
+    "id": "python-swallowed-exception-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "billing.py",
+        "text": "import logging\n\nlogger = logging.getLogger(__name__)\n\n\n# Charge the customer; callers rely on an exception when the charge fails.\ndef charge(gateway, customer_id, amount_cents):\n    try:\n        return gateway.charge(customer_id, amount_cents)\n    except Exception:\n        logger.exception(\"charge failed for customer %s\", customer_id)\n        raise"
+      }
+    ]
+  },
+  {
+    "id": "python-path-traversal-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "downloads.py",
+        "text": "import os\n\nfrom flask import Flask, request, send_file\n\napp = Flask(__name__)\nPUBLIC_DIR = \"/srv/public\"\n\n\n# Serve a public file by name.\n@app.route(\"/download\")\ndef download():\n    name = request.args.get(\"name\", \"\")\n    return send_file(os.path.join(PUBLIC_DIR, name))"
+      }
+    ],
+    "expected": {
+      "path": "downloads.py",
+      "line": 13,
+      "alsoLines": [
+        12
+      ],
+      "mechanism": "travers|\\.\\.|directory|safe_join|send_from_directory|path"
+    }
+  },
+  {
+    "id": "python-path-traversal-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "downloads.py",
+        "text": "from flask import Flask, request, send_from_directory\n\napp = Flask(__name__)\nPUBLIC_DIR = \"/srv/public\"\n\n\n# Serve a public file by name.\n@app.route(\"/download\")\ndef download():\n    name = request.args.get(\"name\", \"\")\n    return send_from_directory(PUBLIC_DIR, name)"
+      }
+    ]
+  },
+  {
+    "id": "python-signature-timing-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.py",
+        "text": "import hashlib\nimport hmac\n\n\n# Verify the HMAC-SHA256 signature sent with a webhook.\ndef verify_signature(secret: bytes, body: bytes, signature: str) -> bool:\n    expected = hmac.new(secret, body, hashlib.sha256).hexdigest()\n    return expected == signature"
+      }
+    ],
+    "expected": {
+      "path": "webhooks.py",
+      "line": 8,
+      "mechanism": "timing|constant.time|compare_digest|side.channel"
+    }
+  },
+  {
+    "id": "python-signature-timing-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "webhooks.py",
+        "text": "import hashlib\nimport hmac\n\n\n# Verify the HMAC-SHA256 signature sent with a webhook.\ndef verify_signature(secret: bytes, body: bytes, signature: str) -> bool:\n    expected = hmac.new(secret, body, hashlib.sha256).hexdigest()\n    return hmac.compare_digest(expected.encode(), signature.encode())"
+      }
+    ]
+  },
+  {
+    "id": "python-dict-mutation-during-iteration-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "sessions.py",
+        "text": "# Remove every session that has expired.\ndef purge_expired(sessions, now):\n    for key, session in sessions.items():\n        if session[\"expires_at\"] <= now:\n            del sessions[key]"
+      }
+    ],
+    "expected": {
+      "path": "sessions.py",
+      "line": 5,
+      "alsoLines": [
+        3
+      ],
+      "mechanism": "RuntimeError|changed size|iterat|mutat|modif|copy"
+    }
+  },
+  {
+    "id": "python-dict-mutation-during-iteration-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "sessions.py",
+        "text": "# Remove every session that has expired.\ndef purge_expired(sessions, now):\n    expired = [key for key, session in sessions.items() if session[\"expires_at\"] <= now]\n    for key in expired:\n        del sessions[key]"
+      }
+    ]
+  }
+]

@@ -172,3 +172,17 @@ test("setupPlan installs and starts Ollama, downloads the model and installs the
   assert.deepEqual(setupPlan({...fresh, ollama: true, modelReady: true, tools: [], osvDatabase: true}).map(s => s.kind), ["ollama-start"]);
   assert.deepEqual(setupPlan({...fresh, platform: "win32", installer: "winget install --id Ollama.Ollama --exact"}).map(s => s.kind), ["ollama-install", "ollama-start", "model"]);
 });
+
+test("the 32b judge is offered only to smaller models on machines that can hold it, and only when installed", async () => {
+  const {judgeFits, localJudge} = await import("../../model/model");
+  const gb = 1024 ** 3;
+  assert.equal(judgeFits("qwen2.5-coder:14b", 24 * gb), true);
+  assert.equal(judgeFits("qwen2.5-coder:7b", 16 * gb), false);
+  assert.equal(judgeFits("qwen2.5-coder:32b", 64 * gb), false);
+  assert.equal(judgeFits("llama3", 64 * gb), false);
+  const {LocalOllama} = await import("../../model/ollama");
+  const client = (names: string[]) => new LocalOllama({model: "qwen2.5-coder:14b"}, async () => new Response(JSON.stringify({models: names.map(name => ({name}))})));
+  assert.ok(await localJudge(client(["qwen2.5-coder:14b", "qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "auto", 24 * gb));
+  assert.equal(await localJudge(client(["qwen2.5-coder:14b"]), "qwen2.5-coder:14b", "auto", 24 * gb), undefined);
+  assert.equal(await localJudge(client(["qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "off", 24 * gb), undefined);
+});

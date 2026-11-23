@@ -1,0 +1,127 @@
+[
+  {
+    "id": "javascript-path-traversal-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "reports.js",
+        "text": "const fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\nconst REPORTS_DIR = path.join(__dirname, \"reports\");\n\n// Serves a generated report by file name.\nfunction downloadReport(req, res) {\n  fs.readFile(path.join(REPORTS_DIR, req.params.name), (err, data) => {\n    if (err) return res.status(404).end();\n    res.type(\"application/pdf\").send(data);\n  });\n}\n\nmodule.exports = downloadReport;"
+      }
+    ],
+    "expected": {
+      "path": "reports.js",
+      "line": 8,
+      "mechanism": "travers|\\.\\.|directory|path"
+    }
+  },
+  {
+    "id": "javascript-path-traversal-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "reports.js",
+        "text": "const fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\nconst REPORTS_DIR = path.join(__dirname, \"reports\");\n\n// Resolves name inside REPORTS_DIR, or returns null if it would escape the directory.\nfunction validatedReportPath(name) {\n  const file = path.resolve(REPORTS_DIR, String(name));\n  return file.startsWith(REPORTS_DIR + path.sep) ? file : null;\n}\n\n// Serves a generated report by file name.\nfunction downloadReport(req, res) {\n  const file = validatedReportPath(req.params.name);\n  if (!file) return res.status(400).end();\n  fs.readFile(file, (err, data) => {\n    if (err) return res.status(404).end();\n    res.type(\"application/pdf\").send(data);\n  });\n}\n\nmodule.exports = downloadReport;"
+      }
+    ]
+  },
+  {
+    "id": "javascript-eval-filter-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "filters.js",
+        "text": "// Parses the filter object sent by the client, e.g. {\"status\":\"open\"}.\nfunction parseFilter(raw) {\n  const filter = eval(\"(\" + raw + \")\");\n  if (typeof filter !== \"object\" || filter === null || Array.isArray(filter)) throw new Error(\"filter must be an object\");\n  return filter;\n}\n\nmodule.exports = parseFilter;"
+      }
+    ],
+    "expected": {
+      "path": "filters.js",
+      "line": 3,
+      "mechanism": "eval|inject|code execution|arbitrary code|JSON\\.parse"
+    }
+  },
+  {
+    "id": "javascript-json-filter-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "filters.js",
+        "text": "// Parses the filter object sent by the client, e.g. {\"status\":\"open\"}.\nfunction parseFilter(raw) {\n  const filter = JSON.parse(raw);\n  if (typeof filter !== \"object\" || filter === null || Array.isArray(filter)) throw new Error(\"filter must be an object\");\n  return filter;\n}\n\nmodule.exports = parseFilter;"
+      }
+    ]
+  },
+  {
+    "id": "javascript-date-month-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "calendar.js",
+        "text": "// Returns the first day of the given month; month is 1-12 as shown in the UI.\nfunction firstOfMonth(year, month) {\n  return new Date(year, month, 1);\n}\n\nmodule.exports = firstOfMonth;"
+      }
+    ],
+    "expected": {
+      "path": "calendar.js",
+      "line": 3,
+      "mechanism": "month|zero.based|0.based|off.by.one|month - 1"
+    }
+  },
+  {
+    "id": "javascript-date-month-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "calendar.js",
+        "text": "// Returns the first day of the given month; month is 1-12 as shown in the UI.\nfunction firstOfMonth(year, month) {\n  return new Date(year, month - 1, 1);\n}\n\nmodule.exports = firstOfMonth;"
+      }
+    ]
+  },
+  {
+    "id": "javascript-jwt-decode-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "auth.js",
+        "text": "const jwt = require(\"jsonwebtoken\");\n\n// Express middleware: authenticates the request from its bearer token.\nfunction authenticate(secret) {\n  return (req, res, next) => {\n    const token = (req.headers.authorization || \"\").replace(/^Bearer /, \"\");\n    const claims = jwt.decode(token);\n    if (!claims || typeof claims !== \"object\" || !claims.sub) return res.status(401).end();\n    req.user = claims.sub;\n    next();\n  };\n}\n\nmodule.exports = authenticate;"
+      }
+    ],
+    "expected": {
+      "path": "auth.js",
+      "line": 7,
+      "mechanism": "verif|signature|decode|forg|unsigned"
+    }
+  },
+  {
+    "id": "javascript-jwt-verify-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "auth.js",
+        "text": "const jwt = require(\"jsonwebtoken\");\n\n// Express middleware: authenticates the request from its bearer token.\nfunction authenticate(secret) {\n  return (req, res, next) => {\n    const token = (req.headers.authorization || \"\").replace(/^Bearer /, \"\");\n    let claims;\n    try {\n      claims = jwt.verify(token, secret, {algorithms: [\"HS256\"]});\n    } catch {\n      return res.status(401).end();\n    }\n    if (!claims || typeof claims !== \"object\" || !claims.sub) return res.status(401).end();\n    req.user = claims.sub;\n    next();\n  };\n}\n\nmodule.exports = authenticate;"
+      }
+    ]
+  },
+  {
+    "id": "javascript-map-parseint-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ports.js",
+        "text": "// Converts the comma-separated port list from the config, e.g. \"80,443\", into numbers.\nfunction parsePorts(value) {\n  const ports = value.split(\",\").map(parseInt);\n  for (const port of ports) {\n    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`invalid port in \"${value}\"`);\n  }\n  return ports;\n}\n\nmodule.exports = parsePorts;"
+      }
+    ],
+    "expected": {
+      "path": "ports.js",
+      "line": 3,
+      "mechanism": "parseInt|radix|index|NaN|second argument"
+    }
+  },
+  {
+    "id": "javascript-map-parseint-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "ports.js",
+        "text": "// Converts the comma-separated port list from the config, e.g. \"80,443\", into numbers.\nfunction parsePorts(value) {\n  const ports = value.split(\",\").map((part) => Number.parseInt(part, 10));\n  for (const port of ports) {\n    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`invalid port in \"${value}\"`);\n  }\n  return ports;\n}\n\nmodule.exports = parsePorts;"
+      }
+    ]
+  }
+]

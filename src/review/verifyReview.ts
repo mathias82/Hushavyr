@@ -58,7 +58,7 @@ const MAX_RECHECKS = 2;
 const recheckSchema = {type: "object", additionalProperties: false, required: ["real"], properties: {real: {type: "boolean"}}};
 
 /** Only the finding and about 20 surrounding lines, so the model judges the mechanism, not the whole file. */
-async function recheck(client: Pick<LocalOllama, "generate">, finding: Finding, source: ReviewInput, cancelled: () => boolean): Promise<boolean> {
+export async function recheck(client: Pick<LocalOllama, "generate">, finding: Finding, source: ReviewInput, cancelled: () => boolean): Promise<boolean> {
   const sources = reviewSources(source);
   const file = sources.find(s => s.path === finding.path) ?? sources[0];
   if (!file || cancelled()) return false;

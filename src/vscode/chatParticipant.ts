@@ -1,4 +1,4 @@
-import {configuredModel, configuredDepth} from "../model/model";
+import {configuredModel, configuredDepth, localJudge} from "../model/model";
 import {relatedSources} from "../review/relatedJava";
 import {changedFiles} from "../git/changedFiles";
 import * as vscode from "vscode";
@@ -546,7 +546,8 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
         if (!cached) stream.progress(depth === "thorough" ? "Local review: general, security and robustness passes + static rules..." : depth === "light" ? "Local review (light mode for this machine's memory)..." : "Local review...");
         // Each pass has a fresh prompt; the same model may serve both passes.
         const validated: ReviewResult | undefined = cached ? {...cached, cached: true} : await runLocalReview(withSignal(client), reviewInstruction, sources,
-          () => token.isCancellationRequested, withSignal(verifier), {depth, staticFindings, onProgress: message => { if (!token.isCancellationRequested) stream.progress(message); }});
+          () => token.isCancellationRequested, withSignal(verifier), {depth, staticFindings,
+            judge: () => localJudge(client, model, config.get<string>("reviewJudge", "auto"), undefined, controller.signal).then(j => j && withSignal(j)), onProgress: message => { if (!token.isCancellationRequested) stream.progress(message); }});
         if (validated && !validated.error && !cached && !token.isCancellationRequested) reviewCache.set(key, validated);
         if (validated && !token.isCancellationRequested) {
           const dismissals = (await Promise.all((vscode.workspace.workspaceFolders ?? []).map(f => loadDismissals(f.uri.fsPath)))).flat();

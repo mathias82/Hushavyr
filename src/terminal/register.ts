@@ -20,7 +20,8 @@ export function registerTerminalCommand(context: vscode.ExtensionContext): void 
   }
   const target = shimPath(process.platform, homedir(), process.env);
   const script = shimScript(process.platform, context.extensionPath ?? dirname(bin), process.execPath);
-  if (context.extensionPath) void refreshShim(target, script).catch(() => undefined);
+  // Only the installed extension updates the user's launcher; test and development hosts must not repoint it.
+  if (context.extensionPath && context.extensionMode === vscode.ExtensionMode.Production) void refreshShim(target, script).catch(() => undefined);
   context.subscriptions.push(vscode.commands.registerCommand(INSTALL_TERMINAL_COMMAND, () => installTerminalCommand(target, script)));
 }
 

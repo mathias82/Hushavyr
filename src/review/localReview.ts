@@ -1,12 +1,14 @@
 import { LocalOllama } from "../model/ollama";
 import { ReviewResult, reviewPrompt, reviewSchema, validateReview } from "./review";
 import { ReviewInput, reviewSources, validateContext } from "./context";
-import { verifyReview } from "./verifyReview";
+import { recheck, verifyReview } from "./verifyReview";
 import { scanSecurity } from "../scan/securityRules";
 import { Finding } from "./review";
 import { flowSeverity, flowTitle, taintFlows } from "../scan/taint";
+import { targetedFindings } from "./targetedChecks";
 
 export type ReviewDepth = "fast" | "thorough" | "light";
+export type VerifyMode = "batch" | "recheck" | "none";
 export interface ReviewOptions {
   /** "thorough" adds focused security and robustness passes; "fast" is one pass plus a retry when empty;
    * "light" (small machines) is one short pass; static candidates and the verifier carry the rest. */
@@ -15,6 +17,11 @@ export interface ReviewOptions {
   staticFindings?: Promise<Finding[]>;
   /** Live status lines, e.g. "Security pass: 2 candidate(s)", shown while the review runs. */
   onProgress?: (message: string) => void;
+  /** How the second pass checks findings: "batch" (one skeptical pass over all), "recheck" (one narrow yes/no
+   * question per finding; small models judge one finding far better than a list) or "none". Default "batch". */
+  verify?: VerifyMode;
+  /** A stronger local model (e.g. 32b) that re-judges only the findings the local checks disagree on; a yes promotes them. */
+  judge?: Pick<LocalOllama, "generate"> | (() => Promise<Pick<LocalOllama, "generate"> | undefined>);
 }
 
 // Appended after the shared prompt so every pass reuses the same prompt prefix (Ollama keeps its KV cache).
@@ -162,6 +169,16 @@ function offlineSecurityFindings(source: ReviewInput): Finding[] {
   return findings;
 }
 
+/** Narrow per-finding verification: each finding is kept only if a focused look at its lines confirms it. */
+async function recheckEach(verifier: Pick<LocalOllama, "generate">, result: ReviewResult, source: ReviewInput, cancelled: () => boolean): Promise<ReviewResult | undefined> {
+  const findings: Finding[] = [];
+  for (const [i, f] of result.findings.entries()) {
+    if (cancelled()) return;
+    if (i >= 6 || await recheck(verifier, f, source, cancelled)) findings.push({...f, verification: i >= 6 ? "unverified" : "supported"});
+  }
+  return {...result, findings, verifierRejected: result.findings.length - findings.length};
+}
+
 /** Hybrid review: model passes + static analyzer candidates, then one separate verification pass; all local. */
 export async function runLocalReview(
   client: Pick<LocalOllama, "generate">, instruction: string, source: ReviewInput,
@@ -178,8 +195,36 @@ export async function runLocalReview(
     ? {...model, findings: mergeFindings(model.findings, staticCandidates), staticCandidates: staticCandidates.length}
     : model;
   if (verifier && result.findings.length) progress?.("Second local pass: checking " + result.findings.length + " finding(s) against the source...");
-  const verified = verifier ? await verifyReview(verifier, result, source, cancelled) : result;
+  const mode = (process.env.HUSHAVYR_VERIFY as VerifyMode | undefined) ?? options.verify ?? "batch";
+  const verified = !verifier || mode === "none" ? result : mode === "recheck" ? await recheckEach(verifier, result, source, cancelled) : await verifyReview(verifier, result, source, cancelled);
   if (!verified || cancelled()) return;
-  return {...verified, findings: mergeFindings(verified.findings, offlineSecurityFindings(source))};
+  // Optional narrow confirmation of each kept finding (HUSHAVYR_CONFIRM=1, benchmark A/B): a "no" moves it to Possible.
+  const doubted: Finding[] = [];
+  if (process.env.HUSHAVYR_CONFIRM === "1" && verifier && !model.error) {
+    const kept: Finding[] = [];
+    for (const [i, f] of verified.findings.entries()) {
+      if (i >= 3 || await recheck(verifier, f, source, cancelled)) kept.push(f); else doubted.push({...f, verification: "unverified"});
+      if (cancelled()) return;
+    }
+    verified.findings = kept;
+  }
+  if (doubted.length) verified.disputed = [...verified.disputed ?? [], ...doubted];
+  // Bug classes the general pass and the verifier often lose (overflow, missing await, falsy zero, null before guard, ...):
+  // a narrow trigger plus one focused local question each. HUSHAVYR_TARGETED=0 turns them off (benchmark A/B).
+  const targeted = process.env.HUSHAVYR_TARGETED === "0" || model.error ? [] : await targetedFindings(verifier ?? client, source, cancelled);
+  if (cancelled()) return;
+  if (targeted.length) progress?.("Focused checks: " + targeted.length + " finding(s)");
+  const promoted: Finding[] = [];
+  const judge = verified.disputed?.length && options.judge ? typeof options.judge === "function" ? await options.judge() : options.judge : undefined;
+  if (judge && verified.disputed?.length) {
+    progress?.("Stronger local model: re-checking " + verified.disputed.length + " disputed finding(s)...");
+    for (const d of verified.disputed) {
+      if (cancelled()) return;
+      if (await recheck(judge, d, source, cancelled)) promoted.push({...d, verification: "supported"});
+    }
+  }
+  const findings = mergeFindings(verified.findings, promoted, targeted, offlineSecurityFindings(source));
+  const disputed = verified.disputed?.filter(d => !findings.some(f => f.path === d.path && Math.abs((f.line ?? 0) - (d.line ?? 0)) <= 1));
+  return {...verified, findings, disputed: disputed?.length ? disputed : undefined};
 
 }

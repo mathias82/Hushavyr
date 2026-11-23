@@ -1,0 +1,183 @@
+[
+  {
+    "id": "csharp-async-void-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "OrderService.cs",
+        "text": "using System.Threading.Tasks;\n\npublic class OrderService\n{\n    private readonly IOrderStore _store;\n    public OrderService(IOrderStore store) => _store = store;\n\n    // Saves the order; callers await this and expect failures to propagate.\n    public async void SaveAsync(Order order)\n    {\n        await _store.InsertAsync(order);\n    }\n}\n\npublic interface IOrderStore { Task InsertAsync(Order order); }\npublic record Order(int Id);"
+      }
+    ],
+    "expected": {
+      "path": "OrderService.cs",
+      "line": 9,
+      "mechanism": "async void|Task|fire.and.forget|cannot be awaited|unobserved"
+    }
+  },
+  {
+    "id": "csharp-async-task-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "OrderService.cs",
+        "text": "using System.Threading.Tasks;\n\npublic class OrderService\n{\n    private readonly IOrderStore _store;\n    public OrderService(IOrderStore store) => _store = store;\n\n    // Saves the order; callers await this and expect failures to propagate.\n    public async Task SaveAsync(Order order)\n    {\n        await _store.InsertAsync(order);\n    }\n}\n\npublic interface IOrderStore { Task InsertAsync(Order order); }\npublic record Order(int Id);"
+      }
+    ]
+  },
+  {
+    "id": "csharp-undisposed-reader-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "Settings.cs",
+        "text": "using System.IO;\n\npublic static class Settings\n{\n    // Returns the first line of the settings file, or null if it is empty.\n    public static string? ReadFirstLine(string path)\n    {\n        var reader = new StreamReader(path);\n        return reader.ReadLine();\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "Settings.cs",
+      "line": 8,
+      "mechanism": "dispos|using|leak|close|handle"
+    }
+  },
+  {
+    "id": "csharp-disposed-reader-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "Settings.cs",
+        "text": "using System.IO;\n\npublic static class Settings\n{\n    // Returns the first line of the settings file, or null if it is empty.\n    public static string? ReadFirstLine(string path)\n    {\n        using var reader = new StreamReader(path);\n        return reader.ReadLine();\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-xxe-resolver-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "InvoiceParser.cs",
+        "text": "using System.IO;\nusing System.Xml;\n\npublic static class InvoiceParser\n{\n    // Parses an invoice XML document uploaded by a customer.\n    public static XmlDocument Parse(Stream upload)\n    {\n        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse, XmlResolver = new XmlUrlResolver() };\n        using var reader = XmlReader.Create(upload, settings);\n        var doc = new XmlDocument();\n        doc.Load(reader);\n        return doc;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "InvoiceParser.cs",
+      "line": 9,
+      "mechanism": "xxe|external entit|XmlResolver|dtd|entity"
+    }
+  },
+  {
+    "id": "csharp-xxe-prohibited-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "InvoiceParser.cs",
+        "text": "using System.IO;\nusing System.Xml;\n\npublic static class InvoiceParser\n{\n    // Parses an invoice XML document uploaded by a customer.\n    public static XmlDocument Parse(Stream upload)\n    {\n        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };\n        using var reader = XmlReader.Create(upload, settings);\n        var doc = new XmlDocument { XmlResolver = null };\n        doc.Load(reader);\n        return doc;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-timing-unsafe-key-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "ApiKeyValidator.cs",
+        "text": "public sealed class ApiKeyValidator\n{\n    private readonly string _expectedKey;\n    public ApiKeyValidator(string expectedKey) => _expectedKey = expectedKey;\n\n    // Checks the API key sent in the X-Api-Key request header.\n    public bool IsValid(string? presented)\n    {\n        if (presented is null) return false;\n        return presented == _expectedKey;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "ApiKeyValidator.cs",
+      "line": 10,
+      "mechanism": "timing|constant.time|FixedTimeEquals|side.channel"
+    }
+  },
+  {
+    "id": "csharp-fixed-time-key-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "ApiKeyValidator.cs",
+        "text": "using System.Security.Cryptography;\nusing System.Text;\n\npublic sealed class ApiKeyValidator\n{\n    private readonly byte[] _expectedKey;\n    public ApiKeyValidator(string expectedKey) => _expectedKey = Encoding.UTF8.GetBytes(expectedKey);\n\n    // Checks the API key sent in the X-Api-Key request header.\n    public bool IsValid(string? presented)\n    {\n        if (presented is null) return false;\n        return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented), _expectedKey);\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-integer-division-bug",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "Progress.cs",
+        "text": "public static class Progress\n{\n    // Percentage of completed tasks, e.g. 1 of 3 -> 33.33.\n    public static double Percent(int completed, int total)\n    {\n        if (total <= 0) return 0;\n        return completed / total * 100;\n    }\n}"
+      }
+    ],
+    "expected": {
+      "path": "Progress.cs",
+      "line": 7,
+      "mechanism": "integer division|int|truncat|cast|double|100\\.0"
+    }
+  },
+  {
+    "id": "csharp-floating-division-clean",
+    "heldOut": false,
+    "sources": [
+      {
+        "path": "Progress.cs",
+        "text": "public static class Progress\n{\n    // Percentage of completed tasks, e.g. 1 of 3 -> 33.33.\n    public static double Percent(int completed, int total)\n    {\n        if (total <= 0) return 0;\n        return completed * 100.0 / total;\n    }\n}"
+      }
+    ]
+  },
+  {
+    "id": "csharp-typenamehandling-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "MessageReader.cs",
+        "text": "using Newtonsoft.Json;\n\npublic static class MessageReader\n{\n    private static readonly JsonSerializerSettings Settings = new() { TypeNameHandling = TypeNameHandling.All };\n\n    // Deserializes a message received from the public queue.\n    public static Message? Read(string json) => JsonConvert.DeserializeObject<Message>(json, Settings);\n}\n\npublic record Message(string Kind, string Body);"
+      }
+    ],
+    "expected": {
+      "path": "MessageReader.cs",
+      "line": 5,
+      "alsoLines": [
+        8
+      ],
+      "mechanism": "TypeNameHandling|deserial|gadget|type name|\\$type"
+    }
+  },
+  {
+    "id": "csharp-typenamehandling-none-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "MessageReader.cs",
+        "text": "using Newtonsoft.Json;\n\npublic static class MessageReader\n{\n    private static readonly JsonSerializerSettings Settings = new() { TypeNameHandling = TypeNameHandling.None };\n\n    // Deserializes a message received from the public queue.\n    public static Message? Read(string json) => JsonConvert.DeserializeObject<Message>(json, Settings);\n}\n\npublic record Message(string Kind, string Body);"
+      }
+    ]
+  },
+  {
+    "id": "csharp-dictionary-race-bug",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "HitCounter.cs",
+        "text": "using System.Collections.Generic;\n\npublic sealed class HitCounter\n{\n    private readonly Dictionary<string, long> _hits = new();\n\n    // Called concurrently from many request threads.\n    public void Record(string path)\n    {\n        _hits[path] = _hits.TryGetValue(path, out var n) ? n + 1 : 1;\n    }\n\n    public long Get(string path) => _hits.TryGetValue(path, out var n) ? n : 0;\n}"
+      }
+    ],
+    "expected": {
+      "path": "HitCounter.cs",
+      "line": 10,
+      "alsoLines": [
+        5
+      ],
+      "mechanism": "thread|concurren|race|lock|ConcurrentDictionary|synchroni"
+    }
+  },
+  {
+    "id": "csharp-concurrent-dictionary-clean",
+    "heldOut": true,
+    "sources": [
+      {
+        "path": "HitCounter.cs",
+        "text": "using System.Collections.Concurrent;\n\npublic sealed class HitCounter\n{\n    private readonly ConcurrentDictionary<string, long> _hits = new();\n\n    // Called concurrently from many request threads.\n    public void Record(string path)\n    {\n        _hits.AddOrUpdate(path, 1, (_, n) => n + 1);\n    }\n\n    public long Get(string path) => _hits.TryGetValue(path, out var n) ? n : 0;\n}"
+      }
+    ]
+  }
+]
