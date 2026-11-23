@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.19 (unreleased)
+- **Benchmark: where each bug is lost.** Every case now has a stage trace: what the general pass, retry, lenses, static rules, verifier, recheck, targeted checks and judge proposed, kept or dropped, model calls per stage, failed requests and invalid JSON answers. Each missed bug gets a `lossStage` (`not_proposed`, `validator_rejected`, `merge_dropped`, `verifier_rejected`, `possible_only`, `wrong_location`, `wrong_mechanism`, `inconclusive`, ...) and each final finding its origin stage. `not_proposed` is reported only when no model request failed and every answer was valid JSON. Expected bugs are used for scoring only and never reach the model. The trace holds line numbers and titles, no source or fix text. `BENCH_TRACE=0` turns it off. Measurement only: findings, scores and model calls are unchanged.
+
 ## 1.0.18
 - **`/pr` writes the text for you:** without a title, the local model reads the diff of the files to commit and proposes a Conventional Commit message, a PR title and a body (what, why, tests). Accept, edit or cancel; the secrets check still runs first. Same in the terminal and in VS Code.
 - **"Possible (low confidence)" section:** findings the second local check disputes are no longer dropped silently. They are listed separately after the confirmed findings, and `/fix` works on them.

@@ -3,10 +3,11 @@ import { verifyModeFor } from "./model/model";
 import { ReviewSource } from "./review/context";
 import { Finding, reviewPrompt, validateReview } from "./review/review";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { runLocalReview } from "./review/localReview";
+import { ReviewOptions, runLocalReview } from "./review/localReview";
 import { staticReview } from "./scan/staticReview";
 import { join } from "node:path";
 import { reviewDifficulty } from "./review/difficulty";
+import { Candidate, ReviewTrace } from "./review/reviewTrace";
 
 // alsoLines: other lines where the same bug is correctly reported (e.g. a declaration and its use).
 export interface BenchmarkCase { id: string; sources: ReviewSource[]; expected?: {path: string; line: number; alsoLines?: number[]; mechanism: RegExp}; heldOut?: boolean }
@@ -346,6 +347,51 @@ export function scoreCase(fixture: BenchmarkCase, findings: readonly Finding[]) 
   return {truePositive: matched >= 0 ? 1 : 0, falseNegative: expected && matched < 0 ? 1 : 0,
     falsePositive: findings.length - (matched >= 0 ? 1 : 0), cleanPass: !expected && !findings.length};
 }
+/** Where a known bug was lost on its way through the review. Decided after the review, from its trace; never fed back into it. */
+export type LossStage = "found" | "possible_only" | "confirm_doubted" | "final_merge_dropped" | "verifier_rejected" | "merge_dropped" |
+  "validator_rejected" | "wrong_mechanism" | "wrong_location" | "inconclusive" | "not_proposed";
+type Expected = NonNullable<BenchmarkCase["expected"]>;
+const PROPOSING = ["general", "retry", "lens.security", "lens.robustness", "static"];
+// Stages that ask the model and can add a finding; a failure here means a "not proposed" verdict cannot be trusted.
+const ASKING = ["general", "retry", "lens.security", "lens.robustness", "targeted", "judge"];
+const covers = (e: Expected, c: Candidate): boolean => c.path === e.path && c.line !== undefined &&
+  [e.line, ...e.alsoLines ?? []].some(line => c.line! <= line && line <= (c.endLine ?? c.line!));
+const names = (e: Expected, c: Candidate): boolean => e.mechanism.test(c.title + " " + c.fix);
+
+export function attributeMiss(expected: Expected, trace: ReviewTrace, errored = false): {lossStage: LossStage; hitStages: string[]; inconclusive: string[]} {
+  const hitStages = [...new Set(trace.stages.filter(s => s.candidates.some(c => covers(expected, c) && names(expected, c))).map(s => s.stage))];
+  const hit = (stage: string): boolean => hitStages.includes(stage);
+  const inconclusive = [...new Set([
+    ...errored ? ["review error"] : [],
+    ...trace.errors.filter(e => ASKING.includes(e.stage)).map(e => e.stage + ": request failed"),
+    ...Object.keys(trace.invalidJson).filter(s => ASKING.includes(s)).map(s => s + ": invalid JSON"),
+    ...trace.stages.filter(s => s.error && PROPOSING.includes(s.stage)).map(s => s.stage + ": " + s.error)])];
+  const all = trace.stages.flatMap(s => s.candidates);
+  const lossStage: LossStage = hit("final") ? "found" : hit("possible") ? "possible_only" : hit("confirm.doubted") ? "confirm_doubted"
+    : ["verified", "targeted", "judge.promoted", "offline"].some(hit) ? "final_merge_dropped"
+    : hit("preVerify") ? "verifier_rejected"
+    : [...PROPOSING, "collected"].some(hit) ? "merge_dropped"
+    : hitStages.some(s => s.endsWith(".rejected")) ? "validator_rejected"
+    : all.some(c => covers(expected, c)) ? "wrong_mechanism"
+    : all.some(c => c.path === expected.path && names(expected, c)) ? "wrong_location"
+    : inconclusive.length ? "inconclusive" : "not_proposed";
+  return {lossStage, hitStages, inconclusive};
+}
+
+/** First stage that produced each final finding, to see where false positives come from. */
+function origins(trace: ReviewTrace): string[] {
+  const final = trace.stages.find(s => s.stage === "final")?.candidates ?? [];
+  const sources = trace.stages.filter(s => [...PROPOSING, "targeted", "judge.promoted", "offline"].includes(s.stage));
+  return final.map(f => sources.find(s => s.candidates.some(c => c.path === f.path && c.line === f.line && c.title === f.title))?.stage ?? "unknown");
+}
+
+/** Model calls, failures, per-stage lines and titles, and the loss verdict. No source text and no fix text. */
+export function traceSummary(trace: ReviewTrace, expected?: Expected, errored = false) {
+  return {...expected ? attributeMiss(expected, trace, errored) : {}, origins: origins(trace), calls: trace.calls,
+    invalidJson: trace.invalidJson, errors: trace.errors,
+    stages: Object.fromEntries(trace.stages.map(s => [s.stage, s.candidates.map(c => (c.line ?? "?") + " " + c.title)]))};
+}
+
 // The same instruction as the terminal /review, so the benchmark measures what ships.
 const instruction = "Review this code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests.";
 
@@ -416,6 +462,25 @@ export function staticGateProblems(report: Awaited<ReturnType<typeof staticBench
   return problems;
 }
 
+type Generator = Pick<LocalOllama, "generate">;
+/**
+ * One fixture through the shipped review. Only the sources reach the model; the expected bug is used afterwards,
+ * for scoring and loss attribution only.
+ */
+export async function runCase(fixture: BenchmarkCase, client: Generator, verifier: Generator | undefined,
+  options: Omit<ReviewOptions, "trace" | "staticFindings"> & {useStatic?: boolean; trace?: boolean}) {
+  const {useStatic, trace: traced, ...review} = options;
+  const trace = traced ? new ReviewTrace() : undefined;
+  const staticFindings = useStatic ? staticReview(fixture.sources, rules).then(r => r.findings) : undefined;
+  try {
+    const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {...review, staticFindings, trace});
+    if (!result || result.error) throw new Error(result?.error ?? "Review cancelled");
+    return {result, trace: trace && traceSummary(trace, fixture.expected)};
+  } catch (error) {
+    return {error: (error instanceof Error ? error.message : String(error)).slice(0, 200), trace: trace && traceSummary(trace, fixture.expected, true)};
+  }
+}
+
 function rates(v: {truePositives: number; falsePositives: number; falseNegatives: number}) {
   const {truePositives: tp, falsePositives: fp, falseNegatives: fn} = v;
   return {precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null};
@@ -484,12 +549,18 @@ async function main(args: string[]) {
     const t = withPossible[key] ??= {truePositives: 0, falsePositives: 0, falseNegatives: 0, cases: 0};
     t.truePositives += s.truePositive; t.falsePositives += s.falsePositive; t.falseNegatives += s.falseNegative; t.cases++;
   };
+  // BENCH_TRACE=0 runs without the stage trace (to check that tracing changes nothing).
+  const traced = process.env.BENCH_TRACE !== "0";
+  const lossStages: Record<string, number> = {}, calls: Record<string, number> = {};
   for (const fixture of selected) {
     const started = Date.now();
+    const run = await runCase(fixture, client, verifier, {depth, verify: verifyModeFor(model), judge, useStatic, trace: traced});
+    const trace = run.trace;
+    for (const [stage, n] of Object.entries(trace?.calls ?? {})) calls[stage] = (calls[stage] ?? 0) + n;
+    if (trace && "lossStage" in trace && trace.lossStage) lossStages[trace.lossStage] = (lossStages[trace.lossStage] ?? 0) + 1;
     try {
-      const staticFindings = useStatic ? staticReview(fixture.sources, rules).then(r => r.findings) : undefined;
-      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, verify: verifyModeFor(model), staticFindings, judge});
-      if (!result || result.error) throw new Error("Review failed");
+      const result = run.result;
+      if (!result) throw new Error(run.error);
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;
       if (result.verifierFailed) verifierFailures++;
@@ -504,14 +575,14 @@ async function main(args: string[]) {
       if (fixture.heldOut) { heldOut.truePositives += score.truePositive; heldOut.falsePositives += score.falsePositive; heldOut.falseNegatives += score.falseNegative; heldOut.cases++; }
       const both = scoreCase(fixture, [...result.findings, ...(result.disputed ?? [])]);
       addPossible("all", both); addPossible(lang, both); if (fixture.heldOut) addPossible("heldOut", both);
-      cases.push({id: fixture.id, ...score, possible: (result.disputed ?? []).map(f => f.line + " " + f.title), verifierFailed: !!result.verifierFailed, findings: result.findings.map(f => f.line + " " + f.title), unsure: difficulty.reasons, durationMs: Date.now() - started});
+      cases.push({id: fixture.id, ...score, possible: (result.disputed ?? []).map(f => f.line + " " + f.title), verifierFailed: !!result.verifierFailed, findings: result.findings.map(f => f.line + " " + f.title), unsure: difficulty.reasons, durationMs: Date.now() - started, ...trace ? {trace} : {}});
     } catch {
       errors++; if (fixture.expected) fn++;
       const missed = {truePositive: 0, falsePositive: 0, falseNegative: fixture.expected ? 1 : 0};
       addPossible("all", missed); addPossible(language(fixture), missed); if (fixture.heldOut) addPossible("heldOut", missed);
       unsure.mistakes++; unsure.onMistakes++;
       if (fixture.heldOut) { heldOut.cases++; if (fixture.expected) heldOut.falseNegatives++; }
-      cases.push({id: fixture.id, error: true, durationMs: Date.now() - started});
+      cases.push({id: fixture.id, error: true, errorMessage: run.error, durationMs: Date.now() - started, ...trace ? {trace} : {}});
     }
   }
   console.log(JSON.stringify({model, verifierModel, judgeModel, targeted: process.env.HUSHAVYR_TARGETED !== "0", depth, staticAnalysis: useStatic, fixtureCount: selected.length, cases,
@@ -519,8 +590,9 @@ async function main(args: string[]) {
     byLanguage: Object.fromEntries(Object.entries(byLanguage).map(([k, v]) => [k, {...v, ...rates(v)}])), heldOut: {...heldOut, ...rates(heldOut)},
     withPossible: Object.fromEntries(Object.entries(withPossible).map(([k, v]) => [k, {...v, ...rates(v)}])),
     precision: tp + fp ? tp / (tp + fp) : null, recall: tp + fn ? tp / (tp + fn) : null,
+    ...traced ? {lossStages, modelCalls: calls} : {},
     escalationSuggested: {onMistakes: unsure.onMistakes + "/" + unsure.mistakes, onCorrect: unsure.onCorrect + "/" + unsure.correct},
-    limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. Finding titles are included; no raw source."}, null, 2));
+    limitation: "Synthetic fixture benchmark only. No Sonnet or Sol comparison was executed. Finding titles and per-stage trace lines are included; no raw source or fix text. Expected bugs are used for scoring only."}, null, 2));
   if (errors || verifierFailures || fp || fn) process.exitCode = 1;
 }
 if (require.main === module) main(process.argv.slice(2)).catch((error: Error) => {

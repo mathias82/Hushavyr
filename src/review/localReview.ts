@@ -6,6 +6,7 @@ import { scanSecurity } from "../scan/securityRules";
 import { Finding } from "./review";
 import { flowSeverity, flowTitle, taintFlows } from "../scan/taint";
 import { targetedFindings } from "./targetedChecks";
+import { ReviewTrace } from "./reviewTrace";
 
 export type ReviewDepth = "fast" | "thorough" | "light";
 export type VerifyMode = "batch" | "recheck" | "hedged" | "none";
@@ -22,6 +23,8 @@ export interface ReviewOptions {
   verify?: VerifyMode;
   /** A stronger local model (e.g. 32b) that re-judges only the findings the local checks disagree on; a yes promotes them. */
   judge?: Pick<LocalOllama, "generate"> | (() => Promise<Pick<LocalOllama, "generate"> | undefined>);
+  /** Benchmark measurement: records what each stage proposed, kept or dropped. Never changes prompts, calls or findings. */
+  trace?: ReviewTrace;
 }
 
 // Appended after the shared prompt so every pass reuses the same prompt prefix (Ollama keeps its KV cache).
@@ -50,16 +53,20 @@ export function mergeFindings(...lists: readonly Finding[][]): Finding[] {
 }
 
 const LENS_NAMES = ["Security pass", "Robustness pass"];
+const LENS_STAGES = ["lens.security", "lens.robustness"];
+const rejectedInto = (trace: ReviewTrace | undefined, stage: string) => trace && ((c: Parameters<ReviewTrace["rejected"]>[1]) => trace.rejected(stage, c));
 const candidates = (r: ReviewResult): string => r.findings.length + " candidate(s)";
 
 async function lensFindings(client: Pick<LocalOllama, "generate">, prompt: string, source: ReviewInput,
-  cancelled: () => boolean, onProgress?: (message: string) => void): Promise<ReviewResult[]> {
+  cancelled: () => boolean, onProgress?: (message: string) => void, trace?: ReviewTrace): Promise<ReviewResult[]> {
   const results: ReviewResult[] = [];
   for (const [i, lens] of LENSES.entries()) {
     if (cancelled()) break;
     onProgress?.(LENS_NAMES[i] + "...");
+    trace?.at(LENS_STAGES[i]);
     try {
-      const result = validateReview(await client.generate(prompt + "\n\n" + lens, {schema: reviewSchema, maxTokens: REVIEW_TOKENS}), source);
+      const result = validateReview(await client.generate(prompt + "\n\n" + lens, {schema: reviewSchema, maxTokens: REVIEW_TOKENS}), source, rejectedInto(trace, LENS_STAGES[i]));
+      trace?.record(LENS_STAGES[i], result.findings, result.error);
       results.push(result);
       onProgress?.(LENS_NAMES[i] + ": " + candidates(result));
     } catch { /* one failed lens must not discard the other passes */ }
@@ -77,18 +84,21 @@ async function collectFindings(
   source: ReviewInput,
   cancelled: () => boolean = () => false,
   depth: ReviewDepth = "fast",
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  trace?: ReviewTrace
 ): Promise<ReviewResult | undefined> {
   if (cancelled()) return;
   const prompt = reviewPrompt(instruction, source);
   onProgress?.("General pass...");
+  trace?.at("general");
   const raw = await client.generate(prompt, depth === "light" ? {schema: reviewSchema, maxTokens: 1536} : {schema: reviewSchema, maxTokens: REVIEW_TOKENS});
   if (cancelled()) return;
-  const first = validateReview(raw, source);
+  const first = validateReview(raw, source, rejectedInto(trace, "general"));
+  trace?.record("general", first.findings, first.error);
   onProgress?.("General pass: " + candidates(first));
   if (depth === "light") return first;
   if (depth === "thorough") {
-    const passes = [first, ...await lensFindings(client, prompt, source, cancelled, onProgress)];
+    const passes = [first, ...await lensFindings(client, prompt, source, cancelled, onProgress, trace)];
     if (cancelled()) return;
     return {...first, findings: mergeFindings(...passes.map(p => p.findings)),
       proposed: passes.reduce((n, p) => n + (p.proposed ?? 0), 0),
@@ -99,6 +109,7 @@ async function collectFindings(
   // Never manufacture findings or bypass source evidence validation.
   if (first.findings.length) return first;
   const feedback = first.error ?? (first.proposed === 0 ? "No candidate findings were proposed." : first.rejectionReasons?.join("; ") ?? "Invalid finding");
+  trace?.at("retry");
   try {
     const repaired = await client.generate(prompt +
       "\n\nLOCAL VALIDATOR FEEDBACK: " + feedback +
@@ -106,7 +117,8 @@ async function collectFindings(
       "Discard any unsupported claim; return an empty findings array if no concrete issue is supported.",
       {schema: reviewSchema, maxTokens: REVIEW_TOKENS});
     if (cancelled()) return;
-    const second = validateReview(repaired, source);
+    const second = validateReview(repaired, source, rejectedInto(trace, "retry"));
+    trace?.record("retry", second.findings, second.error);
     // Do not hide the original useful validation feedback behind a new parser error.
     return second.error ? {...first, retryFailed: true} : second;
   } catch {
@@ -197,19 +209,27 @@ export async function runLocalReview(
   options: ReviewOptions = {}
 ): Promise<ReviewResult | undefined> {
   validateContext(instruction, reviewSources(source));
-  const progress = options.onProgress;
-  const model = await collectFindings(client, instruction, source, cancelled, options.depth, progress);
+  const progress = options.onProgress, trace = options.trace;
+  if (trace) { client = trace.client(client); if (verifier) verifier = trace.client(verifier); }
+  const model = await collectFindings(client, instruction, source, cancelled, options.depth, progress, trace);
   if (!model || cancelled()) return;
+  trace?.record("collected", model.findings, model.error);
   const staticCandidates = options.staticFindings ? await options.staticFindings.catch(() => []) : [];
+  if (options.staticFindings) trace?.record("static", staticCandidates);
   if (options.staticFindings) progress?.("Static rules (Semgrep): " + staticCandidates.length + " candidate(s)");
   const result = staticCandidates.length && !model.error
     ? {...model, findings: mergeFindings(model.findings, staticCandidates), staticCandidates: staticCandidates.length}
     : model;
   if (verifier && result.findings.length) progress?.("Second local pass: checking " + result.findings.length + " finding(s) against the source...");
+  trace?.record("preVerify", result.findings);
+  trace?.at("verify");
   const mode = (process.env.HUSHAVYR_VERIFY as VerifyMode | undefined) ?? options.verify ?? "batch";
   const verified = !verifier || mode === "none" ? result : mode === "recheck" ? await recheckEach(verifier, result, source, cancelled)
     : mode === "hedged" ? await verifyHedged(verifier, result, source, cancelled) : await verifyReview(verifier, result, source, cancelled);
   if (!verified || cancelled()) return;
+  trace?.record("verified", verified.findings, verified.verifierFailed ? "verifier failed" : undefined);
+  trace?.record("disputed", verified.disputed ?? []);
+  trace?.at("confirm");
   // Optional narrow confirmation of each kept finding (HUSHAVYR_CONFIRM=1, benchmark A/B): a "no" moves it to Possible.
   const doubted: Finding[] = [];
   if (process.env.HUSHAVYR_CONFIRM === "1" && verifier && !model.error) {
@@ -221,13 +241,18 @@ export async function runLocalReview(
     verified.findings = kept;
   }
   if (doubted.length) verified.disputed = [...verified.disputed ?? [], ...doubted];
+  trace?.record("confirm.doubted", doubted);
+  trace?.at("targeted");
   // Bug classes the general pass and the verifier often lose (overflow, missing await, falsy zero, null before guard, ...):
   // a narrow trigger plus one focused local question each. HUSHAVYR_TARGETED=0 turns them off (benchmark A/B).
   const targeted = process.env.HUSHAVYR_TARGETED === "0" || model.error ? [] : await targetedFindings(verifier ?? client, source, cancelled);
   if (cancelled()) return;
   if (targeted.length) progress?.("Focused checks: " + targeted.length + " finding(s)");
+  trace?.record("targeted", targeted);
+  trace?.at("judge");
   const promoted: Finding[] = [];
-  const judge = verified.disputed?.length && options.judge ? typeof options.judge === "function" ? await options.judge() : options.judge : undefined;
+  const chosen = verified.disputed?.length && options.judge ? typeof options.judge === "function" ? await options.judge() : options.judge : undefined;
+  const judge = chosen && trace ? trace.client(chosen) : chosen;
   if (judge && verified.disputed?.length) {
     progress?.("Stronger local model: re-checking " + verified.disputed.length + " disputed finding(s)...");
     for (const d of verified.disputed) {
@@ -235,8 +260,13 @@ export async function runLocalReview(
       if (await recheck(judge, d, source, cancelled)) promoted.push({...d, verification: "supported"});
     }
   }
-  const findings = mergeFindings(verified.findings, promoted, targeted, offlineSecurityFindings(source));
+  const offline = offlineSecurityFindings(source);
+  trace?.record("judge.promoted", promoted);
+  trace?.record("offline", offline);
+  const findings = mergeFindings(verified.findings, promoted, targeted, offline);
   const disputed = verified.disputed?.filter(d => !findings.some(f => f.path === d.path && Math.abs((f.line ?? 0) - (d.line ?? 0)) <= 1));
+  trace?.record("final", findings);
+  trace?.record("possible", disputed ?? []);
   return {...verified, findings, disputed: disputed?.length ? disputed : undefined};
 
 }

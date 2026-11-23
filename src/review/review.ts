@@ -88,7 +88,9 @@ function speculativeClaim(title: string, source: string, evidence: string): stri
   return undefined;
 }
 
-export function validateReview(raw: string, source: ReviewInput): ReviewResult {
+/** A candidate the validator refused: location, title, fix and the reason only (benchmark trace). */
+export interface RejectedCandidate { path?: string; line?: number; endLine?: number; title: string; fix: string; reason: string }
+export function validateReview(raw: string, source: ReviewInput, onReject?: (candidate: RejectedCandidate) => void): ReviewResult {
   const sources = reviewSources(source);
   const combined = sources.map(s => s.text).join("\n");
   let parsed: unknown;
@@ -108,7 +110,7 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
   const reject = (reason: string): void => { rejected++; rejectionReasons.add(reason); };
   for (const candidate of obj.findings.slice(0,20)) {
     const item = record(candidate);
-    if (!item) { reject("Finding must be an object"); continue; }
+    if (!item) { reject("Finding must be an object"); onReject?.({title: "", fix: "", reason: "Finding must be an object"}); continue; }
     const title=field(item,"title"),severity=field(item,"severity").toLowerCase();
     let evidence=field(item,"evidence");
     const fix=field(item,"fix"),regressionTest=field(item,"regressionTest");
@@ -145,7 +147,12 @@ export function validateReview(raw: string, source: ReviewInput): ReviewResult {
     if (unsupportedYaml) reasons.push("YAML deserialization claim but the code only uses yaml.safe_load");
     if (unsupportedGetter) reasons.push("Getter exception claim has no supporting throw in supplied source");
     if (exactEvidence && speculative) reasons.push(speculative);
-    if (reasons.length) { reject(reasons.join("; ")); continue; }
+    if (reasons.length) {
+      reject(reasons.join("; "));
+      onReject?.({path: path || undefined, line: Number.isInteger(start) ? start as number : undefined,
+        endLine: Number.isInteger(end) ? end as number : Number.isInteger(start) ? start as number : undefined, title, fix, reason: reasons.join("; ")});
+      continue;
+    }
     const line = validRange ? start as number : normalizedSource.slice(0, normalizedSource.indexOf(evidence.replace(/\r\n/g,"\n"))).split("\n").length + (matched?.startLine ?? 1) - 1;
     findings.push({title,severity,evidence,fix,regressionTest,status:"potential",path:matched!.path,line});
   }
