@@ -14,6 +14,12 @@ export function rememberReport(markdown: string): number {
   return lastFindings.length;
 }
 
+/** Keeps the findings of the latest chat /review, so the same Fix and Explain pickers work on them. */
+export function rememberFindings(findings: readonly ReportFinding[]): number {
+  lastFindings = [...findings];
+  return lastFindings.length;
+}
+
 export function forgetFinding(uri: string, line: number): void {
   lastFindings = lastFindings.filter(f => f.uri !== uri || f.line !== line);
 }
@@ -43,7 +49,7 @@ export async function pickFinding(placeHolder = "Which finding should local AI e
   const items = [
     ...here.map(d => ({label: d.message.split("\n")[0], description: vscode.workspace.asRelativePath(editor!.document.uri, false) + ":" + (d.range.start.line + 1),
       finding: {uri: editor!.document.uri.toString(), line: d.range.start.line + 1, message: d.message}})),
-    ...lastFindings.map(f => ({label: f.message, description: vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri), false) + ":" + f.line, finding: f as FindingArg}))
+    ...lastFindings.map(f => ({label: f.message.split("\n")[0], description: vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri), false) + ":" + f.line, finding: f as FindingArg}))
   ].filter(item => accept(item.finding));
   if (!items.length) {
     void vscode.window.showInformationMessage("Hushavyr: run Security Scan, Find Hardcoded Secrets or Check Dependencies first, then pick a finding.");

@@ -20,14 +20,14 @@ import {ResultCache} from "../review/reviewCache";
 import {ReviewResult} from "../review/review";
 import {writeRetainedAuditEvent} from "../escalation/audit";
 import {isInstructionReference, ReviewSource, sourcePrompt, validateContext} from "../review/context";
-import {publishFindings} from "./diagnostics";
+import {publishFindings, toDiagnosticEntries} from "./diagnostics";
 import {dismissalText, fingerprint, loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "../scan/teamMemory";
 import {findingsFromReport} from "./reportFindings";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {lowMemoryWarning} from "../model/setup";
 import {runWorkspaceScan, isScanCommand} from "../scan/workspaceScan";
-import {EXPLAIN_FINDING, rememberReport} from "./explainFinding";
+import {EXPLAIN_FINDING, rememberFindings, rememberReport} from "./explainFinding";
 import {FIX_FINDING} from "../fix/applyFix";
 import {formatTestReceipt} from "../fix/regression";
 import {runWorkspaceTests} from "./localCommands";
@@ -564,7 +564,13 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
             if (!cached) await new Promise(resolve => setTimeout(resolve, 120));
           }
           if (hidden) stream.markdown("\n\n_" + hidden + " finding(s) hidden: dismissed by your team in `.hushavyr/dismissed.json`._");
-          if (!validated.error) publishFindings(reviewDiagnostics, kept);
+          if (!validated.error) {
+            publishFindings(reviewDiagnostics, kept);
+            if (rememberFindings(toDiagnosticEntries(kept).map(e => ({...e, severity: e.severity === "high" || e.severity === "medium" ? e.severity : "low"})))) {
+              stream.button({command: FIX_FINDING, title: "Fix or dismiss a finding (local AI, diff to approve)"});
+              stream.button({command: EXPLAIN_FINDING, title: "Explain a finding (local AI)"});
+            }
+          }
         }
         if (!token.isCancellationRequested) offerEscalation(stream, reviewDifficulty(validated, sources[0].text),
           unsureFragment(validated?.disputed?.[0]?.line ?? validated?.findings.find(f => f.verification !== "supported")?.line ?? validated?.findings[0]?.line));

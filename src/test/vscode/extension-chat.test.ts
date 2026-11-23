@@ -95,6 +95,8 @@ test("Chat passes both attached files through review, line extraction and separa
   assert.match(result.requests[4].payload.prompt, /skeptical second reviewer/);
   assert.match(result.output, /String value = raw \+ input;/);
   assert.match(result.output, /Source support agreed/);
+  assert.match(result.output, /\[button\] Fix or dismiss a finding/);
+  assert.match(result.output, /\[button\] Explain a finding/);
 });
 test("unreadable or oversized Chat context stops before any network request", async () => {
   const unknown = await chat({}, [], "review", true);
@@ -131,6 +133,7 @@ test("auto attachments stay on the local review path", async () => {
   assert.equal(copilotLookups, before);
   assert.match(result.output, /Attached context stays local/);
   assert.equal(result.requests.length, 5); // model metadata + two local review attempts
+  assert.doesNotMatch(result.output, /\[button\] Fix or dismiss/);
 });
 test("local commands register even when built-in AI and Copilot are disabled", () => {
   const before = participantRegistrations;
