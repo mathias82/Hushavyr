@@ -119,6 +119,19 @@ test("prose answers stream NDJSON chunks to onText", async () => {
   assert.equal(await client.generate("Explain", {onText: chunk => chunks.push(chunk)}), "Hello");
   assert.deepEqual(chunks, ["Hel", "lo"]);
 });
+test("prose and review requests use the same context size, so Ollama never reloads the model between them", async () => {
+  const contexts: unknown[] = [];
+  const client = new LocalOllama({model: "qwen2.5-coder:14b"}, async (url, init) => {
+    if (url.endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
+    const body = JSON.parse(String(init.body));
+    contexts.push(body.options?.num_ctx);
+    return new Response(body.stream ? '{"response":"ok","done":true}' : JSON.stringify({response: "{}"}));
+  });
+  await client.generate("Review", {json: true});
+  await client.generate("Explain", {onText: () => undefined});
+  await client.generate("Plain");
+  assert.deepEqual(contexts, [16384, 16384, 16384]);
+});
 test("truncated streams fail without cloud fallback", async () => {
   const client = new LocalOllama({model:"qwen2.5-coder:7b"}, async (url) => {
     if (url.endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));

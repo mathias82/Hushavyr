@@ -358,6 +358,9 @@ test("edit intent, safe edit parsing and short diff", async () => {
   assert.equal(parseEdit(JSON.stringify({ content: original }), original), undefined); // unchanged
   assert.equal(parseEdit(JSON.stringify({ content: "a\nb\nX\nd\ne" }), original), "a\nb\nX\nd\ne\n");
   assert.equal(shortDiff(original, "a\nb\nX\nd\ne\n"), "@@ line 3 @@\n- c\n+ X");
+  // Two changes far apart are two hunks; unchanged lines between them are not shown.
+  assert.equal(shortDiff("i1\ni2\nk1\nk2\nk3\nbody\nend", "i0\ni1\ni2\nk1\nk2\nk3\nfixed\nend"), "@@ line 1 @@\n+ i0\n@@ line 7 @@\n- body\n+ fixed");
+  assert.equal(shortDiff("a\nb", "a\nX", 60, 30), "@@ line 31 @@\n- b\n+ X"); // selection starting at file line 30
 });
 
 test("pull request: new branch from main, commit, push, gh fallback to compare URL", async () => {

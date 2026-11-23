@@ -12,14 +12,14 @@ import {MAX_CONTEXT_BYTES, ReviewSource, sourcePrompt} from "../review/context";
 import {editPrompt, editSchema, parseEdit, parseSummary} from "../fix/codeEdit";
 import {acceptManifestEdit, dependencyEditInstruction, findDependencyLine, groupVulnerabilities, parseDependencyFinding, planDependencyFix, resolveManifest} from "../deps/dependencyAudit";
 import type {Finding} from "../review/review";
-import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, replacementSchema} from "../fix/fixEdit";
+import {enclosingFunction, findingFix, fitFix, fixPrompt, fixWindow, methodFix, methodFixInstruction, parseReplacement, replacementSchema} from "../fix/fixEdit";
 import {runLocalReview} from "../review/localReview";
-import {autoDepth, localJudge} from "../model/model";
+import {autoDepth, localJudge, verifyModeFor} from "../model/model";
 import {localEndpoint, LocalOllama} from "../model/ollama";
 import {explainFindingPrompt} from "../vscode/reportFindings";
 import {staticReview} from "../scan/staticReview";
 import {addDismissal, dismissalText, fingerprint, loadDismissals, loadTeamRules, withTeamRules} from "../scan/teamMemory";
-import {chatPrompt, chooseModel, COMMANDS, completeCommand, diffLines, languageOf, mentionedFiles, parseLine, replaceLines} from "./helpers";
+import {chatPrompt, chooseModel, COMMANDS, cveDbHint, completeCommand, diffLines, languageOf, mentionedFiles, movedLine, parseLine, replaceLines} from "./helpers";
 import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
@@ -47,7 +47,9 @@ const out = (text = ""): void => { process.stdout.write(text + "\n"); };
 
 interface Stored {path: string; display: string; line: number; message: string; level: string; title?: string; fix?: string; evidence?: string;
   /** Low confidence: the second local check disagrees. Shown apart from confirmed findings. */
-  possible?: boolean}
+  possible?: boolean;
+  /** Its code was changed (fixed or edited) after the scan; the line no longer points at it. */
+  stale?: boolean}
 interface Config {model?: string; endpoint?: string; cloudEscalation?: boolean; proofImages?: Record<string, string>; autoUpdateVulnDb?: boolean; suggestEscalation?: boolean; reviewJudge?: "auto" | "off";
   /** Search by meaning with a small local embedding model: undefined until the user is asked once. */
   searchByMeaning?: boolean}
@@ -71,7 +73,7 @@ class Session {
   private busy?: AbortController;
   private findings: Stored[] = [];
   private history: {user: string; answer: string}[] = [];
-  private lastChange?: {path: string; display: string; text: string};
+  private lastChange?: {path: string; display: string; text: string; positions: {finding: Stored; line: number; stale?: boolean}[]};
   /** Title and description for the next /pr, from the last applied fix or verified proof. */
   private prDraft?: {title: string; body: string};
   private readonly interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
@@ -358,12 +360,15 @@ class Session {
     if (!(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(display + " is not a folder.");
     if (kind === "scan") await this.autoUpdateDb(abs);
     out(dim((kind === "scan" ? "Scanning " : kind === "secrets" ? "Looking for hardcoded secrets in " : "Security scan (no AI) of ") + display + " … nothing leaves this machine"));
-    const results = await scanFolder(abs, RULES, line => out(dim("  " + line)), kind !== "scan");
+    const lines: string[] = [];
+    const results = await scanFolder(abs, RULES, line => { lines.push(line); out(dim("  " + line)); }, kind !== "scan");
     const kept = kind === "secrets" ? results.filter(r => r.ruleId === "hardcoded-credential") : results;
     this.findings = kept.map(r => ({path: join(abs, r.path), display: relative(this.cwd, join(abs, r.path)), line: r.line, message: r.message, level: r.level}))
       .sort((a, b) => levelRank(a.level) - levelRank(b.level) || a.display.localeCompare(b.display) || a.line - b.line);
     this.findings = await this.withoutDismissed(this.findings);
     this.printFindings();
+    const hint = cveDbHint(lines);
+    if (hint) out(yellow(hint));
   }
 
   private async dependencies(arg: string, signal: AbortSignal): Promise<void> {
@@ -386,6 +391,8 @@ class Session {
     }
     this.findings = await this.withoutDismissed(found.sort((a, b) => levelRank(a.level) - levelRank(b.level)));
     this.printFindings();
+    const hint = audit.status === "missing" ? undefined : cveDbHint(totals);
+    if (hint) out(yellow(hint));
   }
 
   private printFindings(): void {
@@ -415,7 +422,7 @@ class Session {
     const instruction = withTeamRules("Review this code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests.", await loadTeamRules(this.cwd).catch(() => ""));
     out(dim("Reviewing " + (hit ? describeHit(hit) : file.display) + " with " + this.model + " and the static rules… (Ctrl+C cancels)"));
     const result = await runLocalReview(this.client, instruction, sources, () => signal.aborted, this.client,
-      {depth: autoDepth(), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
+      {depth: autoDepth(), verify: verifyModeFor(this.model), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
     if (!result || signal.aborted) return;
     if (result.error) out(yellow(result.error));
     const stored = (f: Finding, possible: boolean): Stored => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence, ...(possible ? {possible} : {})});
@@ -429,6 +436,7 @@ class Session {
     const n = Number(/^\d+/.exec(arg)?.[0]);
     const found = this.findings[n - 1];
     if (!found) throw new Error(this.findings.length ? "Pick a finding from 1 to " + this.findings.length + "." : "No findings yet: run /security, /scan or /review first.");
+    if (found.stale) throw new Error("The code of finding " + n + " changed after the scan (fixed or edited). Run the scan or /review again.");
     return found;
   }
 
@@ -464,8 +472,20 @@ class Session {
   private async apply(path: string, display: string, before: string, after: string): Promise<void> {
     if (await readFile(path, "utf8") !== before) { out(yellow(display + " changed while the fix was prepared; nothing was written. Run the command again.")); return; }
     await writeFile(path, after);
-    this.lastChange = {path, display, text: before};
+    const positions = this.findings.map(finding => ({finding, line: finding.line, stale: finding.stale}));
+    this.moveFindings(path, before, after);
+    this.lastChange = {path, display, text: before, positions};
     out(green("Applied to " + display + ".") + dim(" /undo restores it."));
+  }
+
+  /** Keeps finding line numbers right after a write; findings in the rewritten lines are marked stale (numbers stay). */
+  private moveFindings(path: string, before: string, after: string): void {
+    for (const f of this.findings) {
+      if (f.path !== path || f.stale) continue;
+      const line = movedLine(before, after, f.line);
+      if (line === undefined) f.stale = true;
+      else f.line = line;
+    }
   }
 
   /** The repository root that holds .hushavyr/dismissed.json (same file as the VS Code extension). */
@@ -542,7 +562,22 @@ class Session {
     if (signal.aborted) return;
     if (replacement === original.join("\n")) { out(yellow("The local model proposed no change. Suggested fix: ") + how.fix); return; }
     const fit = replacement ? fitFix(original, replacement, f.line - 1 - window.start) : undefined;
-    if (!replacement || !fit) { out(yellow("The local model did not produce a safe automatic fix. Suggested fix: ") + how.fix); return; }
+    if (!replacement || !fit) {
+      const method = enclosingFunction(f.display, text, f.line);
+      const body = method && lines.slice(method.start, method.end + 1);
+      const rewritten = body && methodFix(body, parseEdit(await this.client.generate(editPrompt(f.display + " lines " + (method.start + 1) + "-" + (method.end + 1), languageOf(f.path), body.join("\n"),
+        methodFixInstruction(how.title, how.fix, f.line)), {schema: editSchema, signal}), body.join("\n")));
+      if (signal.aborted) return;
+      if (!method || !rewritten) { out(yellow("The local model did not produce a safe automatic fix. Suggested fix: ") + how.fix); return; }
+      out(bold("Proposed fix for " + f.display + ":"));
+      this.showDiff(body.join("\n"), rewritten, method.start + 1);
+      if (await this.ask("Apply this fix?")) {
+        await this.apply(f.path, f.display, text, replaceLines(text, method.start, method.end, rewritten));
+        this.prDraft = {title: ("Fix " + how.title.replace(/^Local rule:\s*/i, "")).slice(0, 72), body: "Fixes `" + f.display + ":" + f.line + "`: " + how.title + "."};
+      }
+      else out("Discarded. " + f.display + " is unchanged.");
+      return;
+    }
     const start = window.start + fit.start, end = window.start + fit.end;
     out(bold("Proposed fix for " + f.display + ":"));
     this.showDiff(original.slice(fit.start, fit.end + 1).join("\n"), fit.text, start + 1);
@@ -578,6 +613,7 @@ class Session {
   private async undo(): Promise<void> {
     if (!this.lastChange) { out("Nothing to undo."); return; }
     await writeFile(this.lastChange.path, this.lastChange.text);
+    for (const {finding, line, stale} of this.lastChange.positions) Object.assign(finding, {line, stale});
     out(green("Restored " + this.lastChange.display + "."));
     this.lastChange = undefined;
   }

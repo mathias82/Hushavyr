@@ -117,7 +117,7 @@ Setup picks the model for your machine and also lists the models you already hav
 | 20–30 GB | `qwen2.5-coder:14b` | Thorough: general, security and robustness passes. |
 | 30 GB or more | `qwen3-coder:30b` | Best reviews. A mixture-of-experts model (about 3B active parameters), so it is faster than the 14b. |
 
-**How a review is checked:** each finding must point at real lines of your code, and the file's own test (`FooTest.java`, `foo.test.ts`, `test_foo.py`…) and the callers of its functions are added as context. A second local pass then checks every finding and drops the ones it finds unsupported. A dropped finding gets one more narrow check of the lines around it; if the two checks disagree, the finding is not counted, but the review names it as a possible issue and may suggest `/escalate` for that line.
+**How a review is checked:** each finding must point at real lines of your code, and the file's own test (`FooTest.java`, `foo.test.ts`, `test_foo.py`…) and the callers of its functions are added as context. A second local pass then checks every finding and drops the ones it finds unsupported (with 7b and smaller models it checks only findings stated as possibilities, because a full second pass made them drop their real bugs). A dropped finding gets one more narrow check of the lines around it; if the two checks disagree, the finding is not counted, but the review names it as a possible issue and may suggest `/escalate` for that line.
 
 **Finding code:** names are matched first (typos and swapped letters are fine). If no name matches, the local model searches the code for you. Optionally, Hushavyr also searches by meaning with the small local model `nomic-embed-text` (about 270 MB). The terminal asks once whether to download it; in VS Code, run `ollama pull nomic-embed-text`. Its index is kept in `~/.hushavyr/index` (VS Code: the extension's storage), never in your repository, and is updated only for changed files.
 
@@ -197,15 +197,24 @@ Patterns are regular expressions on code (string literals are blanked); `call` a
 | Proves a fix with a failing test | Yes, in an offline Docker sandbox | Rarely |
 | Output for CI | SARIF, CLI exit codes, PR comments | Varies |
 
-**Measured:** on Hushavyr's 51 benchmark fixtures (bugs and clean twins in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects), with the same instruction for every model:
+**Measured:** on Hushavyr's 120 benchmark fixtures (bugs and clean twins, about 20 per language in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects). 24 of them are held out: they were never used to tune Hushavyr. Fast review mode, default settings, on a 24 GB MacBook:
 
-| Reviewer | Precision | Recall |
-| --- | --- | --- |
-| Hushavyr, `qwen2.5-coder:14b` on a laptop | 0.95 | 0.73 |
-| GPT 6.1 (cloud) | 0.81 | 0.96 |
-| Claude Sonnet 5.5 (cloud) | 0.72 | 1.00 |
+| Reviewer | Precision | Recall | Held-out P / R |
+| --- | --- | --- | --- |
+| Hushavyr, `qwen2.5-coder:14b` | 0.67 | 0.77 | 0.46 / 0.50 |
+| Hushavyr, `qwen2.5-coder:7b` | 0.83 | 0.49 | 1.00 / 0.33 |
+| GPT 6.1 (cloud) | 0.75 | 0.95 | 0.65 / 0.92 |
+| Claude Sonnet 5.5 (cloud) | 0.63 | 1.00 | 0.57 / 1.00 |
 
-Hushavyr reports fewer false alarms; the cloud models miss fewer bugs. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
+Precision and recall per language (P / R):
+
+| Reviewer | Java | Python | TypeScript | JavaScript | Go | C# |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hushavyr 14b | 0.80 / 0.73 | 0.67 / 0.80 | 0.50 / 0.80 | 0.62 / 0.80 | 0.86 / 0.60 | 0.75 / 0.90 |
+| Hushavyr 7b | 0.86 / 0.55 | 0.89 / 0.80 | 1.00 / 0.30 | 0.83 / 0.50 | 0.63 / 0.50 | 1.00 / 0.30 |
+| GPT 6.1 | 1.00 / 0.91 | 0.75 / 0.90 | 0.77 / 1.00 | 0.59 / 1.00 | 0.77 / 1.00 | 0.75 / 0.90 |
+
+Findings the local checks disagree on are listed under **Possible**, not counted above; with them the 14b reaches recall 0.82 and the 7b 0.56. The cloud models find more bugs, above all in code the local models were not tuned on. The 7b keeps only findings it states as facts, so it reports few false alarms but misses half the bugs; use the 14b when your machine has the memory. `qwen2.5-coder:32b` could not be measured on 24 GB (every review took over 5 minutes), so Hushavyr uses it as a judge only on machines with 48 GB or more. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
 
 ## FAQ
 
@@ -214,6 +223,9 @@ Yes, for code review and security. It works in the VS Code Chat as `@ai-privacy`
 
 **Can it fix security vulnerabilities automatically?**
 Yes, with your approval. **Fix with local AI** asks the local Ollama model for a minimal fix (a parameterized query for SQL injection, output encoding for XSS, an environment variable for a hardcoded password), shows the diff, and edits the file only after you click **Apply fix**. To be sure the fix works, **Prove with a failing test** runs a test before and after the fix in an offline Docker sandbox and can open the pull request.
+
+**Chat says "Language model unavailable". Do I need Copilot?**
+VS Code opens a Chat participant such as `@ai-privacy` only when a chat model is available: signing in to GitHub Copilot or another chat model extension. Hushavyr itself still runs everything locally. Without one, use the **Hushavyr:** commands in the Command Palette (`Cmd/Ctrl+Shift+P`) for reviews, scans and fixes, or the `hushavyr` terminal, which has every command.
 
 **Is there a Hushavyr CLI for the terminal, like Copilot CLI?**
 Yes. Type `hushavyr` in the VS Code terminal to chat with the local AI about your code, run `/security`, `/secrets`, `/dependencies` and `/review`, fix findings with `/fix N` behind a diff you approve, prove a fix with a failing test (`/prove`), scan git history (`/gitleaks history`) and open a pull request (`/pr`). Everything runs locally; only `/escalate`, which is off by default, can send an approved, pseudonymized fragment to GitHub Copilot. For other terminals, run **Hushavyr: Install 'hushavyr' Command in Terminal PATH** once. See [Use it in the terminal](#local-ai-cli-for-the-terminal-hushavyr).

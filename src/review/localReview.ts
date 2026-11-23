@@ -8,7 +8,7 @@ import { flowSeverity, flowTitle, taintFlows } from "../scan/taint";
 import { targetedFindings } from "./targetedChecks";
 
 export type ReviewDepth = "fast" | "thorough" | "light";
-export type VerifyMode = "batch" | "recheck" | "none";
+export type VerifyMode = "batch" | "recheck" | "hedged" | "none";
 export interface ReviewOptions {
   /** "thorough" adds focused security and robustness passes; "fast" is one pass plus a retry when empty;
    * "light" (small machines) is one short pass; static candidates and the verifier carry the rest. */
@@ -18,7 +18,7 @@ export interface ReviewOptions {
   /** Live status lines, e.g. "Security pass: 2 candidate(s)", shown while the review runs. */
   onProgress?: (message: string) => void;
   /** How the second pass checks findings: "batch" (one skeptical pass over all), "recheck" (one narrow yes/no
-   * question per finding; small models judge one finding far better than a list) or "none". Default "batch". */
+   * question per finding), "hedged" (only findings stated as possibilities; see verifyModeFor) or "none". Default "batch". */
   verify?: VerifyMode;
   /** A stronger local model (e.g. 32b) that re-judges only the findings the local checks disagree on; a yes promotes them. */
   judge?: Pick<LocalOllama, "generate"> | (() => Promise<Pick<LocalOllama, "generate"> | undefined>);
@@ -179,6 +179,17 @@ async function recheckEach(verifier: Pick<LocalOllama, "generate">, result: Revi
   return {...result, findings, verifierRejected: result.findings.length - findings.length};
 }
 
+const HEDGED = /^(?:local rule:\s*)?(?:potential|possible|possibly|may|might|could)\b/i;
+/** Small models: findings stated as fact are kept; only hedged ones ("Potential ...") go to the verifier. */
+async function verifyHedged(verifier: Pick<LocalOllama, "generate">, result: ReviewResult, source: ReviewInput, cancelled: () => boolean): Promise<ReviewResult | undefined> {
+  const hedged = result.findings.filter(f => HEDGED.test(f.title));
+  if (!hedged.length) return result;
+  const checked = await verifyReview(verifier, {...result, findings: hedged}, source, cancelled);
+  if (!checked) return;
+  const findings = result.findings.filter(f => !hedged.includes(f) || checked.findings.some(c => c.line === f.line && c.title === f.title));
+  return {...checked, findings: findings.map(f => checked.findings.find(c => c.line === f.line && c.title === f.title) ?? f)};
+}
+
 /** Hybrid review: model passes + static analyzer candidates, then one separate verification pass; all local. */
 export async function runLocalReview(
   client: Pick<LocalOllama, "generate">, instruction: string, source: ReviewInput,
@@ -196,7 +207,8 @@ export async function runLocalReview(
     : model;
   if (verifier && result.findings.length) progress?.("Second local pass: checking " + result.findings.length + " finding(s) against the source...");
   const mode = (process.env.HUSHAVYR_VERIFY as VerifyMode | undefined) ?? options.verify ?? "batch";
-  const verified = !verifier || mode === "none" ? result : mode === "recheck" ? await recheckEach(verifier, result, source, cancelled) : await verifyReview(verifier, result, source, cancelled);
+  const verified = !verifier || mode === "none" ? result : mode === "recheck" ? await recheckEach(verifier, result, source, cancelled)
+    : mode === "hedged" ? await verifyHedged(verifier, result, source, cancelled) : await verifyReview(verifier, result, source, cancelled);
   if (!verified || cancelled()) return;
   // Optional narrow confirmation of each kept finding (HUSHAVYR_CONFIRM=1, benchmark A/B): a "no" moves it to Possible.
   const doubted: Finding[] = [];

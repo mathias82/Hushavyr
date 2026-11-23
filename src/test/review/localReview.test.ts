@@ -187,3 +187,15 @@ test("HUSHAVYR_CONFIRM=1: a kept finding the narrow recheck rejects moves to Pos
     }
   } finally { delete process.env.HUSHAVYR_CONFIRM; }
 });
+
+test("verify hedged: a finding stated as fact skips the verifier, a 'Potential ...' one is checked", async () => {
+  for (const title of [valid.title, "Potential JSON break from tenant ID"]) {
+    let verifierCalls = 0;
+    const model = {generate: async () => json({...valid, title})};
+    const verifier = {generate: async (prompt: string) => { verifierCalls++; return /skeptical second reviewer/.test(prompt) ? '{"verdicts":[{"index":0,"supported":false}]}' : JSON.stringify({real: false}); }};
+    const result = await runLocalReview(model, "review", source, () => false, verifier, {depth: "fast", verify: "hedged"});
+    const hedged = title.startsWith("Potential");
+    assert.equal(result?.findings.some(f => f.title === title), !hedged);
+    assert.equal(verifierCalls > 0, hedged);
+  }
+});

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.18
+- **`/pr` writes the text for you:** without a title, the local model reads the diff of the files to commit and proposes a Conventional Commit message, a PR title and a body (what, why, tests). Accept, edit or cancel; the secrets check still runs first. Same in the terminal and in VS Code.
+- **"Possible (low confidence)" section:** findings the second local check disputes are no longer dropped silently. They are listed separately after the confirmed findings, and `/fix` works on them.
+- **Targeted checks:** code that looks like a known bug class (integer overflow, sort without comparator, missing `await`, `|| default` on a value that may be 0, use before a null check, null returned from another file) gets one focused yes/no question to the local model (at most 3 per review).
+- **32b judge (optional):** if `qwen2.5-coder:32b` is already installed, the machine has at least 48 GB of RAM and the main model is smaller, the 32b model decides only the disputed findings. Setting `aiPrivacyRouter.reviewJudge` / terminal config `reviewJudge` (`auto` or `off`).
+- **Fewer speculative findings:** "can throw" / "may throw" claims without a concrete cause, Go errors that are checked right there, and division by a value already checked for zero are no longer reported.
+- **Second check per model:** 7b and smaller models check only findings they state as possibilities ("Potential …", "may …"); a full second pass made them drop their real bugs. 7b: precision 0.83, recall 0.49 (was 0.45 / 0.61 without a check, 1.00 / 0.16 with the full check). 14b and larger keep the full check.
+- **Benchmark:** 120 fixtures (about 20 per language, bugs and clean twins) with 24 held-out fixtures never used for tuning. qwen2.5-coder:14b: precision 0.67, recall 0.77 (0.82 with the Possible section), held-out 0.46 / 0.50. GPT 6.1 on the same fixtures: 0.75 / 0.95. Per model and per language in the README. The 32b model could not be measured on 24 GB (over 5 minutes per review).
+- **VS Code `/secrets`:** configuration files up to 200 KB are checked, as in the terminal (was 60 KB, and larger files were counted as checked). The summary names the files it skipped.
+- **Terminal `/dependencies` and `/scan`:** when the offline CVE database is missing, the result says so and points to `/update-db` instead of only "No findings".
+- **README:** "Language model unavailable" in VS Code Chat means no chat model is set up; the Command Palette and the terminal work without one.
+- **Fixes:** a slash command typed at a `y/N` question now runs instead of being taken as the answer; a class name no longer asks "Which one?" between the class and its constructors; the hardcoded-credential message is no longer repeated; the VS Code test instance no longer rewrites your `~/.local/bin/hushavyr`.
+- **No more hanging chat answers:** `/explain`, questions, `/auto` and the per-file model step of `/scan` now send the same context size as reviews. A different size made Ollama reload the model, which could hang every later answer ("Local request failed" after 180 s, `/scan` "0/22 files").
+- **`/fix` on multi-statement fixes:** when the model's few-line fix cannot be placed safely (e.g. SQL injection, which needs a `PreparedStatement` and a bound parameter), Hushavyr asks it to rewrite only the enclosing method and shows that diff to approve. Terminal and VS Code.
+- **Terminal finding numbers stay right after a fix:** lines of other findings in the same file move with the change; a finding whose code was rewritten says so instead of fixing the wrong line. `/undo` restores them.
+- **`/edit` and `/improve` diffs:** one hunk per change with real file line numbers, instead of every line between the first and last change.
+
 ## 1.0.17
 - **Code organized by responsibility:** `src/` is split into `review`, `scan`, `deps`, `fix`, `escalation`, `model`, `search`, `parsing`, `git`, `vscode` and `terminal`, with tests in matching folders. `ARCHITECTURE.md` describes each package. Behavior is unchanged: all tests, the static benchmark gate and the real-world scan give the same results as 1.0.16.
 

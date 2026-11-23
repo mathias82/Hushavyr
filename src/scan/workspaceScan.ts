@@ -79,10 +79,13 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
       stream.markdown("**Secret scan incomplete:** more than 5,000 configuration files; narrow the workspace.\n\n");
     } else {
       let secretFindings = 0;
+      let secretChecked = 0;
       for (const uri of secretFiles) {
         if (token.isCancellationRequested) break;
-        const text = await readSmallText(uri);
+        // Same limit as the terminal scan (cli.ts): regex-only, so large exports are still cheap to check.
+        const text = await readSmallText(uri, 200_000);
         if (text === undefined) { failedReads++; continue; }
+        secretChecked++;
         const relative = vscode.workspace.asRelativePath(uri);
         for (const finding of scanSecrets(text, relative)) {
           secretFindings++;
@@ -90,7 +93,7 @@ export async function runWorkspaceScan(context: vscode.ExtensionContext, request
           stream.markdown("**" + finding.severity + "** · " + finding.rule + " · " + findingLink(uri, finding.line, relative + ":" + finding.line) + " (value redacted)\n\n");
         }
       }
-      stream.markdown("**Configuration files** (.env, YAML, JSON, properties): " + secretFiles.length + " checked, " + secretFindings + " potential credential(s).\n\n");
+      stream.markdown("**Configuration files** (.env, YAML, JSON, properties): " + secretChecked + " checked" + (secretChecked < secretFiles.length ? " (" + (secretFiles.length - secretChecked) + " over 200 KB or binary, skipped)" : "") + ", " + secretFindings + " potential credential(s).\n\n");
     }
     }
     if (request.command === "scan" || request.command === "scan-changed") {

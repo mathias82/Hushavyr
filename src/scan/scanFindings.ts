@@ -43,10 +43,10 @@ export function streamFlows(flows: readonly TaintFlow[], uriOf: ReadonlyMap<stri
 }
 
 /** Text of a small, non-binary file; undefined when unreadable, over 60 KB or binary (never sent to a model or scanner). */
-export async function readSmallText(uri: vscode.Uri): Promise<string | undefined> {
+export async function readSmallText(uri: vscode.Uri, maxBytes = 60_000): Promise<string | undefined> {
   try {
     const bytes = await vscode.workspace.fs.readFile(uri);
-    return bytes.length > 60_000 || bytes.includes(0) ? undefined : Buffer.from(bytes).toString("utf8");
+    return bytes.length > maxBytes || bytes.includes(0) ? undefined : Buffer.from(bytes).toString("utf8");
   } catch { return undefined; }
 }
 

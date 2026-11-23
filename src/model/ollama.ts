@@ -50,6 +50,8 @@ export class LocalOllama {
     if (/(?:^|[:/-])cloud(?:$|[:/-])/i.test(config.model)) throw new Error("Cloud models are not allowed on the local route");
     this.base = localEndpoint(config.endpoint);
   }
+  /** Every request uses the same context size: Ollama reloads the model when it changes (and 0.40 can stall on that reload). */
+  private get contextTokens(): number { return this.config.contextTokens ?? 16384; }
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<unknown> {
     const controller = new AbortController();
     const abort = (): void => controller.abort();
@@ -171,7 +173,7 @@ export class LocalOllama {
     const data = await this.request("/api/generate", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({model: this.config.model, prompt, stream: false, keep_alive: "30m",
-        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: Math.min(options.maxTokens ?? 4096, 12288), num_ctx: this.config.contextTokens ?? 16384}} : {})})
+        ...(options.schema || options.json ? {format: options.schema ?? "json", options: {temperature: 0, num_predict: Math.min(options.maxTokens ?? 4096, 12288), num_ctx: this.contextTokens}} : {options: {num_ctx: this.contextTokens}})})
     }, options.signal);
     if (!data || typeof data !== "object" || !("response" in data) || typeof data.response !== "string") throw new Error("Invalid local Ollama response. No cloud fallback.");
     return data.response;
@@ -195,7 +197,7 @@ export class LocalOllama {
     try {
       const response = await this.transport(this.base + "/api/generate", {
         method: "POST", headers: {"Content-Type": "application/json"}, redirect: "error", signal: controller.signal,
-        body: JSON.stringify({model: this.config.model, prompt, stream: true, keep_alive: "30m"})
+        body: JSON.stringify({model: this.config.model, prompt, stream: true, keep_alive: "30m", options: {num_ctx: this.contextTokens}})
       });
       if (!response.ok || !response.body) throw new Error("HTTP error");
       const reader = response.body.getReader();

@@ -18,7 +18,7 @@ const disposable = {dispose() {}};
 let handler: (request: any, context: any, stream: any, token: any) => Promise<unknown>;
 let docs = new Map<string, string>();
 // Pin the single-pass, LLM-only flow so request counts stay exact; hybrid paths have their own tests.
-const configuration: Record<string, unknown> = {ollamaModel: "qwen2.5-coder:7b", reviewDepth: "fast", staticAnalysis: false, callContext: false};
+const configuration: Record<string, unknown> = {ollamaModel: "qwen2.5-coder:14b", reviewDepth: "fast", staticAnalysis: false, callContext: false};
 const registeredCommands = new Set<string>();
 const configUpdates: unknown[][] = [];
 let copilotLookups = 0, participantRegistrations = 0;
@@ -68,7 +68,7 @@ async function chat(files: Record<string, string>, responses: string[], prompt =
     const url = String(input);
     requests.push({url, payload: init?.body ? JSON.parse(String(init.body)) : undefined});
     if (url.endsWith("/api/show")) return new Response(JSON.stringify({model_info: {"general.architecture": "qwen2"}}));
-    if (url.endsWith("/api/tags")) return new Response(JSON.stringify({models: [{name: "qwen2.5-coder:7b"}]}));
+    if (url.endsWith("/api/tags")) return new Response(JSON.stringify({models: [{name: "qwen2.5-coder:14b"}]}));
     const response = responses.shift();
     assert.equal(typeof response, "string", "unexpected model invocation");
     if (requests[requests.length - 1].payload?.stream === true)

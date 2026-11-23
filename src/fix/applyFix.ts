@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import {runnerFor} from "./proofTarget";
 import {configuredClient} from "../model/model";
-import {findingFix, fitFix, fixPrompt, fixWindow, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
+import {enclosingFunction, findingFix, fitFix, fixPrompt, fixWindow, methodFix, methodFixInstruction, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
 import {EXPLAIN_FINDING, FindingArg, pickFinding} from "../vscode/explainFinding";
 import {acceptManifestEdit, dependencyEditInstruction, parseDependencyFinding, planDependencyFix, resolveManifest} from "../deps/dependencyAudit";
 import {editPrompt, editSchema, parseEdit} from "./codeEdit";
@@ -29,30 +29,39 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
   const original = Array.from({length: window.end - window.start + 1}, (_, i) => doc.lineAt(window.start + i).text);
   const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
   const client = configuredClient(config);
-  let replacement: string | undefined;
+  const path = vscode.workspace.asRelativePath(doc.uri);
+  let change: {start: number; end: number; text: string} | undefined;
   try {
-    replacement = await vscode.window.withProgress({location: vscode.ProgressLocation.Notification, title: "Hushavyr: preparing fix locally", cancellable: true}, async (_p, token) => {
+    change = await vscode.window.withProgress({location: vscode.ProgressLocation.Notification, title: "Hushavyr: preparing fix locally", cancellable: true}, async (_p, token) => {
       const controller = new AbortController();
       token.onCancellationRequested(() => controller.abort());
       await client.ensureInstalled(controller.signal);
-      return parseReplacement(await client.generate(fixPrompt(vscode.workspace.asRelativePath(doc.uri), doc.languageId, original, window.start + 1, parsed.title, parsed.fix),
+      const replacement = parseReplacement(await client.generate(fixPrompt(path, doc.languageId, original, window.start + 1, parsed.title, parsed.fix),
         {schema: replacementSchema, signal: controller.signal}));
+      const fit = replacement ? fitFix(original, replacement, markedLine - window.start) : undefined;
+      if (fit) return {start: window.start + fit.start, end: window.start + fit.end, text: fit.text};
+      // The few-line fix did not fit (e.g. it spans several statements): rewrite the enclosing method instead.
+      const method = enclosingFunction(path, doc.getText(), markedLine + 1);
+      if (!method || controller.signal.aborted) return undefined;
+      const body = Array.from({length: method.end - method.start + 1}, (_, i) => doc.lineAt(method.start + i).text);
+      const text = methodFix(body, parseEdit(await client.generate(editPrompt(path + " lines " + (method.start + 1) + "-" + (method.end + 1), doc.languageId, body.join("\n"),
+        methodFixInstruction(parsed.title, parsed.fix, markedLine + 1)), {schema: editSchema, signal: controller.signal}), body.join("\n")));
+      return text ? {...method, text} : undefined;
     });
   } catch {
     void vscode.window.showErrorMessage("Hushavyr: local fix failed or was cancelled. Run Hushavyr: Setup if Ollama is not running. No cloud fallback.");
     return;
   }
-  const fit = replacement ? fitFix(original, replacement, markedLine - window.start) : undefined;
-  if (!replacement || !fit) {
+  if (!change) {
     void vscode.window.showInformationMessage("Hushavyr: the local model did not produce a safe automatic fix. Apply the suggestion manually.");
     return;
   }
-  const start = window.start + fit.start, end = window.start + fit.end;
-  const range = new vscode.Range(start, 0, end, original[fit.end].length);
+  const {start, end} = change;
+  const range = new vscode.Range(start, 0, end, doc.lineAt(end).text.length);
   const edit = new vscode.WorkspaceEdit();
-  edit.replace(doc.uri, range, fit.text);
+  edit.replace(doc.uri, range, change.text);
   const full = doc.getText().split(/\r?\n/);
-  full.splice(start, fit.end - fit.start + 1, ...fit.text.split("\n"));
+  full.splice(start, end - start + 1, ...change.text.split("\n"));
   // A read-only virtual document: discarding the preview never asks to save an untitled file.
   const name = doc.uri.path.split("/").pop() ?? "file";
   const preview = vscode.Uri.from({scheme: PREVIEW_SCHEME, path: "/" + ++previewCount + "/" + name});
@@ -65,7 +74,7 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
   previews.delete(preview.toString());
   if (answer !== "Apply fix") return;
   if (await vscode.workspace.applyEdit(edit)) {
-    await vscode.window.showTextDocument(doc, {selection: new vscode.Range(window.start, 0, window.start, 0)});
+    await vscode.window.showTextDocument(doc, {selection: new vscode.Range(start, 0, start, 0)});
     void vscode.window.showInformationMessage("Hushavyr: fix applied (unsaved). Undo with Cmd/Ctrl+Z; re-run the scan to confirm.");
   }
 }

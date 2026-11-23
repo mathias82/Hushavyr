@@ -132,7 +132,7 @@ test("lowMemoryWarning flags models that will not fit", () => {
   assert.equal(lowMemoryWarning("llama3", 8 * gb), "");
 });
 
-import {configuredModel} from "../../model/model";
+import {configuredModel, verifyModeFor} from "../../model/model";
 test("uses an explicit model setting, otherwise the best fit for memory", () => {
   const GB = 1024 ** 3;
   const unset = {inspect: () => ({}), get: <T>(_k: string, f: T) => f};
@@ -176,13 +176,22 @@ test("setupPlan installs and starts Ollama, downloads the model and installs the
 test("the 32b judge is offered only to smaller models on machines that can hold it, and only when installed", async () => {
   const {judgeFits, localJudge} = await import("../../model/model");
   const gb = 1024 ** 3;
-  assert.equal(judgeFits("qwen2.5-coder:14b", 24 * gb), true);
+  assert.equal(judgeFits("qwen2.5-coder:14b", 48 * gb), true);
+  assert.equal(judgeFits("qwen2.5-coder:14b", 24 * gb), false);
   assert.equal(judgeFits("qwen2.5-coder:7b", 16 * gb), false);
   assert.equal(judgeFits("qwen2.5-coder:32b", 64 * gb), false);
   assert.equal(judgeFits("llama3", 64 * gb), false);
   const {LocalOllama} = await import("../../model/ollama");
   const client = (names: string[]) => new LocalOllama({model: "qwen2.5-coder:14b"}, async () => new Response(JSON.stringify({models: names.map(name => ({name}))})));
-  assert.ok(await localJudge(client(["qwen2.5-coder:14b", "qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "auto", 24 * gb));
-  assert.equal(await localJudge(client(["qwen2.5-coder:14b"]), "qwen2.5-coder:14b", "auto", 24 * gb), undefined);
-  assert.equal(await localJudge(client(["qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "off", 24 * gb), undefined);
+  assert.ok(await localJudge(client(["qwen2.5-coder:14b", "qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "auto", 48 * gb));
+  assert.equal(await localJudge(client(["qwen2.5-coder:14b"]), "qwen2.5-coder:14b", "auto", 48 * gb), undefined);
+  assert.equal(await localJudge(client(["qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "off", 48 * gb), undefined);
+});
+
+test("small models check only hedged findings; 14b and larger keep the full second pass", () => {
+  assert.equal(verifyModeFor("qwen2.5-coder:7b"), "hedged");
+  assert.equal(verifyModeFor("qwen2.5-coder:3b"), "hedged");
+  assert.equal(verifyModeFor("qwen2.5-coder:14b"), "batch");
+  assert.equal(verifyModeFor("qwen3-coder:30b"), "batch");
+  assert.equal(verifyModeFor("codellama"), "batch");
 });

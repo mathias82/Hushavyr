@@ -144,7 +144,7 @@ export async function runEdit(target: EditTarget, stream: vscode.ChatResponseStr
   } else {
     stream.markdown("**Proposed change** to `" + target.path + "` (" + model + ", local). Nothing is changed until you apply it.\n\n" +
       (summary.length ? summary.map(s => "- " + inlineText(s)).join("\n") + "\n\n" : "") + "```diff\n" +
-      shortDiff(target.original, updated).replace(/```/g, "ˋˋˋ") + "\n```\n");
+      shortDiff(target.original, updated, 60, (target.range?.start.line ?? 0) + 1).replace(/```/g, "ˋˋˋ") + "\n```\n");
     stream.button({command: "aiPrivacyRouter.applyEdit", title: "Apply change", arguments: [id]});
     void showDiff(pending.get(id) as Pending, "Hushavyr: " + target.instruction.slice(0, 60));
   }

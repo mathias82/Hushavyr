@@ -28,6 +28,12 @@ export const COMMANDS: readonly TerminalCommand[] = [
 ];
 
 /** "/fix 2" → {command: "fix", rest: "2"}; text without a leading slash is a chat message. */
+/** A hint when a dependency scan could not use its offline CVE database; undefined when the scanners worked. */
+export function cveDbHint(totals: string[]): string | undefined {
+  return totals.some(t => /^(trivy: failed|osv-scanner: no offline database)/.test(t))
+    ? "Dependency CVEs were not fully checked: the offline CVE database is missing or unreadable. Type /update-db, then run this again." : undefined;
+}
+
 export function parseLine(line: string): {command?: string; rest: string} {
   const text = line.trim();
   // Plain "exit" or "quit" also quits, as in a shell.
@@ -83,6 +89,21 @@ export function diffLines(original: string, updated: string, firstLine = 1, maxL
 }
 
 /** Replaces the 0-based inclusive line range with the replacement, keeping the file's line endings. */
+/**
+ * Where a 1-based line of `before` is in `after`: same line above the changed region, shifted below it, and undefined
+ * inside it (that code was rewritten). Several separate changes count as one region, which is conservative.
+ */
+export function movedLine(before: string, after: string, line: number): number | undefined {
+  const a = before.split(/\r?\n/), b = after.split(/\r?\n/);
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  if (line <= head) return line;
+  if (line > a.length - tail) return line + b.length - a.length;
+  return undefined;
+}
+
 export function replaceLines(text: string, start: number, end: number, replacement: string): string {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);

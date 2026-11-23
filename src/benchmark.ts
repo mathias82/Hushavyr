@@ -1,4 +1,5 @@
 import { LocalOllama } from "./model/ollama";
+import { verifyModeFor } from "./model/model";
 import { ReviewSource } from "./review/context";
 import { Finding, reviewPrompt, validateReview } from "./review/review";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -487,7 +488,7 @@ async function main(args: string[]) {
     const started = Date.now();
     try {
       const staticFindings = useStatic ? staticReview(fixture.sources, rules).then(r => r.findings) : undefined;
-      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, staticFindings, judge});
+      const result = await runLocalReview(client, instruction, fixture.sources, () => false, verifier, {depth, verify: verifyModeFor(model), staticFindings, judge});
       if (!result || result.error) throw new Error("Review failed");
       const score = scoreCase(fixture, result.findings);
       tp += score.truePositive; fp += score.falsePositive; fn += score.falseNegative;

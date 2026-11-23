@@ -6,13 +6,19 @@ import {AddressInfo} from "node:net";
 import {mkdir, mkdtemp, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join} from "node:path";
-import {chooseModel, completeCommand, diffLines, mentionedFiles, parseLine, replaceLines} from "../../terminal/helpers";
+import {chooseModel, completeCommand, cveDbHint, diffLines, mentionedFiles, movedLine, parseLine, replaceLines} from "../../terminal/helpers";
 import {onPath, profileFile, shimPath, shimScript, writeShim} from "../../terminal/shim";
 import {resolveCopilot} from "../../terminal/copilot";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const REPL = join(ROOT, "dist", "terminal", "repl.js");
 const GB = 1024 ** 3;
+
+test("dependency scans without an offline CVE database point to /update-db", () => {
+  assert.match(cveDbHint(["trivy: failed (0 vulnerabilities)", "osv-scanner: ok (0 additional vulnerabilities)"]) ?? "", /\/update-db/);
+  assert.match(cveDbHint(["semgrep: 2 findings", "trivy: ok (0 vulnerabilities)", "osv-scanner: no offline database (0 additional vulnerabilities)"]) ?? "", /\/update-db/);
+  assert.equal(cveDbHint(["trivy: ok (3 vulnerabilities)", "osv-scanner: ok (0 additional vulnerabilities)"]), undefined);
+});
 
 test("terminal lines: slash commands with aliases, chat text, and Tab completion", () => {
   assert.deepEqual(parseLine("  /fix 2 "), {command: "fix", rest: "2"});
@@ -67,7 +73,7 @@ test("the installed launcher runs the bundled terminal from any folder", {skip: 
 });
 
 /** A loopback stand-in for Ollama: one installed model, streamed chat answers and JSON fixes/edits built from the prompt. */
-async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts: string[]}> {
+async function fakeOllama(partialFix = false): Promise<{server: Server; endpoint: string; prompts: string[]}> {
   const prompts: string[] = [];
   const server = createServer((req, res) => {
     let body = "";
@@ -86,6 +92,14 @@ async function fakeOllama(): Promise<{server: Server; endpoint: string; prompts:
       if (request.prompt.includes("skeptical second reviewer")) {
         const candidates = JSON.parse(request.prompt.slice(request.prompt.indexOf("UNTRUSTED CANDIDATES:\n") + 22)) as unknown[];
         return res.end(JSON.stringify({response: JSON.stringify({verdicts: candidates.map((_, index) => ({index, supported: true}))})}));
+      }
+      if (request.prompt.includes("Apply ONE minimal fix") && partialFix) {
+        // Like qwen2.5-coder:14b on a multi-statement fix: only the changed statements, which cannot be placed safely.
+        return res.end(JSON.stringify({response: JSON.stringify({replacement: "\n  const sql = \"SELECT * FROM books WHERE id = ?\";\n  const params = [id];\n  db.query(sql, params, (err, rows) => res.json(rows));\n"})}));
+      }
+      if (request.prompt.includes("Fix only this finding")) {
+        const code = request.prompt.slice(request.prompt.indexOf("\n", request.prompt.indexOf("CODE ")) + 1);
+        return res.end(JSON.stringify({response: JSON.stringify({content: code.replace('"SELECT * FROM books WHERE id = " + id,', '"SELECT * FROM books WHERE id = ?", [id],'), summary: ["Bound id"]})}));
       }
       if (request.prompt.includes("Apply ONE minimal fix")) {
         const excerpt = request.prompt.slice(request.prompt.indexOf("\n", request.prompt.indexOf("FILE ")) + 1).split("\n").map(l => l.replace(/^\d+: /, ""));
@@ -139,6 +153,28 @@ test("hushavyr session: chat with a mentioned file, scan, fix behind an approved
     assert.ok(prompts.some(p => p.includes("A deterministic security scanner reported this finding")), "/explain N explains the finding");
     assert.match(output, /Reviewing books\.js with fake-coder:1b[\s\S]*\[1\] HIGH {3}books\.js:\d+ {2}Local rule: SQL [\s\S]*Fix: /);
     assert.match(output, /Current model: fake-coder:1b\nInstalled: fake-coder:1b/);
+  } finally { server.close(); }
+});
+
+test("finding lines follow a change above them; findings in the rewritten lines have no line", () => {
+  const before = "a\nb\nc\nd\ne", after = "a\nB1\nB2\nc\nd\ne";
+  assert.deepEqual([1, 2, 3, 4, 5].map(l => movedLine(before, after, l)), [1, undefined, 4, 5, 6]);
+  assert.equal(movedLine(before, before, 3), 3);
+});
+
+test("/fix rewrites the enclosing function when the few-line fix does not fit", async () => {
+  const {server, endpoint, prompts} = await fakeOllama(true);
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "hushavyr-repl-"));
+    const file = join(dir, "books.js");
+    const source = 'const express = require("express");\nconst app = express();\nfunction findBook(req, res) {\n  const id = req.query.id;\n' +
+      '  db.query("SELECT * FROM books WHERE id = " + id, (err, rows) => res.json(rows));\n}\napp.get("/books", findBook);\n';
+    await writeFile(file, source);
+    const output = await session(dir, endpoint, ["/security", "/fix 1", "y", "/fix 1", "/undo", "/fix 1", "n", "/exit"]);
+    assert.match(output, /The code of finding 1 changed after the scan[\s\S]*Restored books\.js\.[\s\S]*Apply this fix\? \[y\/N\] n/);
+    assert.ok(prompts.some(p => p.includes("Fix only this finding at file line 5")), output);
+    assert.match(output, /- {4}5 │ {3}db\.query\("SELECT \* FROM books WHERE id = " \+ id,[\s\S]*\+ {4}5 │ {3}db\.query\("SELECT \* FROM books WHERE id = \?", \[id\],/);
+    assert.equal(await readFile(file, "utf8"), source);
   } finally { server.close(); }
 });
 

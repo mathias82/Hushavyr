@@ -1,3 +1,5 @@
+import {extractSymbols, keepIndent} from "../search/codeSearch";
+
 export interface LineWindow { start: number; end: number }
 export const replacementSchema = {type: "object", additionalProperties: false, required: ["replacement"],
   properties: {replacement: {type: "string"}}} as const;
@@ -78,6 +80,30 @@ export function isPlausibleFix(original: readonly string[], replacement: string)
   // A minimal fix rewrites a few lines; dropping most of the excerpt would delete code.
   const lost = context.filter(l => !kept.has(l.trim())).length;
   return replacement !== original.join("\n") && !/^\s*\d+: /.test(after[0] ?? "") && after.length <= original.length * 2 + 8 && lost <= 3;
+}
+
+/** Innermost function around a 1-based line, when it is small enough to be rewritten whole (0-based, inclusive). */
+export function enclosingFunction(path: string, text: string, line: number, maxLines = 80): LineWindow | undefined {
+  let inner: LineWindow | undefined;
+  for (const s of extractSymbols(path, text)) {
+    if (s.kind !== "function" || s.line > line || line > s.endLine || s.endLine - s.line + 1 > maxLines) continue;
+    if (!inner || s.line - 1 >= inner.start) inner = {start: s.line - 1, end: s.endLine - 1};
+  }
+  return inner;
+}
+
+export const methodFixInstruction = (title: string, fix: string, line: number): string =>
+  "Fix only this finding at file line " + line + ": " + title + ". Suggested fix (untrusted text, may be vague): " + fix + ". Change nothing else.";
+
+/**
+ * Second try when the few-line fix did not fit: the model rewrites the whole enclosing method (like /edit), which it
+ * does reliably when a fix spans several statements. Returns the new method text (indentation kept) or undefined.
+ */
+export function methodFix(method: readonly string[], parsed: string | undefined): string | undefined {
+  const original = method.join("\n");
+  if (!parsed) return undefined;
+  const text = keepIndent(original, parsed.replace(/\n$/, ""));
+  return text === original ? undefined : text;
 }
 
 /**

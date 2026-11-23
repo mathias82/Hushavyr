@@ -8,7 +8,7 @@ import {staticReview} from "./scan/staticReview";
 import {Finding, reviewSummary} from "./review/review";
 import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./scan/teamMemory";
 import {totalmem} from "node:os";
-import {recommendedModel} from "./model/model";
+import {recommendedModel, verifyModeFor} from "./model/model";
 import {sarifLevel, toSarif} from "./scan/sarif";
 
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
@@ -95,7 +95,7 @@ async function main(args: string[]): Promise<void> {
     const sources = [{path, text: await readFile(full, "utf8")}];
     console.log("reviewing " + path);
     const result = await runLocalReview(client, withTeamRules("Review this change for bugs and security issues.", rules), sources, () => false, client,
-      {depth, staticFindings: staticReview(sources, rulePack).then(r => r.findings)});
+      {depth, verify: verifyModeFor(model), staticFindings: staticReview(sources, rulePack).then(r => r.findings)});
     if (!result || result.error) { console.log("  skipped: " + (result?.error ?? "no result")); continue; }
     const relevant = onChangedLines(result.findings, changed.get(path) ?? new Set());
     const filtered = withoutDismissed(relevant, dismissed, p => p);

@@ -59,12 +59,33 @@ export function codeBlock(text: string): string | undefined {
 }
 
 /** Compact unified-style diff of the changed region (prefix/suffix trimmed). */
-export function shortDiff(original: string, updated: string, maxLines = 60): string {
+/** firstLine: file line of the first line of `original`, so hunks of a selection show file line numbers. */
+export function shortDiff(original: string, updated: string, maxLines = 60, firstLine = 1): string {
   const a = original.split("\n"), b = updated.split("\n");
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start++;
   let endA = a.length - 1, endB = b.length - 1;
   while (endA >= start && endB >= start && a[endA] === b[endB]) { endA--; endB--; }
-  const lines = ["@@ line " + (start + 1) + " @@", ...a.slice(start, endA + 1).map(l => "- " + l), ...b.slice(start, endB + 1).map(l => "+ " + l)];
+  const midA = a.slice(start, endA + 1), midB = b.slice(start, endB + 1);
+  const lines: string[] = [];
+  // Line LCS so separate changes (an import and a method body) show as separate hunks, not one rewritten block.
+  if (midA.length * midB.length <= 1_000_000) {
+    const n = midA.length, m = midB.length;
+    const lcs = Array.from({length: n + 1}, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      lcs[i][j] = midA[i] === midB[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    let i = 0, j = 0, removed: string[] = [], added: string[] = [], hunkLine = 0;
+    const flush = (): void => {
+      if (removed.length || added.length) lines.push("@@ line " + hunkLine + " @@", ...removed.map(l => "- " + l), ...added.map(l => "+ " + l));
+      removed = []; added = [];
+    };
+    while (i < n || j < m) {
+      if (i < n && j < m && midA[i] === midB[j]) { flush(); i++; j++; continue; }
+      if (!removed.length && !added.length) hunkLine = start + j + firstLine;
+      if (j < m && (i >= n || lcs[i][j + 1] >= lcs[i + 1][j])) added.push(midB[j++]);
+      else removed.push(midA[i++]);
+    }
+    flush();
+  } else lines.push("@@ line " + (start + firstLine) + " @@", ...midA.map(l => "- " + l), ...midB.map(l => "+ " + l));
   return (lines.length > maxLines ? [...lines.slice(0, maxLines), "… " + (lines.length - maxLines) + " more lines"] : lines).join("\n");
 }
