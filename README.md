@@ -13,9 +13,9 @@ Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)**
 
 **Works with:** Java, Kotlin, Python, JavaScript, TypeScript, Go, Rust, C#, PHP and Ruby.
 
-![Hushavyr demo: install, setup and every chat command running locally](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-demo.gif)
+![Hushavyr demo: @ai-privacy /review finds a SQL injection with the local model, Quick Fix proposes a PreparedStatement fix as a diff, and Apply fix changes the file](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-review-fix.gif)
 
-▶️ [Watch in HD (MP4)](https://github.com/mathias82/Hushavyr/releases/download/v1.0.1/hushavyr-demo.mp4) · 📰 [Read the announcement on LinkedIn](https://www.linkedin.com/pulse/hushavyr-free-private-ai-code-review-security-scanner-stavrou-htyzf/)
+📰 [Read the announcement on LinkedIn](https://www.linkedin.com/pulse/hushavyr-free-private-ai-code-review-security-scanner-stavrou-htyzf/)
 
 ## Why Hushavyr?
 
@@ -36,6 +36,14 @@ This is a brand interpretation, not a literal translation of an existing word.
    - **Linux:** Ollama via the official script. Analyzers via Homebrew if you have it, otherwise pipx (Semgrep, Bandit) or go (Gitleaks, gosec, OSV-Scanner); anything it cannot install is listed with an install link instead of failing.
    - **Windows:** Ollama via WinGet and the model; install the analyzers by hand if you want them.
 3. Open a project and type `@ai-privacy /review` in Chat, or run **Hushavyr: Review Current File** from the Command Palette.
+
+![Hushavyr install: install from the Marketplace, run Hushavyr: Setup, pick the model and analyzers, confirm once, and Setup installs Ollama, the model and the analyzers](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-install.gif)
+
+**Full tour** (install, setup and every chat command):
+
+![Hushavyr full tour: install, setup and every chat command running locally](https://raw.githubusercontent.com/mathias82/Hushavyr/main/docs/media/hushavyr-demo.gif)
+
+▶️ [Watch the full tour in HD (MP4)](https://github.com/mathias82/Hushavyr/releases/download/v1.0.1/hushavyr-demo.mp4)
 
 ## Local AI CLI for the terminal (`hushavyr`)
 

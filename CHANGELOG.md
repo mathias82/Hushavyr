@@ -1,6 +1,7 @@
 # Changelog
 
-## 1.0.19 (unreleased)
+## 1.0.19
+- **README:** new short demo at the top (`/review` → Quick Fix → diff → Apply) and an install demo (Marketplace → Setup) under Install. The full tour moved below them.
 - **Benchmark: where each bug is lost.** Every case now has a stage trace: what the general pass, retry, lenses, static rules, verifier, recheck, targeted checks and judge proposed, kept or dropped, model calls per stage, failed requests and invalid JSON answers. Each missed bug gets a `lossStage` (`not_proposed`, `validator_rejected`, `merge_dropped`, `verifier_rejected`, `possible_only`, `wrong_location`, `wrong_mechanism`, `inconclusive`, ...) and each final finding its origin stage. `not_proposed` is reported only when no model request failed and every answer was valid JSON. Expected bugs are used for scoring only and never reach the model. The trace holds line numbers and titles, no source or fix text. `BENCH_TRACE=0` turns it off. Measurement only: findings, scores and model calls are unchanged.
 
 ## 1.0.18
