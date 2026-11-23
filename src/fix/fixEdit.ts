@@ -20,7 +20,7 @@ export function parseReviewMessage(message: string): {title: string; fix: string
 const FIX_HINTS: [RegExp, string][] = [
   [/\bNoSQL\b|\$where/i, "Never pass request input as a query operator or $where code; cast it to the expected type (String(x)) or validate it against an allow-list."],
   [/\bSQL\b/i, "Use a parameterized query or prepared statement with placeholders (?, $1, :name) and pass the input as a bound parameter; never concatenate or interpolate it into the SQL text."],
-  [/\bcommand injection|\bshell|os command|subprocess|exec\b/i, "Do not run a shell: call the program with an argument list (execFile, subprocess.run([...]) without shell=True, ProcessBuilder) and validate the input against an allow-list."],
+  [/\bcommand injection|\bshell|os command|subprocess|exec\b/i, "Run the program directly with an argument array (Node.js execFile, Python subprocess.run with shell=False, or Java ProcessBuilder) and validate the input against an allow-list."],
   [/\bcode injection|\beval\b|constantize/i, "Remove eval/dynamic code execution; map the input to a fixed set of allowed functions or values."],
   [/path traversal|zip slip|\bfile path\b/i, "Resolve the path against a fixed base directory, normalize it, and reject it unless it stays inside that directory; or keep only the base name."],
   [/\bXSS\b|cross-site scripting|innerHTML|html_safe|\braw\b/i, "Escape the value for HTML before output (the framework's encoder, textContent instead of innerHTML, template auto-escaping); do not mark it as safe HTML."],
