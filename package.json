@@ -4,7 +4,7 @@
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
   "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, fixes them behind a diff you approve, also from the terminal (`hushavyr`). Your code never leaves your machine.",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -415,6 +415,38 @@
           {
             "name": "improve",
             "description": "The local model suggests improvements to the open file (bugs, edge cases, clarity); shows a diff, then Apply and Open pull request"
+          },
+          {
+            "name": "fix",
+            "description": "Fix finding N of the last /review or scan with local AI: /fix 2 shows a diff to approve; /fix alone lets you pick"
+          },
+          {
+            "name": "findings",
+            "description": "List the findings of the last /review or scan, numbered for /fix, /dismiss and /prove"
+          },
+          {
+            "name": "dismiss",
+            "description": "Hide finding N as not a real issue (shared with the team in .hushavyr/dismissed.json): /dismiss 3"
+          },
+          {
+            "name": "prove",
+            "description": "Prove finding N with a failing test in an offline Docker container, then a verified fix: /prove 2"
+          },
+          {
+            "name": "undo",
+            "description": "Restore the file changed by the last fix or edit"
+          },
+          {
+            "name": "model",
+            "description": "Show the local model and installed models, or switch: /model qwen2.5-coder:14b"
+          },
+          {
+            "name": "setup",
+            "description": "First-time setup: local model and optional scanners"
+          },
+          {
+            "name": "update-db",
+            "description": "Download the latest public CVE databases (Trivy, OSV)"
           },
           {
             "name": "review-changes",

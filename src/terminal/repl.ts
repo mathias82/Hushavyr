@@ -9,7 +9,8 @@ import {createInterface, Interface} from "node:readline";
 import {scanFolder} from "../cli";
 import {auditDependenciesWithOsv} from "../scan/codeScanners";
 import {MAX_CONTEXT_BYTES, ReviewSource, sourcePrompt} from "../review/context";
-import {editPrompt, editSchema, parseEdit, parseSummary} from "../fix/codeEdit";
+import {editPrompt, editSchema, improveInstruction, parseEdit, parseSummary} from "../fix/codeEdit";
+import {detectTestProfiles, formatTestReceipt, runRegressionTests, testProfiles} from "../fix/regression";
 import {acceptManifestEdit, dependencyEditInstruction, findDependencyLine, groupVulnerabilities, parseDependencyFinding, planDependencyFix, resolveManifest} from "../deps/dependencyAudit";
 import type {Finding} from "../review/review";
 import {enclosingFunction, findingFix, fitFix, fixPrompt, fixWindow, methodFix, methodFixInstruction, parseReplacement, replacementSchema} from "../fix/fixEdit";
@@ -146,6 +147,10 @@ class Session {
         case "exit": return "exit";
         case "clear": this.history = []; out("Conversation cleared."); return;
         case "scan": case "security": case "secrets": return await this.scan(command, rest);
+        case "scan-changed": return await this.scan("scan", rest, true);
+        case "review-changes": return await this.reviewChanges(signal);
+        case "improve": return await this.edit(rest, signal, true);
+        case "test": return await this.runTests(signal);
         case "dependencies": return await this.dependencies(rest, signal);
         case "findings": return this.printFindings();
         case "review": return await this.review(rest, signal);
@@ -374,14 +379,18 @@ class Session {
     out(dim("\nUse a name with /review, /explain or /edit, e.g. /edit " + (hits[0].container ? hits[0].container + "." : "") + hits[0].name + " <what to change>"));
   }
 
-  private async scan(kind: "scan" | "security" | "secrets", arg: string): Promise<void> {
+  private async scan(kind: "scan" | "security" | "secrets", arg: string, changedOnly = false): Promise<void> {
     const {abs, display} = this.path(arg || ".");
+    const changed = changedOnly ? new Set([...(await changedLineMap(abs, 5000)).keys()].map(path => join(abs, path))) : undefined;
+    if (changed && !changed.size) { out(dim("No uncommitted changes in " + display + " (git diff HEAD and new files). Nothing to scan.")); return; }
     if (!(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(display + " is not a folder.");
     if (kind === "scan") await this.autoUpdateDb(abs);
     out(dim((kind === "scan" ? "Scanning " : kind === "secrets" ? "Looking for hardcoded secrets in " : "Security scan (no AI) of ") + display + " … nothing leaves this machine"));
     const lines: string[] = [];
     const results = await scanFolder(abs, RULES, line => { lines.push(line); out(dim("  " + line)); }, kind !== "scan");
-    const kept = kind === "secrets" ? results.filter(r => r.ruleId === "hardcoded-credential") : results;
+    const kept = (kind === "secrets" ? results.filter(r => r.ruleId === "hardcoded-credential") : results)
+      .filter(r => !changed || changed.has(join(abs, r.path)));
+    if (changed) out(dim("Showing findings in the " + changed.size + " changed file(s) only."));
     this.findings = kept.map(r => ({path: join(abs, r.path), display: relative(this.cwd, join(abs, r.path)), line: r.line, message: r.message, level: r.level}))
       .sort((a, b) => levelRank(a.level) - levelRank(b.level) || a.display.localeCompare(b.display) || a.line - b.line);
     this.findings = await this.withoutDismissed(this.findings);
@@ -642,13 +651,14 @@ class Session {
     else out("Discarded. " + f.display + " is unchanged.");
   }
 
-  private async edit(arg: string, signal: AbortSignal): Promise<void> {
-    if (arg.trim().split(/\s+/).length < 2) throw new Error("Say what to change, for example: /edit src/app.ts add input validation to createUser, or /edit OrderService.calculateTotal handle an empty order");
+  private async edit(arg: string, signal: AbortSignal, improve = false): Promise<void> {
+    if (improve && !arg.trim()) throw new Error("Name what to improve, for example: /improve src/app.ts, or /improve OrderService.calculateTotal error handling");
+    if (!improve && arg.trim().split(/\s+/).length < 2) throw new Error("Say what to change, for example: /edit src/app.ts add input validation to createUser, or /edit OrderService.calculateTotal handle an empty order");
     await this.ensureModel(signal);
     const target = await this.resolveTarget(arg, signal, true);
     if (!target) return;
     const {file, hit} = target;
-    const request = target.request.trim() || arg;
+    const request = improve ? improveInstruction(target.request) : target.request.trim() || arg;
     // A found method or class is edited alone and put back: a smaller prompt, and the rest of the file cannot change.
     const part = this.part(file, hit);
     out(dim("Editing " + (hit ? describeHit(hit) : file.display) + " with " + this.model + "… (Ctrl+C cancels)"));
@@ -662,6 +672,23 @@ class Session {
     this.showDiff(file.text, updated, 1);
     if (await this.ask("Apply these changes?")) await this.apply(file.abs, file.display, file.text, updated);
     else out("Discarded. " + file.display + " is unchanged.");
+  }
+
+  /** /test: runs the project's existing test suite (npm, Maven, Gradle, …); never generated code or model-provided commands. */
+  private async runTests(signal: AbortSignal): Promise<void> {
+    const profiles = await detectTestProfiles(this.cwd, false);
+    if (!profiles.length) { out(yellow("No test setup found in " + (basename(this.cwd)) + " (package.json, pom.xml, build.gradle, pytest…).")); return; }
+    let profile = profiles[0];
+    if (profiles.length > 1) {
+      profiles.forEach((p, i) => out(bold(("[" + (i + 1) + "]").padStart(5)) + " " + testProfiles[p].label));
+      const answer = (await this.reply(bold("Which one? ") + "[1-" + profiles.length + ", Enter = 1, n = cancel] ") ?? "n").trim();
+      if (/^(?:n|no|όχι|οχι|q)$/i.test(answer)) return;
+      profile = profiles[(Number(answer) || 1) - 1] ?? profiles[0];
+    }
+    if (!await this.ask("Run " + testProfiles[profile].label + " in " + basename(this.cwd) + "? Project scripts may execute code.")) return;
+    out(dim("Running " + testProfiles[profile].label + "…"));
+    const receipt = await runRegressionTests({cwd: this.cwd, profile, trusted: true, signal});
+    out((receipt.status === "passed" ? green : yellow)(formatTestReceipt(receipt).replace(/\*\*/g, "").split("\n")[0]));
   }
 
   private async undo(): Promise<void> {

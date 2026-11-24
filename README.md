@@ -69,16 +69,19 @@ All commands:
 | `/secrets [folder]` | Hardcoded passwords, API keys and tokens (values are hidden) |
 | `/dependencies [folder]` | CVEs in your libraries with Trivy and OSV-Scanner |
 | `/scan [folder]` | Full project scan: built-in rules, data flow, secrets, Semgrep, Gitleaks, Trivy if installed |
+| `/scan-changed [folder]` | Same scan, but shows findings only in files changed since the last commit (`git diff HEAD` and new files) |
 | `/gitleaks [history] [folder]` | Secrets with Gitleaks; `history` checks every past commit, so a deleted password is still found |
 | `/find <name or description>` | Find a class or method: by name, with typos allowed (`/find order servce`), or by description (`/find where the discount is computed`) |
 | `/review <file\|name\|folder>` | Local AI review of a file, class or method for bugs and security issues, together with the static rules; a folder runs `/scan` |
-| `/review diff` | Reviews only your uncommitted changes: each changed line is widened to the method around it, so a small change in a big file takes seconds |
+| `/review diff` · `/review-changes` | Reviews only your uncommitted changes: each changed line is widened to the method around it, so a small change in a big file takes seconds |
 | `/findings` | Show the last report again |
 | `/explain <N\|file\|name\|description>` | Explain finding N, a file, a class or method, or the code you describe |
 | `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y`. For a dependency CVE it upgrades the package in the manifest (`package.json`, `pom.xml`, `go.mod`, …) |
 | `/dismiss <N> [reason]` | Hide finding N as not a real issue; saved in `.hushavyr/dismissed.json` and hidden for the whole team, in VS Code too |
 | `/edit <file\|name> <request>` | Change a file, or only one method (`/edit OrderService.place add input checks`), behind the same diff and approval |
+| `/improve <file\|name> [focus]` | Let the local model improve a file, class or method (bugs, edge cases, leaks, clarity), behind the same diff and approval; `/improve src/app.ts error handling` adds a focus |
 | `/undo` | Restore the file changed by the last `/fix` or `/edit` |
+| `/test` | Run the project's existing tests (npm, Maven, Gradle, pytest) after you confirm; no generated code |
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
 | `/commit [message]` | Commit all changes on the current branch (also the first commit of a new repository). The local model writes the message unless you give one; asks first, stops on secrets, does not push |
 | `/push` | Push the current branch to origin (creates it there the first time); asks first, no new commit. Plain text `commit and push` does both |
@@ -95,6 +98,8 @@ All commands:
 | `/clear` | Forget the conversation so far |
 | `/help [command]` | Every command with its options and examples; `/help review` shows one |
 | `/exit` | Quit (also `exit`, `quit` or Ctrl+D) |
+
+The terminal and [VS Code Chat](#vs-code-chat-commands) have the same commands, except `/clear` and `/exit` (terminal only) and `/auto` (Chat only).
 
 Tab completes commands, and Ctrl+C cancels a running request. `hushavyr /security` runs one command and exits; `hushavyr --model qwen2.5-coder:14b` starts with a specific model.
 
@@ -141,7 +146,7 @@ Setup picks the model for your machine and also lists the models you already hav
 
 ## VS Code Chat commands
 
-Type `@ai-privacy` in VS Code Chat, then one of these commands:
+Type `@ai-privacy` in VS Code Chat, then one of these commands. They are the same as in the [terminal](#local-ai-cli-for-the-terminal-hushavyr), except `/auto` (Chat only) and `/clear` and `/exit` (terminal only):
 
 | Command | What it does |
 | --- | --- |
@@ -150,6 +155,11 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/find` | Finds a class or method in the workspace by name (typos are fine) or by description, with links to the lines |
 | `/edit` | Changes the open or selected code, or a method you name (`/edit OrderService.place add input checks`), with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
 | `/improve` | Asks the local model for real improvements to the open file (bugs, safety, clarity), shows a diff and a summary, and after **Apply** offers to open a pull request |
+| `/findings` | Lists the findings of the last `/review` or scan, numbered for `/fix`, `/dismiss` and `/prove` |
+| `/fix [N]` | Fixes finding N of the last `/review` or scan with the local model: a diff opens and nothing changes until you click **Apply fix**. Without N you pick the finding |
+| `/dismiss N` | Hides finding N as not a real issue; saved in `.hushavyr/dismissed.json` for the whole team, in the terminal too |
+| `/prove N` | Proves finding N with a failing test in an offline Docker container, then a verified fix |
+| `/undo` | Restores the file changed by the last fix or edit (if you did not change it since) |
 | `/commit [message]` or plain `commit` | Commits your changes on the current branch with a message the local model writes from the diff. Asks first and stops on secrets. Works in a new repository too. Plain `commit and push` (or the **Commit and push** button) also pushes. |
 | `/push` | Pushes the current branch to origin, after you confirm. |
 | `/gitcommits` | Commits on the current branch that are not on the main branch. |
@@ -164,6 +174,9 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/secrets` · `/gitleaks` | Finds hardcoded passwords and keys (values are hidden). `/gitleaks history` also checks every past git commit |
 | `/dependencies` | Finds CVEs with Trivy and OSV-Scanner and shows whether your code calls the vulnerable function |
 | `/test` | Runs the project tests |
+| `/model [name]` | Shows the local model and the installed ones, or switches (`/model qwen2.5-coder:14b`) |
+| `/setup` | First-time setup: local model and optional analyzers |
+| `/update-db` | Downloads the latest public CVE databases (Trivy, OSV) |
 | `/auto` | Sends a typed question that contains no code to the right model |
 | `/escalate` | *Opt-in.* Sends only the selected function to a Copilot model, with names removed and after you approve it (see below). Type `/escalate on` or `/escalate off` to allow or block it |
 

@@ -20,6 +20,15 @@ export function rememberFindings(findings: readonly ReportFinding[]): number {
   return lastFindings.length;
 }
 
+export function listFindings(): readonly FindingArg[] {
+  return lastFindings;
+}
+
+/** Finding `n` (1-based) of the latest chat /review or scan report, as numbered there. */
+export function findingAt(n: number): FindingArg | undefined {
+  return lastFindings[n - 1];
+}
+
 export function forgetFinding(uri: string, line: number): void {
   lastFindings = lastFindings.filter(f => f.uri !== uri || f.line !== line);
 }

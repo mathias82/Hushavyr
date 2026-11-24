@@ -291,3 +291,14 @@ test("chat /pr without a title: the local model writes the commit message and PR
     fake.workspace.workspaceFolders = undefined;
   }
 });
+
+test("chat /findings, /fix N and /undo without a report or an applied fix say so and call no model", async () => {
+  require("../../vscode/explainFinding").rememberFindings([]);
+  const findings = await chat({}, [], "", false, "findings");
+  assert.match(findings.output, /No findings yet/);
+  const fix = await chat({}, [], "9", false, "fix");
+  assert.match(fix.output, /No finding 9\./);
+  const undo = await chat({}, [], "", false, "undo");
+  assert.match(undo.output, /Nothing to undo/);
+  assert.equal(findings.requests.length + fix.requests.length + undo.requests.length, 0);
+});

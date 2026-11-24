@@ -1,4 +1,4 @@
-import {configuredModel, configuredDepth, installedModel, localJudge, verifyModeFor} from "../model/model";
+import {configuredClient, configuredModel, configuredDepth, installedModel, localJudge, verifyModeFor} from "../model/model";
 import {relatedSources} from "../review/relatedJava";
 import {changedLineMap} from "../git/changedFiles";
 import {isCommitRequest, wantsPush} from "../git/pullRequest";
@@ -14,7 +14,7 @@ import {improveInstruction, isEditRequest} from "../fix/codeEdit";
 import {changeBranch, openPullRequest, pushBranchFlow, showBranchCommits} from "./prFlow";
 import {loadIgnore} from "../scan/teamMemory";
 import {LocalOllama} from "../model/ollama";
-import {asksForExplanation, formatReview, modelHint} from "../review/review";
+import {asksForExplanation, formatReview, inlineText, modelHint} from "../review/review";
 import {runLocalReview, ReviewDepth} from "../review/localReview";
 import {staticReview} from "../scan/staticReview";
 import {callContext, CodeFile} from "../review/callContext";
@@ -29,8 +29,10 @@ import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {lowMemoryWarning} from "../model/setup";
 import {runWorkspaceScan, isScanCommand} from "../scan/workspaceScan";
-import {EXPLAIN_FINDING, rememberFindings, rememberReport} from "./explainFinding";
-import {FIX_FINDING} from "../fix/applyFix";
+import {EXPLAIN_FINDING, findingAt, listFindings, rememberFindings, rememberReport} from "./explainFinding";
+import {undoLastChange} from "../fix/lastChange";
+import {UPDATE_VULN_DBS} from "../deps/vulnDb";
+import {applyReviewFix, canFix, FIX_FINDING} from "../fix/applyFix";
 import {formatTestReceipt} from "../fix/regression";
 import {runWorkspaceTests} from "./localCommands";
 import {ChatSearch} from "./chatSearch";
@@ -138,6 +140,57 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
     if (request.command === "branches") { await changeBranch("", text => stream.markdown(text)); return; }
     if (request.command === "branch") { await changeBranch(request.prompt.trim(), text => stream.markdown(text)); return; }
     if (request.command === "push") { await pushBranchFlow(text => stream.markdown(text)); return; }
+    if (request.command === "findings") {
+      const all = listFindings();
+      stream.markdown(all.length ? all.map((f, i) => (i + 1) + ". `" + vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri), false) + ":" + f.line + "` " + inlineText(f.message.split("\n")[0])).join("\n") +
+        "\n\n`/fix N` fixes one (diff to approve) · `/dismiss N` hides a false positive · `/prove N` proves it with a test." : "No findings yet. Run `/review`, `/scan`, `/secrets` or `/dependencies` first.");
+      return;
+    }
+    if (request.command === "undo") {
+      const problem = await undoLastChange();
+      stream.markdown(problem ?? "Restored the file changed by the last fix or edit (not saved yet).");
+      return;
+    }
+    if (request.command === "setup") { await vscode.commands.executeCommand("aiPrivacyRouter.setup"); stream.markdown("Setup opened."); return; }
+    if (request.command === "update-db") { await vscode.commands.executeCommand(UPDATE_VULN_DBS); return; }
+    if (request.command === "model") {
+      const config = vscode.workspace.getConfiguration("aiPrivacyRouter");
+      const wanted = request.prompt.trim();
+      const installed = await configuredClient(config).listModels().catch(() => [] as string[]);
+      const current = config.get<string>("ollamaModel", "");
+      if (!wanted) {
+        stream.markdown("Current model: **" + (current || "automatic") + "**" + (installed.length ? "\n\nInstalled: " + installed.map(m => "`" + m + "`").join(", ") : "\n\nOllama is not running or has no models: run `/setup`.") + "\n\nSwitch with `/model <name>`, e.g. `/model qwen2.5-coder:14b`.");
+        return;
+      }
+      if (!installed.includes(wanted) && !installed.includes(wanted + ":latest")) {
+        stream.markdown("`" + wanted + "` is not installed. Download it with `ollama pull " + wanted + "` or **Hushavyr: Download Local Qwen Model**, then try again.");
+        return;
+      }
+      await config.update("ollamaModel", wanted, vscode.ConfigurationTarget.Global);
+      stream.markdown("Using **" + wanted + "** (saved in your user settings).");
+      return;
+    }
+    const numbered = /^(fix|dismiss|prove)$/.test(request.command ?? "") ? /^\s*(\d+)\b/.exec(request.prompt)?.[1] : undefined;
+    const target = numbered ? findingAt(Number(numbered)) : undefined;
+    if (numbered && !target) { stream.markdown("No finding " + numbered + ". Run `/review` (or a scan) first, then use a number from that report (`/findings` lists them)."); return; }
+    if (request.command === "dismiss") {
+      if (!target) { await vscode.commands.executeCommand(FIX_FINDING); return; }
+      await vscode.commands.executeCommand("aiPrivacyRouter.dismissFinding", target.uri, target.line - 1, target.message);
+      return;
+    }
+    if (request.command === "prove") {
+      if (!target) { stream.markdown("Use `/prove N` with a finding number from the last report (`/findings` lists them)."); return; }
+      await vscode.commands.executeCommand("aiPrivacyRouter.verifyLocalFix", {file: target.uri, message: target.message});
+      return;
+    }
+    if (request.command === "fix") {
+      if (!numbered) { await vscode.commands.executeCommand(FIX_FINDING); return; }
+      const finding = target!, n = numbered;
+      if (!canFix(finding.message)) { stream.markdown("Finding " + n + " cannot be fixed automatically (for example a dependency or a credential). Use **Fix or dismiss a finding** to explain or dismiss it."); return; }
+      stream.markdown("Fixing finding " + n + " with the local model: a diff opens for you to approve. Nothing changes until you click **Apply**.");
+      await applyReviewFix(finding.uri, finding.line - 1, finding.message);
+      return;
+    }
     if (request.command === "commit") {
       await openPullRequest(request.prompt.trim(), "", text => stream.markdown(text), () => token.isCancellationRequested, true);
       return;

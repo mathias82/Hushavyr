@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import {markApplied, rememberBefore} from "./lastChange";
 import {runnerFor} from "./proofTarget";
 import {configuredClient} from "../model/model";
 import {enclosingFunction, findingFix, fitFix, fixPrompt, fixWindow, methodFix, methodFixInstruction, parseReplacement, parseReviewMessage, replacementSchema} from "./fixEdit";
@@ -73,7 +74,9 @@ export async function applyReviewFix(uriText: string, markedLine: number, messag
   if (tabs.length) await vscode.window.tabGroups.close(tabs);
   previews.delete(preview.toString());
   if (answer !== "Apply fix") return;
+  rememberBefore(doc);
   if (await vscode.workspace.applyEdit(edit)) {
+    markApplied(doc);
     await vscode.window.showTextDocument(doc, {selection: new vscode.Range(start, 0, start, 0)});
     void vscode.window.showInformationMessage("Hushavyr: fix applied (unsaved). Undo with Cmd/Ctrl+Z; re-run the scan to confirm.");
   }
@@ -99,7 +102,9 @@ async function proposeFileChange(doc: vscode.TextDocument, updated: string, titl
   if (answer !== "Apply fix") return false;
   const edit = new vscode.WorkspaceEdit();
   edit.replace(doc.uri, new vscode.Range(0, 0, doc.lineCount, 0), updated);
+  rememberBefore(doc);
   if (!await vscode.workspace.applyEdit(edit)) return false;
+  markApplied(doc);
   await vscode.window.showTextDocument(doc);
   void vscode.window.showInformationMessage("Hushavyr: fix applied (unsaved)." + after + " Undo with Cmd/Ctrl+Z; re-run the scan to confirm.");
   return true;

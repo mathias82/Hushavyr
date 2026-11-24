@@ -1,5 +1,6 @@
 import {keepIndent} from "../search/codeSearch";
 import * as vscode from "vscode";
+import {markApplied, rememberBefore} from "./lastChange";
 import {inlineText} from "../review/review";
 import {randomUUID} from "node:crypto";
 import {configuredClient, configuredModel} from "../model/model";
@@ -48,7 +49,9 @@ async function apply(id: string): Promise<void> {
   }
   const edit = new vscode.WorkspaceEdit();
   edit.replace(item.uri, range, item.updated);
+  rememberBefore(doc);
   if (await vscode.workspace.applyEdit(edit)) {
+    markApplied(doc);
     pending.delete(id);
     const title = item.title ?? item.instruction.split("\n")[0].slice(0, 72);
     const body = item.summary.length ? "Changes in `" + item.path + "` (" + item.model + "):\n" + item.summary.map(s => "- " + inlineText(s)).join("\n") : "";

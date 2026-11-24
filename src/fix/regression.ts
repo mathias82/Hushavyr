@@ -18,14 +18,14 @@ const MARKERS: Record<TestProfile, string[]> = {
   gradle: ["build.gradle", "build.gradle.kts"], "gradle-wrapper": ["gradlew"],
   pytest: ["pytest.ini", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini", "conftest.py"]
 };
-/** Runners whose build file exists in the project root; all runners when none is recognised. */
-export async function detectTestProfiles(dir: string): Promise<TestProfile[]> {
+/** Runners whose build file exists in the project root; all runners when none is recognised, unless `fallbackToAll` is false. */
+export async function detectTestProfiles(dir: string, fallbackToAll = true): Promise<TestProfile[]> {
   const all = Object.keys(testProfiles) as TestProfile[];
   const found: TestProfile[] = [];
   for (const profile of all)
     for (const marker of MARKERS[profile])
       if (await access(join(dir, marker)).then(() => true, () => false)) { found.push(profile); break; }
-  return found.length ? found : all;
+  return found.length || !fallbackToAll ? found : all;
 }
 export interface TestRunOptions { cwd: string; profile: TestProfile; trusted: boolean; timeoutMs?: number; signal?: AbortSignal }
 export interface TestReceipt { profile: string; status: "passed" | "failed" | "cancelled" | "timed-out" | "unavailable"; exitCode: number | null; durationMs: number }

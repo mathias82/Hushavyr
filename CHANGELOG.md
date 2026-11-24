@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.26
+- **Same slash commands in the terminal and VS Code chat:** every command now works in both, except `/clear` and `/exit` (terminal only) and `/auto` (chat only).
+  - Chat (`@ai-privacy`): new `/fix [N]`, `/findings`, `/dismiss N`, `/prove N`, `/undo`, `/model [name]`, `/setup` and `/update-db`.
+  - Terminal (`hushavyr`): new `/improve <file|name> [focus]`, `/test` (runs the project's existing tests after you confirm), `/review-changes` (same as `/review diff`) and `/scan-changed [folder]` (findings only in files changed since the last commit, plus new files).
+- **`/fix N` in chat** fixes finding N of the last `/review` or scan: a diff opens and nothing changes until you approve it. `/undo` restores the file afterwards.
+
 ## 1.0.25
 - **Commit email check:** before `/commit` or `/pr` (terminal and VS Code), Hushavyr asks GitHub (through `gh`, as the account that pushes to `origin`) which email the account shows. If your git email is different, GitHub would not credit the commits to you (grey avatar, no contributor), so Hushavyr warns and offers to use the account's email for this repository only (`git config --local user.email`). Answer `n` (or **Keep**) and it does not ask again in that repository. The Source Control ✨ button shows the same warning. It stays silent without `gh`, offline, without push access, or when the account has no public email.
 

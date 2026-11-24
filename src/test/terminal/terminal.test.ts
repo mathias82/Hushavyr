@@ -6,7 +6,7 @@ import {AddressInfo} from "node:net";
 import {mkdir, mkdtemp, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join} from "node:path";
-import {chooseModel, completeCommand, cveDbHint, diffLines, mentionedFiles, movedLine, parseLine, replaceLines} from "../../terminal/helpers";
+import {chooseModel, COMMANDS, completeCommand, cveDbHint, diffLines, mentionedFiles, movedLine, parseLine, replaceLines} from "../../terminal/helpers";
 import {onPath, profileFile, shimPath, shimScript, writeShim} from "../../terminal/shim";
 import {resolveCopilot} from "../../terminal/copilot";
 
@@ -412,4 +412,46 @@ test("hushavyr /review diff sends only the changed methods (real line numbers) a
     assert.match(output, /Reviewing Calc\.java \(15-26\)/);
     assert.match(output, /Reviewed \d+ changed line\(s\) of \d+ in 2 file\(s\) in \d+s\. Nothing left this machine\./);
   } finally { server.close(); }
+});
+
+test("every slash command exists in both the terminal and the VS Code chat", async () => {
+  const pkg = JSON.parse(await readFile(join(__dirname, "..", "..", "..", "package.json"), "utf8"));
+  const chat = new Set<string>(pkg.contributes.chatParticipants.flatMap((p: {commands: {name: string}[]}) => p.commands.map(c => c.name)));
+  const terminal = new Set<string>(COMMANDS.map(c => c.name));
+  // Terminal-only: leaving and clearing the prompt. Chat-only: /auto (plain text in the terminal).
+  assert.deepEqual([...terminal].filter(n => !chat.has(n) && !["exit", "clear"].includes(n)), []);
+  assert.deepEqual([...chat].filter(n => !terminal.has(n) && n !== "auto"), []);
+});
+
+test("hushavyr /scan-changed shows findings only in changed files; /review-changes and /scan-changed without changes do nothing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-changed-"));
+  const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "T");
+  await writeFile(join(dir, "old.js"), BOOKS);
+  await git("add", "-A");
+  await git("commit", "-qm", "init");
+  const env = () => ({HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-changed-cfg-" + Date.now())});
+  const clean = await session(dir, "http://127.0.0.1:1", ["/scan-changed", "/review-changes"], env());
+  assert.match(clean, /Nothing to scan/);
+  assert.match(clean, /No uncommitted code changes/);
+  await writeFile(join(dir, "new.js"), BOOKS);
+  const output = await session(dir, "http://127.0.0.1:1", ["/scan-changed"], env());
+  assert.match(output, /new\.js:5 {2}SQL injection/);
+  assert.doesNotMatch(output, /old\.js:\d/);
+});
+
+test("hushavyr /test runs the project's tests only after y, says when there is no test setup; /improve needs a target", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-test-"));
+  const none = await session(dir, "http://127.0.0.1:1", ["/test", "/improve"]);
+  assert.match(none, /No test setup found/);
+  assert.match(none, /Name what to improve, for example: \/improve/);
+  await writeFile(join(dir, "package.json"), JSON.stringify({scripts: {test: "node -e \"require('fs').writeFileSync('ran', '')\""}}));
+  const declined = await session(dir, "http://127.0.0.1:1", ["/test", "n"]);
+  assert.doesNotMatch(declined, /Running npm test/);
+  await assert.rejects(readFile(join(dir, "ran")));
+  const ran = await session(dir, "http://127.0.0.1:1", ["/test", "y"]);
+  assert.match(ran, /Running npm test[\s\S]*passed/);
+  await readFile(join(dir, "ran"));
 });
