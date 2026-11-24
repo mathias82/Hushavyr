@@ -326,6 +326,23 @@ test("hushavyr /pr without a title: the local model writes the commit message an
   } finally { server.close(); }
 });
 
+test("hushavyr /commit makes the first commit of a new repository with the local model's message and pushes nothing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-commit-"));
+  const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "T");
+  await writeFile(join(dir, "books.js"), BOOKS);
+  const {server, endpoint} = await fakeOllama();
+  try {
+    const output = await session(dir, endpoint, ["/pr", "/commit", "n", "kane commit", "y"], {HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-commit-cfg-" + Date.now())});
+    assert.match(output, /no commits yet/);
+    assert.match(output, /Cancelled\. Nothing was committed\./);
+    assert.match(output, /Committed on main: fix\(books\): use a parameterized query/);
+    assert.equal((await git("log", "--format=%s")).trim(), "fix(books): use a parameterized query");
+  } finally { server.close(); }
+});
+
 test("hushavyr /review diff sends only the changed methods (real line numbers) and new files whole; no changes sends nothing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hushavyr-diff-"));
   const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));

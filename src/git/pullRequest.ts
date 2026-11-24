@@ -24,17 +24,20 @@ export function statusPaths(porcelain: string): string[] {
 }
 
 export interface PrPlan {root: string; current: string; base: string; files: string[]; stat: string; remote: string}
-export async function planPullRequest(root: string, exec: Exec = defaultExec): Promise<PrPlan | string> {
+/** `commitOnly` plans a local commit: no remote is needed and the first commit of a new repository is allowed. */
+export async function planPullRequest(root: string, exec: Exec = defaultExec, commitOnly = false): Promise<PrPlan | string> {
   try { await exec("git", ["rev-parse", "--is-inside-work-tree"], root); } catch { return "This folder is not a git repository."; }
   const files = statusPaths(await exec("git", ["status", "--porcelain", "--untracked-files=all"], root));
-  if (!files.length) return "There are no changes to put in a pull request.";
+  if (!files.length) return commitOnly ? "There are no changes to commit." : "There are no changes to put in a pull request.";
+  let hasHead = true;
+  try { await exec("git", ["rev-parse", "--verify", "--quiet", "HEAD"], root); } catch { hasHead = false; }
   // A pull request needs a base branch with at least one commit.
-  try { await exec("git", ["rev-parse", "--verify", "--quiet", "HEAD"], root); } catch {
-    return "This repository has no commits yet, so there is no base branch for a pull request. Make the first commit and push it (`git add -A && git commit -m \"Initial commit\" && git push -u origin HEAD`), then run /pr again.";
-  }
-  const current = (await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], root)).trim();
+  if (!hasHead && !commitOnly)
+    return "This repository has no commits yet, so there is no base branch for a pull request. Make the first commit (`@ai-privacy commit` in chat, `/commit` in the terminal) and push it, then run /pr again.";
+  // `rev-parse --abbrev-ref HEAD` fails before the first commit; symbolic-ref names the unborn branch.
+  const current = (await exec("git", hasHead ? ["rev-parse", "--abbrev-ref", "HEAD"] : ["symbolic-ref", "--short", "HEAD"], root)).trim();
   let remote = "";
-  try { remote = (await exec("git", ["remote", "get-url", "origin"], root)).trim(); } catch { return "No `origin` remote is configured."; }
+  try { remote = (await exec("git", ["remote", "get-url", "origin"], root)).trim(); } catch { if (!commitOnly) return "No `origin` remote is configured."; }
   let base = current;
   try { base = (await exec("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root)).trim().replace(/^origin\//, ""); } catch { /* keep current */ }
   let stat = "";
@@ -53,6 +56,17 @@ export async function secretsInChanges(plan: PrPlan): Promise<string[]> {
     try { if (scanSecrets(await readFile(join(plan.root, file), "utf8"), file).length) hits.push(file); } catch { /* deleted or unreadable */ }
   }
   return hits;
+}
+
+/** Stages every change and commits it on the current branch; nothing is pushed. */
+export async function commitChanges(plan: PrPlan, message: string, exec: Exec = defaultExec): Promise<void> {
+  await exec("git", ["add", "-A"], plan.root);
+  await exec("git", ["commit", "-m", message], plan.root);
+}
+
+/** A chat message that only asks to commit ("commit", "κάνε commit", "kane commit vale mhnyma"), not a question about a commit. */
+export function isCommitRequest(prompt: string): boolean {
+  return /^\s*(?:(?:please|pls)\s+)?(?:(?:make|do|create|git|k[aá]ne|κ[άα]νε)\s+)?(?:(?:an?|ένα|ena)\s+)?(?:commit|κομμιτ)\b(?![\s\S]*\b(?:explain|εξήγησε|exhghse|what|τι|ti)\b)/i.test(prompt);
 }
 
 export interface PrResult {branch: string; url?: string; created: boolean}

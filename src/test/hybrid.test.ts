@@ -496,7 +496,9 @@ test("the pull request plan lists untracked files that the commit will add", asy
 });
 
 test("the pull request plan explains a repository without commits", async () => {
-  const { planPullRequest } = await import("../git/pullRequest");
+  const { planPullRequest, isCommitRequest } = await import("../git/pullRequest");
+  for (const p of ["kane commit vale mhnyma", "κάνε commit", "commit", "make a commit", "git commit please"]) assert.ok(isCommitRequest(p), p);
+  for (const p of ["explain this commit", "what does commit abc do", "review the code", "fix the commit hook"]) assert.ok(!isCommitRequest(p), p);
   const { mkdtemp, writeFile } = await import("node:fs/promises");
   const { execFileSync } = await import("node:child_process");
   const dir = await mkdtemp(join(tmpdir(), "hush-pr-"));

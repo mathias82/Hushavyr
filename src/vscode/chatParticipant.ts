@@ -1,6 +1,7 @@
 import {configuredModel, configuredDepth, installedModel, localJudge, verifyModeFor} from "../model/model";
 import {relatedSources} from "../review/relatedJava";
 import {changedLineMap} from "../git/changedFiles";
+import {isCommitRequest} from "../git/pullRequest";
 import {changedSources} from "../review/changedScope";
 import * as vscode from "vscode";
 import {classifyInput} from "../escalation/classifier";
@@ -127,6 +128,11 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
   const handler: vscode.ChatRequestHandler = async (request, chatContext, stream, token) => {
     // VS Code adds its own instruction/skill indexes as references; they are not user context.
     const userReferences = request.references.filter(ref => !isInstructionReference(ref.id, ""));
+    // "commit" needs no code context: an open file must not block it with the 20 KB limit.
+    if ((!request.command || request.command === "auto") && isCommitRequest(request.prompt)) {
+      await openPullRequest("", "", text => stream.markdown(text), () => token.isCancellationRequested, true);
+      return;
+    }
     if (request.command === "auto" && userReferences.length === 0) {
       try {
         const result = await autoPrompt(request.prompt, token);

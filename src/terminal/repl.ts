@@ -25,7 +25,7 @@ import {chatPrompt, chooseModel, COMMANDS, cveDbHint, completeCommand, diffLines
 import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
-import {createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
+import {commitChanges, isCommitRequest, createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
 import {draftPrText, type PrText} from "../git/prText";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
 import {proofFixPrompt, proofProfile, proofTestPrompt} from "../fix/proofPrompts";
@@ -158,6 +158,7 @@ class Session {
         case "update-db": return await this.updateDb(rest, signal);
         case "gitleaks": return await this.gitleaks(rest, signal);
         case "pr": return await this.pullRequest(rest, signal);
+        case "commit": return await this.commit(rest, signal);
         case "prove": return await this.prove(rest, signal);
         case "escalate": return await this.escalate(rest, signal);
         default: out("Unknown command /" + command + ". Type /help for the list.");
@@ -220,6 +221,7 @@ class Session {
   }
 
   private async chat(message: string, signal: AbortSignal): Promise<void> {
+    if (isCommitRequest(message)) return this.commit("", signal);
     await this.ensureModel(signal);
     const sources: ReviewSource[] = [];
     let bytes = 0;
@@ -693,6 +695,40 @@ class Session {
     this.printFindings();
     if (history && this.findings.length) out(yellow("A secret removed in a later commit is still in the history: rotate it if it is real."));
     else if (!history) out(dim("/gitleaks history also checks every past commit."));
+  }
+
+  /** Local commit only: the first commit of a new repository works too; nothing is pushed. */
+  private async commit(arg: string, signal: AbortSignal): Promise<void> {
+    const plan = await planPullRequest(this.cwd, undefined, true);
+    if (typeof plan === "string") { out(yellow(plan)); return; }
+    out(bold("Changes") + dim(" (" + plan.files.length + " files, branch " + plan.current + "):"));
+    out((plan.stat || plan.files.join("\n")).slice(0, 4000));
+    const secrets = await secretsInChanges(plan);
+    if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed.")); return; }
+    let message = arg.split("\n")[0].trim().slice(0, 200);
+    if (!message) {
+      out(dim("Writing the commit message with " + this.model + " from the diff… (Ctrl+C cancels)"));
+      try { message = (await draftPrText(plan, this.client, signal))?.commit ?? ""; } catch (error) {
+        if (signal.aborted) return;
+        out(yellow("The local model could not write the message (" + String((error as Error).message ?? error).split("\n")[0].slice(0, 160) + ")."));
+      }
+      if (signal.aborted) return;
+      message ||= "chore: update files";
+    }
+    for (;;) {
+      out(dim("Commit: ") + message);
+      const answer = (await this.reply(bold("Commit all " + plan.files.length + " changed files on " + plan.current + "?") + " [y/e/N] (e edits the message) ")) ?? "";
+      if (!this.interactive && !this.declinedByCommand) out("Commit all " + plan.files.length + " changed files on " + plan.current + "? [y/e/N] " + answer);
+      if (/^\s*e(dit)?\s*$/i.test(answer)) {
+        const edited = (await this.read(bold("Commit message") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
+        if (edited) message = edited.slice(0, 200);
+        continue;
+      }
+      if (!/^\s*(?:y|yes|ναι|nai)\s*$/i.test(answer)) { out("Cancelled. Nothing was committed."); return; }
+      break;
+    }
+    await commitChanges(plan, message);
+    out(green("Committed on " + plan.current + ": " + message) + dim(" Not pushed" + (plan.remote ? "; /pr pushes a branch and opens a pull request." : ".")));
   }
 
   private async pullRequest(arg: string, signal: AbortSignal): Promise<void> {
