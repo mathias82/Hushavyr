@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.24
+- **`/push` only pushes:** it pushes the current branch to origin (creating it there the first time) after you confirm, without making a commit. Plain text "commit and push" and the chat **Commit and push** button still do both.
+- **`/gitcommits`:** lists the commits on the current branch that are not on the main branch (hash, date, author, message). Terminal and chat.
+- **`/branches` and `/branch <name>`:** `/branches` lists every branch (`*` marks the current one, plus branches only on origin). `/branch <name>` switches branch, asks before creating a new one, and takes your uncommitted changes along. Terminal and chat.
+- **`/pr` always opens a new branch:** the pull request now always comes from a new branch named after the title. In a repository with no commits, `/pr` first pushes an empty "Initial commit" as the base, then opens the pull request with your changes.
+- **Commit message from the local model in Source Control:** a ✨ **Write Commit Message (Local AI)** button in the Source Control title bar fills the commit message box from your changes. Nothing leaves your machine.
+- **`/help` with options:** terminal `/help` lists every command with its options and examples, and `/help <command>` shows one command. Chat `@ai-privacy /help` lists every chat command and what it does.
+
 ## 1.0.23
 - **Chat `/commit` and `/push`:** the same commit, and commit and push, as in the terminal, now also as Chat commands (`@ai-privacy /push [message]`). Before, only the plain text "commit and push" worked in Chat.
 

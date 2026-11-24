@@ -343,28 +343,44 @@ test("hushavyr /commit makes the first commit of a new repository with the local
   } finally { server.close(); }
 });
 
-test("hushavyr /pr in a new repository pushes the first commit as the base branch; /push commits and pushes the current branch without a pull request", async () => {
+test("hushavyr /pr in a new repository pushes an empty base and opens the pull request from a new branch; /commit, /push, /gitcommits and /branch", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hushavyr-push-"));
   const origin = dir + "-origin.git";
-  const git = (cwd: string, ...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd}, (error, out) => error ? reject(error) : resolve(out)));
-  await git(dir, "init", "-q", "-b", "main");
-  await git(dir, "config", "user.email", "t@example.com");
-  await git(dir, "config", "user.name", "T");
-  await git(dir, "init", "-q", "--bare", origin);
-  await git(dir, "remote", "add", "origin", origin);
+  const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));
+  const remoteLog = async (ref: string) => (await git("--git-dir=" + origin, "log", ref, "--format=%s")).trim().split("\n");
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "T");
+  await git("init", "-q", "--bare", origin);
+  await git("remote", "add", "origin", origin);
   await writeFile(join(dir, "books.js"), BOOKS);
   const {server, endpoint} = await fakeOllama();
+  const env = () => ({GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-push-cfg-" + Date.now() + Math.random())});
   try {
-    const first = await session(dir, endpoint, ["/pr", "y"], {GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-push-cfg-" + Date.now())});
-    assert.match(first, /no commits yet[\s\S]*First commit: commit all 1 files on main and push main to origin\? \[y\/e\/N\] y/);
-    assert.match(first, /Pushed the first commit to main: fix\(books\): use a parameterized query/);
-    assert.equal((await git(dir, "--git-dir=" + origin, "log", "main", "--format=%s")).trim(), "fix(books): use a parameterized query");
+    const first = await session(dir, endpoint, ["/pr", "y", "/gitcommits", "/push"], env());
+    assert.match(first, /no commits yet: \/pr first pushes an empty "Initial commit" to main as the base branch/);
+    assert.match(first, /Pushed branch hushavyr\/use-a-parameterized-query-for-book-|Pull request opened/);
+    assert.deepEqual(await remoteLog("main"), ["Initial commit"], "main only has the empty base");
+    const branch = (await git("branch", "--show-current")).trim();
+    assert.match(branch, /^hushavyr\//);
+    assert.deepEqual(await remoteLog(branch), ["fix(books): use a parameterized query", "Initial commit"]);
+    assert.match(first, new RegExp("Commits on " + branch + " not on origin/main \\(1\\):\\n\\w+  \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d  T  fix\\(books\\): use a parameterized query"));
+
     await writeFile(join(dir, "books.js"), BOOKS.replace('" + id,', '?", [id],'));
-    const second = await session(dir, endpoint, ["/push docs: second", "y"], {GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-push-cfg2-" + Date.now())});
-    assert.match(second, /Commit all 1 changed files on main and push main to origin\? \[y\/e\/N\] y/);
-    assert.match(second, /Committed on main and pushed to origin: docs: second/);
-    assert.equal((await git(dir, "--git-dir=" + origin, "log", "main", "--format=%s")).trim().split("\n")[0], "docs: second");
-    assert.equal((await git(dir, "branch", "--format=%(refname:short)")).trim(), "main", "no pull request branch");
+    assert.match(first, /Nothing to push: hushavyr\/[^\n]* is up to date with origin\./);
+    const second = await session(dir, endpoint, ["/branches", "/help branch", "/help nope", "/branch feature/x", "n", "/branch feature/x", "y", "/push", "/commit docs: second", "y", "/push", "y", "/branch main", "/branch bad..name"], env());
+    assert.match(second, /Branches:\n {2}hushavyr\/[^\n]*\n {2}main|Branches:\n\* hushavyr\/[^\n]*\n {2}main/);
+    assert.match(second, /Cancelled\. Still on the same branch\./);
+    assert.match(second, /\/branch\n  \/branch \[name\][^\n]*\n      \/branch  list branches\n      \/branch feature\/login  switch, or create it \(asks first\)/, "/help <command> shows one command with its options");
+    assert.match(second, /No command \/nope\. All commands:\nCommands\n[\s\S]*\/review diff  only the methods you changed[\s\S]*\/branches/);
+    assert.match(second, /Created and switched to feature\/x\. Uncommitted changes came along\./);
+    assert.match(second, /1 changed file is not committed and will not be pushed/);
+    assert.match(second, /Committed on feature\/x: docs: second/);
+    assert.match(second, /No new commits: pushing creates feature\/x on origin\.[\s\S]*Commits to push \(1, branch feature\/x\):\n\w+  docs: second\nPush feature\/x to origin\? \[y\/N\] y\nPushed feature\/x to origin\./);
+    assert.match(second, /Switched to main\./);
+    assert.match(second, /Invalid branch name: bad\.\.name/);
+    assert.equal((await remoteLog("feature/x"))[0], "docs: second");
+    assert.equal((await git("branch", "--show-current")).trim(), "main");
   } finally { server.close(); }
 });
 

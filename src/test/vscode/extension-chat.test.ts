@@ -202,6 +202,15 @@ test("every registered palette command is declared in package.json with an activ
   }
 });
 
+test("chat /help lists every chat command from package.json; the SCM commit-message button is declared", () => {
+  const pkg = require("../../../package.json");
+  const help: string = require("../../vscode/chatParticipant").chatHelp(pkg);
+  for (const c of pkg.contributes.chatParticipants[0].commands as {name: string}[]) assert.match(help, new RegExp("\\| `/" + c.name + "` \\|"), c.name);
+  for (const name of ["commit", "push", "gitcommits", "branch", "pr", "help"]) assert.match(help, new RegExp("`/" + name + "`"), name);
+  assert.ok(pkg.contributes.menus["scm/title"].some((m: {command: string}) => m.command === "aiPrivacyRouter.generateCommitMessage"));
+  assert.ok(pkg.activationEvents.includes("onCommand:aiPrivacyRouter.generateCommitMessage"));
+});
+
 test("chat /escalate on asks first, turns the setting on, and a blocked escalation offers the setting", async () => {
   const blocked = await chat({}, [], "explain this", false, "escalate");
   assert.match(blocked.output, /Nothing was sent: this workspace is local-only\. Type `@ai-privacy \/escalate on`/);

@@ -23,7 +23,7 @@ export function statusPaths(porcelain: string): string[] {
   return porcelain.split("\n").filter(l => l.length > 3).map(l => l.slice(3).replace(/^.* -> /, "").replace(/^"(.*)"$/, "$1"));
 }
 
-/** `first`: the repository has no commits yet, so /pr makes the first commit on the current branch and pushes it; there is no base for a pull request. */
+/** `first`: the repository has no commits yet, so /pr first pushes an empty "Initial commit" on the current branch as the base, then opens the pull request from a new branch. */
 export interface PrPlan {root: string; current: string; base: string; files: string[]; stat: string; remote: string; first?: boolean}
 /** `commitOnly` plans a local commit: no remote is needed and the first commit of a new repository is allowed. */
 export async function planPullRequest(root: string, exec: Exec = defaultExec, commitOnly = false): Promise<PrPlan | string> {
@@ -78,16 +78,16 @@ export function isCommitRequest(prompt: string): boolean {
   return /^\s*(?:(?:please|pls)\s+)?(?:(?:make|do|create|git|k[aá]ne|κ[άα]νε)\s+)?(?:(?:an?|ένα|ena)\s+)?(?:commit|κομμιτ|push)\b(?![\s\S]*\b(?:explain|εξήγησε|exhghse|what|τι|ti)\b)/i.test(prompt);
 }
 
-export interface PrResult {branch: string; url?: string; created: boolean; first?: boolean}
+export interface PrResult {branch: string; url?: string; created: boolean}
 export async function createPullRequest(plan: PrPlan, title: string, exec: Exec = defaultExec, body = "", commit = title): Promise<PrResult> {
+  const branch = plan.first || DEFAULT_BRANCHES.has(plan.current) || plan.current === "HEAD" ? branchName(title) : plan.current;
+  if (!/^[\w./-]+$/.test(branch) || !/^[\w./-]+$/.test(plan.current)) throw new Error("Invalid branch name");
   if (plan.first) {
-    if (!/^[\w./-]+$/.test(plan.current)) throw new Error("Invalid branch name");
-    await commitChanges(plan, commit, exec);
+    // A pull request needs a base with a commit: an empty one keeps every change in the pull request.
+    await exec("git", ["commit", "--allow-empty", "-m", "Initial commit"], plan.root);
     await exec("git", ["push", "-u", "origin", plan.current], plan.root);
-    return {branch: plan.current, created: false, first: true};
+    plan = {...plan, base: plan.current};
   }
-  const branch = DEFAULT_BRANCHES.has(plan.current) || plan.current === "HEAD" ? branchName(title) : plan.current;
-  if (!/^[\w./-]+$/.test(branch)) throw new Error("Invalid branch name");
   if (branch !== plan.current) await exec("git", ["switch", "-c", branch], plan.root);
   await exec("git", ["add", "-A"], plan.root);
   await exec("git", ["commit", "-m", commit], plan.root);

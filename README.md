@@ -81,8 +81,11 @@ All commands:
 | `/undo` | Restore the file changed by the last `/fix` or `/edit` |
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
 | `/commit [message]` | Commit all changes on the current branch (also the first commit of a new repository). The local model writes the message unless you give one; asks first, stops on secrets, does not push |
-| `/push [message]` | Like `/commit`, then pushes the current branch to origin; no pull request |
-| `/pr [title]` | Commit, push a branch and open a pull request with `gh`, after you confirm. Stops if a changed file looks like it has a secret |
+| `/push` | Push the current branch to origin (creates it there the first time); asks first, no new commit. Plain text `commit and push` does both |
+| `/gitcommits` | List the commits on the current branch that are not on the main branch |
+| `/branches` | List all branches: `*` marks the current one; also those only on origin |
+| `/branch [name]` | Switch to a branch; asks before creating it, uncommitted changes come along. Without a name it lists them |
+| `/pr [title]` | Commit on a **new branch**, push it and open a pull request with `gh`, after you confirm. The local model writes commit, title and description unless you give a title. In a new repository it first pushes an empty "Initial commit" as the base. Stops if a changed file looks like it has a secret |
 | `/escalate on\|off` | Allow or block sending code to GitHub Copilot. Off by default |
 | `/escalate suggest on\|off` | Offer `/escalate` when the local model may be wrong (on by default; asks first, default No) |
 | `/escalate <file>[:from-to] [question]` | Shows the exact pseudonymized text (names and strings replaced) and sends it through the [Copilot CLI](https://github.com/github/copilot-cli) only if you approve. Every send is logged in `~/.hushavyr/audit` |
@@ -90,7 +93,7 @@ All commands:
 | `/setup` | Install and start Ollama, download the model and install the analyzers (asks first) |
 | `/update-db [auto on\|off]` | Download the latest public CVE databases (Trivy, OSV); `auto on` updates them daily before scans |
 | `/clear` | Forget the conversation so far |
-| `/help` | List the commands |
+| `/help [command]` | Every command with its options and examples; `/help review` shows one |
 | `/exit` | Quit (also `exit`, `quit` or Ctrl+D) |
 
 Tab completes commands, and Ctrl+C cancels a running request. `hushavyr /security` runs one command and exits; `hushavyr --model qwen2.5-coder:14b` starts with a specific model.
@@ -147,7 +150,12 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/find` | Finds a class or method in the workspace by name (typos are fine) or by description, with links to the lines |
 | `/edit` | Changes the open or selected code, or a method you name (`/edit OrderService.place add input checks`), with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
 | `/improve` | Asks the local model for real improvements to the open file (bugs, safety, clarity), shows a diff and a summary, and after **Apply** offers to open a pull request |
-| `/commit [message]`, `/push [message]`, or plain `commit` / `commit and push` | Commits your changes on the current branch with a message the local model writes from the diff; **Commit and push** also pushes the branch (no pull request). Asks first and stops on secrets. Works in a new repository too. |
+| `/commit [message]` or plain `commit` | Commits your changes on the current branch with a message the local model writes from the diff. Asks first and stops on secrets. Works in a new repository too. Plain `commit and push` (or the **Commit and push** button) also pushes. |
+| `/push` | Pushes the current branch to origin, after you confirm. |
+| `/gitcommits` | Commits on the current branch that are not on the main branch. |
+| `/branches` | Lists all branches. |
+| `/branch [name]` | Switches branch; asks before creating it. |
+| `/help` | Every chat command and what it does. |
 | `/pr` | Commits your changes to a new branch, pushes it and opens a pull request (`gh`, or a GitHub link). Asks first and stops if it finds credentials. |
 | `/review-changes` | Reviews your uncommitted changes: only the changed methods (with a few lines around them), not whole files |
 | `/scan` | Reviews the whole project: AI, Semgrep, Gitleaks, the optional analyzers, built-in rules, data flow and CVEs |
@@ -158,6 +166,8 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/test` | Runs the project tests |
 | `/auto` | Sends a typed question that contains no code to the right model |
 | `/escalate` | *Opt-in.* Sends only the selected function to a Copilot model, with names removed and after you approve it (see below). Type `/escalate on` or `/escalate off` to allow or block it |
+
+In **Source Control**, the ✨ button (**Write Commit Message (Local AI)**) fills the commit message box from your changes with the local model. Nothing leaves your machine.
 
 **Without Chat** (Cursor, Windsurf, VSCodium, or Chat turned off): the main commands are also in the Command Palette, for example **Hushavyr: Review Current File**, **Scan Project**, **Security Scan (No AI)**, **Find Hardcoded Secrets** and **Check Dependencies for CVEs**. The report opens as a Markdown preview with links to each line, and the findings appear in the **Problems** panel. *Review* and *Explain* are also in the editor's right-click menu.
 

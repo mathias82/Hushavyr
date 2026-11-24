@@ -25,6 +25,7 @@ import {chatPrompt, chooseModel, COMMANDS, cveDbHint, completeCommand, diffLines
 import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
+import {branchCommits, branchExists, formatBranchCommits, formatBranches, listBranches, planPush, pushCurrent, switchBranch, validBranchName} from "../git/branches";
 import {commitChanges, isCommitRequest, pushBranch, wantsPush, createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
 import {draftPrText, type PrText} from "../git/prText";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
@@ -140,7 +141,7 @@ class Session {
     try {
       switch (command) {
         case undefined: return await this.chat(rest, signal);
-        case "help": return this.help();
+        case "help": return this.help(rest);
         case "exit": return "exit";
         case "clear": this.history = []; out("Conversation cleared."); return;
         case "scan": case "security": case "secrets": return await this.scan(command, rest);
@@ -159,7 +160,10 @@ class Session {
         case "gitleaks": return await this.gitleaks(rest, signal);
         case "pr": return await this.pullRequest(rest, signal);
         case "commit": return await this.commit(rest, signal);
-        case "push": return await this.commit(rest, signal, true);
+        case "push": return await this.push();
+        case "gitcommits": return await this.gitCommits();
+        case "branch": return await this.branch(rest.trim());
+        case "branches": return await this.branch("");
         case "prove": return await this.prove(rest, signal);
         case "escalate": return await this.escalate(rest, signal);
         default: out("Unknown command /" + command + ". Type /help for the list.");
@@ -179,9 +183,18 @@ class Session {
     out(dim("Ask anything about your code (mention a file to include it), or type /help.\n"));
   }
 
-  private help(): void {
-    out(bold("Commands"));
-    for (const c of COMMANDS) out("  " + cyan(c.usage.padEnd(30)) + " " + c.help);
+  private help(arg = ""): void {
+    const name = arg.trim().replace(/^\//, "").toLowerCase();
+    const one = COMMANDS.find(c => c.name === name);
+    if (name && !one) out(yellow("No command /" + name + ". All commands:"));
+    out(bold(one ? "/" + one.name : "Commands"));
+    for (const c of one ? [one] : COMMANDS) {
+      out("  " + cyan(c.usage.padEnd(30)) + " " + c.help);
+      for (const e of c.examples ?? []) {
+        const [cmd, what] = e.split(/\s{3,}/);
+        out("      " + cmd + (what ? dim("  " + what) : ""));
+      }
+    }
     out(dim("\nAnything else is a question for the local model; file paths you mention (src/app.ts, @pom.xml) are included. Ctrl+C cancels a running answer."));
   }
 
@@ -698,6 +711,45 @@ class Session {
     else if (!history) out(dim("/gitleaks history also checks every past commit."));
   }
 
+  private async gitCommits(): Promise<void> {
+    const c = await branchCommits(this.cwd);
+    out(typeof c === "string" ? yellow(c) : formatBranchCommits(c));
+  }
+
+  /** Pushes the current branch's commits; uncommitted changes are not included (/commit first). */
+  private async push(): Promise<void> {
+    const plan = await planPush(this.cwd);
+    if (typeof plan === "string") { out(yellow(plan) + " Nothing was pushed."); return; }
+    if (plan.dirty) out(yellow(plan.dirty + " changed file" + (plan.dirty === 1 ? " is" : "s are") + " not committed and will not be pushed.") + dim(" /commit commits them first."));
+    if (!plan.commits.length && plan.upstream) { out("Nothing to push: " + plan.branch + " is up to date with origin."); return; }
+    if (!plan.commits.length) out("No new commits: pushing creates " + plan.branch + " on origin.");
+    else out(bold("Commits to push") + dim(" (" + plan.commits.length + ", branch " + plan.branch + "):") + "\n" + plan.commits.slice(0, 50).join("\n") + (plan.commits.length > 50 ? "\n…" : ""));
+    if (!await this.ask("Push " + plan.branch + " to origin?")) { out("Cancelled. Nothing was pushed."); return; }
+    try { await pushCurrent(this.cwd, plan.branch); } catch (error) {
+      out(red("The push failed: " + String((error as Error).message ?? error).split("\n").slice(-2).join(" ").slice(0, 300)));
+      return;
+    }
+    out(green("Pushed " + plan.branch + " to origin."));
+  }
+
+  /** No name lists branches; a name switches to it (uncommitted changes come along), asking before creating a new one. */
+  private async branch(name: string): Promise<void> {
+    if (!name) {
+      const b = await listBranches(this.cwd);
+      out(typeof b === "string" ? yellow(b) : formatBranches(b) + dim("\n/branch <name> switches; a new name creates the branch."));
+      return;
+    }
+    if (!validBranchName(name)) { out(yellow("Invalid branch name: " + name + ". Use letters, digits, - _ . /")); return; }
+    const exists = await branchExists(this.cwd, name);
+    if (!exists && !await this.ask("Branch " + name + " does not exist. Create it from the current branch and switch to it?")) { out("Cancelled. Still on the same branch."); return; }
+    try {
+      const now = await switchBranch(this.cwd, name, !exists);
+      out(green((exists ? "Switched to " : "Created and switched to ") + now + ".") + dim(" Uncommitted changes came along."));
+    } catch (error) {
+      out(red("Git could not switch: " + String((error as Error).message ?? error).split("\n").slice(0, 3).join(" ").slice(0, 400)) + dim(" Commit (/commit) or stash your changes first."));
+    }
+  }
+
   /** Commit on the current branch (the first commit of a new repository works too); `push` then pushes that branch, with no pull request. */
   private async commit(arg: string, signal: AbortSignal, push = false): Promise<void> {
     const plan = await planPullRequest(this.cwd, undefined, true);
@@ -759,13 +811,12 @@ class Session {
     }
     text.commit ||= text.title;
     out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
-    if (plan.first) out(yellow("This repository has no commits yet, so there is no base branch for a pull request. /pr makes the first commit on " + plan.current + " and pushes it; the next /pr opens a pull request."));
+    if (plan.first) out(yellow("This repository has no commits yet: /pr first pushes an empty \"Initial commit\" to " + plan.current + " as the base branch, then opens the pull request from a new branch."));
     for (;;) {
       out(dim("Commit: ") + text.commit);
       out(dim("Title:  ") + text.title);
       if (text.body) out(dim(text.body.slice(0, 2000)));
-      const question = plan.first ? "First commit: commit all " + plan.files.length + " files on " + plan.current + " and push " + plan.current + " to origin?"
-        : "Commit all " + plan.files.length + " changed files, push to origin and open a pull request?";
+      const question = "Commit all " + plan.files.length + " changed files, push to origin and open a pull request?";
       const answer = (await this.reply(bold(question) + " [y/e/N] (e edits the text) ")) ?? "";
       if (!this.interactive && !this.declinedByCommand) out(question + " [y/e/N] " + answer);
       if (/^\s*e(dit)?\s*$/i.test(answer)) {
@@ -780,7 +831,6 @@ class Session {
     }
     const result = await createPullRequest(plan, text.title, undefined, text.body, text.commit);
     this.prDraft = undefined;
-    if (result.first) { out(green("Pushed the first commit to " + result.branch + ": " + text.commit) + dim(" No pull request: this is the base branch. The next /pr opens one.")); return; }
     out(green(result.created && result.url ? "Pull request opened: " + result.url
       : "Pushed branch " + result.branch + "." + (result.url ? " Open the pull request: " + result.url : " Open a pull request on your git host.") + (result.created ? "" : " (Log in with the gh CLI to open it automatically.)")));
   }

@@ -11,7 +11,7 @@ import {escalationBlockers, offerEscalation, setCloudEscalation} from "../escala
 import {answerDifficulty, escalationFragment, reviewDifficulty} from "../review/difficulty";
 import {EditTarget, runEdit} from "../fix/editFlow";
 import {improveInstruction, isEditRequest} from "../fix/codeEdit";
-import {openPullRequest} from "./prFlow";
+import {changeBranch, openPullRequest, pushBranchFlow, showBranchCommits} from "./prFlow";
 import {loadIgnore} from "../scan/teamMemory";
 import {LocalOllama} from "../model/ollama";
 import {asksForExplanation, formatReview, modelHint} from "../review/review";
@@ -133,8 +133,13 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       await openPullRequest("", "", text => stream.markdown(text), () => token.isCancellationRequested, true, wantsPush(request.prompt));
       return;
     }
-    if (request.command === "commit" || request.command === "push") {
-      await openPullRequest(request.prompt.trim(), "", text => stream.markdown(text), () => token.isCancellationRequested, true, request.command === "push");
+    if (request.command === "help") { stream.markdown(chatHelp()); return; }
+    if (request.command === "gitcommits") { await showBranchCommits(text => stream.markdown(text)); return; }
+    if (request.command === "branches") { await changeBranch("", text => stream.markdown(text)); return; }
+    if (request.command === "branch") { await changeBranch(request.prompt.trim(), text => stream.markdown(text)); return; }
+    if (request.command === "push") { await pushBranchFlow(text => stream.markdown(text)); return; }
+    if (request.command === "commit") {
+      await openPullRequest(request.prompt.trim(), "", text => stream.markdown(text), () => token.isCancellationRequested, true);
       return;
     }
     if (request.command === "auto" && userReferences.length === 0) {
@@ -604,3 +609,10 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
   return handler;
 }
 
+/** Chat /help: every command declared for the participant in package.json, so the list never goes stale. */
+export function chatHelp(packageJSON: unknown = vscode.extensions.getExtension("mathias82.hushavyr")?.packageJSON): string {
+  const participants = (packageJSON as {contributes?: {chatParticipants?: {commands?: {name: string; description: string}[]}[]}})?.contributes?.chatParticipants ?? [];
+  const rows = participants.flatMap(p => p.commands ?? []).map(c => "| `/" + c.name + "` | " + c.description.replace(/\|/g, "\\|") + " |");
+  return "**Hushavyr commands** (type `@ai-privacy /<command>`)\n\n| Command | What it does |\n|---|---|\n" + rows.join("\n") +
+    "\n\nWithout a command, `@ai-privacy` answers a question about your code locally. Plain `commit` or `commit and push` also work. In the terminal, type `hushavyr` and then `/help`.";
+}
