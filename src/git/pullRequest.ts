@@ -23,7 +23,8 @@ export function statusPaths(porcelain: string): string[] {
   return porcelain.split("\n").filter(l => l.length > 3).map(l => l.slice(3).replace(/^.* -> /, "").replace(/^"(.*)"$/, "$1"));
 }
 
-export interface PrPlan {root: string; current: string; base: string; files: string[]; stat: string; remote: string}
+/** `first`: the repository has no commits yet, so /pr makes the first commit on the current branch and pushes it; there is no base for a pull request. */
+export interface PrPlan {root: string; current: string; base: string; files: string[]; stat: string; remote: string; first?: boolean}
 /** `commitOnly` plans a local commit: no remote is needed and the first commit of a new repository is allowed. */
 export async function planPullRequest(root: string, exec: Exec = defaultExec, commitOnly = false): Promise<PrPlan | string> {
   try { await exec("git", ["rev-parse", "--is-inside-work-tree"], root); } catch { return "This folder is not a git repository."; }
@@ -31,9 +32,6 @@ export async function planPullRequest(root: string, exec: Exec = defaultExec, co
   if (!files.length) return commitOnly ? "There are no changes to commit." : "There are no changes to put in a pull request.";
   let hasHead = true;
   try { await exec("git", ["rev-parse", "--verify", "--quiet", "HEAD"], root); } catch { hasHead = false; }
-  // A pull request needs a base branch with at least one commit.
-  if (!hasHead && !commitOnly)
-    return "This repository has no commits yet, so there is no base branch for a pull request. Make the first commit (`@ai-privacy commit` in chat, `/commit` in the terminal) and push it, then run /pr again.";
   // `rev-parse --abbrev-ref HEAD` fails before the first commit; symbolic-ref names the unborn branch.
   const current = (await exec("git", hasHead ? ["rev-parse", "--abbrev-ref", "HEAD"] : ["symbolic-ref", "--short", "HEAD"], root)).trim();
   let remote = "";
@@ -46,7 +44,7 @@ export async function planPullRequest(root: string, exec: Exec = defaultExec, co
   let untracked: string[] = [];
   try { untracked = (await exec("git", ["ls-files", "--others", "--exclude-standard"], root)).split("\n").filter(Boolean); } catch { /* keep the diff stat */ }
   if (untracked.length) stat = (stat ? stat + "\n" : "") + untracked.map(f => " " + f + " | new file").join("\n");
-  return {root, current, base, files, stat, remote};
+  return {root, current, base, files, stat, remote, ...(!hasHead && !commitOnly ? {first: true} : {})};
 }
 
 /** Changed files that look like they contain credentials; such a PR is never pushed. */
@@ -64,13 +62,30 @@ export async function commitChanges(plan: PrPlan, message: string, exec: Exec = 
   await exec("git", ["commit", "-m", message], plan.root);
 }
 
-/** A chat message that only asks to commit ("commit", "κάνε commit", "kane commit vale mhnyma"), not a question about a commit. */
-export function isCommitRequest(prompt: string): boolean {
-  return /^\s*(?:(?:please|pls)\s+)?(?:(?:make|do|create|git|k[aá]ne|κ[άα]νε)\s+)?(?:(?:an?|ένα|ena)\s+)?(?:commit|κομμιτ)\b(?![\s\S]*\b(?:explain|εξήγησε|exhghse|what|τι|ti)\b)/i.test(prompt);
+/** Pushes the current branch to origin (sets upstream); no pull request. */
+export async function pushBranch(plan: PrPlan, exec: Exec = defaultExec): Promise<void> {
+  if (!/^[\w./-]+$/.test(plan.current)) throw new Error("Invalid branch name");
+  await exec("git", ["push", "-u", "origin", plan.current], plan.root);
 }
 
-export interface PrResult {branch: string; url?: string; created: boolean}
+/** The commit request also asks to push ("commit and push", "kane commit kai push", "/push"). */
+export function wantsPush(prompt: string): boolean {
+  return /\b(?:push|πους|pous)\b|\bπούς\b/i.test(prompt);
+}
+
+/** A chat message that only asks to commit ("commit", "κάνε commit", "kane commit vale mhnyma"), not a question about a commit. */
+export function isCommitRequest(prompt: string): boolean {
+  return /^\s*(?:(?:please|pls)\s+)?(?:(?:make|do|create|git|k[aá]ne|κ[άα]νε)\s+)?(?:(?:an?|ένα|ena)\s+)?(?:commit|κομμιτ|push)\b(?![\s\S]*\b(?:explain|εξήγησε|exhghse|what|τι|ti)\b)/i.test(prompt);
+}
+
+export interface PrResult {branch: string; url?: string; created: boolean; first?: boolean}
 export async function createPullRequest(plan: PrPlan, title: string, exec: Exec = defaultExec, body = "", commit = title): Promise<PrResult> {
+  if (plan.first) {
+    if (!/^[\w./-]+$/.test(plan.current)) throw new Error("Invalid branch name");
+    await commitChanges(plan, commit, exec);
+    await exec("git", ["push", "-u", "origin", plan.current], plan.root);
+    return {branch: plan.current, created: false, first: true};
+  }
   const branch = DEFAULT_BRANCHES.has(plan.current) || plan.current === "HEAD" ? branchName(title) : plan.current;
   if (!/^[\w./-]+$/.test(branch)) throw new Error("Invalid branch name");
   if (branch !== plan.current) await exec("git", ["switch", "-c", branch], plan.root);

@@ -336,10 +336,35 @@ test("hushavyr /commit makes the first commit of a new repository with the local
   const {server, endpoint} = await fakeOllama();
   try {
     const output = await session(dir, endpoint, ["/pr", "/commit", "n", "kane commit", "y"], {HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-commit-cfg-" + Date.now())});
-    assert.match(output, /no commits yet/);
+    assert.match(output, /No `origin` remote is configured/);
     assert.match(output, /Cancelled\. Nothing was committed\./);
     assert.match(output, /Committed on main: fix\(books\): use a parameterized query/);
     assert.equal((await git("log", "--format=%s")).trim(), "fix(books): use a parameterized query");
+  } finally { server.close(); }
+});
+
+test("hushavyr /pr in a new repository pushes the first commit as the base branch; /push commits and pushes the current branch without a pull request", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-push-"));
+  const origin = dir + "-origin.git";
+  const git = (cwd: string, ...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd}, (error, out) => error ? reject(error) : resolve(out)));
+  await git(dir, "init", "-q", "-b", "main");
+  await git(dir, "config", "user.email", "t@example.com");
+  await git(dir, "config", "user.name", "T");
+  await git(dir, "init", "-q", "--bare", origin);
+  await git(dir, "remote", "add", "origin", origin);
+  await writeFile(join(dir, "books.js"), BOOKS);
+  const {server, endpoint} = await fakeOllama();
+  try {
+    const first = await session(dir, endpoint, ["/pr", "y"], {GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-push-cfg-" + Date.now())});
+    assert.match(first, /no commits yet[\s\S]*First commit: commit all 1 files on main and push main to origin\? \[y\/e\/N\] y/);
+    assert.match(first, /Pushed the first commit to main: fix\(books\): use a parameterized query/);
+    assert.equal((await git(dir, "--git-dir=" + origin, "log", "main", "--format=%s")).trim(), "fix(books): use a parameterized query");
+    await writeFile(join(dir, "books.js"), BOOKS.replace('" + id,', '?", [id],'));
+    const second = await session(dir, endpoint, ["/push docs: second", "y"], {GH_PROMPT_DISABLED: "1", HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-push-cfg2-" + Date.now())});
+    assert.match(second, /Commit all 1 changed files on main and push main to origin\? \[y\/e\/N\] y/);
+    assert.match(second, /Committed on main and pushed to origin: docs: second/);
+    assert.equal((await git(dir, "--git-dir=" + origin, "log", "main", "--format=%s")).trim().split("\n")[0], "docs: second");
+    assert.equal((await git(dir, "branch", "--format=%(refname:short)")).trim(), "main", "no pull request branch");
   } finally { server.close(); }
 });
 

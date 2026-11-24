@@ -18,6 +18,7 @@ export const COMMANDS: readonly TerminalCommand[] = [
   {name: "gitleaks", usage: "/gitleaks [history] [folder]", help: "Secrets with Gitleaks; history also checks every past commit"},
   {name: "prove", usage: "/prove <N|file bug>", help: "Red/green proof in offline Docker: a failing test, then a fix that makes it pass"},
   {name: "commit", usage: "/commit [message]", help: "Commit all changes on the current branch, message written by the local model (asks first, blocks secrets, no push)"},
+  {name: "push", usage: "/push [message]", help: "Commit all changes on the current branch and push it to origin, no pull request (asks first, blocks secrets)"},
   {name: "pr", usage: "/pr [title]", help: "Commit the changes, push a branch and open a pull request (asks first, blocks secrets)"},
   {name: "escalate", usage: "/escalate <on|off|suggest on|off|file[:a-b] [q]>", help: "Opt-in: send an approved, pseudonymized fragment to GitHub Copilot (Copilot CLI); offered when the local model looks unsure"},
   {name: "findings", usage: "/findings", help: "Show the findings of the last report again"},

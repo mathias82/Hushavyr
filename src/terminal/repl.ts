@@ -25,7 +25,7 @@ import {chatPrompt, chooseModel, COMMANDS, cveDbHint, completeCommand, diffLines
 import {terminalSetup} from "./setup";
 import {downloadVulnDatabases, vulnDbsStale} from "../deps/vulnDbDownload";
 import {runScanner} from "../scan/externalScanners";
-import {commitChanges, isCommitRequest, createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
+import {commitChanges, isCommitRequest, pushBranch, wantsPush, createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
 import {draftPrText, type PrText} from "../git/prText";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
 import {proofFixPrompt, proofProfile, proofTestPrompt} from "../fix/proofPrompts";
@@ -159,6 +159,7 @@ class Session {
         case "gitleaks": return await this.gitleaks(rest, signal);
         case "pr": return await this.pullRequest(rest, signal);
         case "commit": return await this.commit(rest, signal);
+        case "push": return await this.commit(rest, signal, true);
         case "prove": return await this.prove(rest, signal);
         case "escalate": return await this.escalate(rest, signal);
         default: out("Unknown command /" + command + ". Type /help for the list.");
@@ -221,7 +222,7 @@ class Session {
   }
 
   private async chat(message: string, signal: AbortSignal): Promise<void> {
-    if (isCommitRequest(message)) return this.commit("", signal);
+    if (isCommitRequest(message)) return this.commit("", signal, wantsPush(message));
     await this.ensureModel(signal);
     const sources: ReviewSource[] = [];
     let bytes = 0;
@@ -697,14 +698,16 @@ class Session {
     else if (!history) out(dim("/gitleaks history also checks every past commit."));
   }
 
-  /** Local commit only: the first commit of a new repository works too; nothing is pushed. */
-  private async commit(arg: string, signal: AbortSignal): Promise<void> {
+  /** Commit on the current branch (the first commit of a new repository works too); `push` then pushes that branch, with no pull request. */
+  private async commit(arg: string, signal: AbortSignal, push = false): Promise<void> {
     const plan = await planPullRequest(this.cwd, undefined, true);
     if (typeof plan === "string") { out(yellow(plan)); return; }
     out(bold("Changes") + dim(" (" + plan.files.length + " files, branch " + plan.current + "):"));
     out((plan.stat || plan.files.join("\n")).slice(0, 4000));
     const secrets = await secretsInChanges(plan);
     if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed.")); return; }
+    if (push && !plan.remote) { out(yellow("No `origin` remote is configured. Nothing was committed or pushed.")); return; }
+    if (push) out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
     let message = arg.split("\n")[0].trim().slice(0, 200);
     if (!message) {
       out(dim("Writing the commit message with " + this.model + " from the diff… (Ctrl+C cancels)"));
@@ -717,8 +720,9 @@ class Session {
     }
     for (;;) {
       out(dim("Commit: ") + message);
-      const answer = (await this.reply(bold("Commit all " + plan.files.length + " changed files on " + plan.current + "?") + " [y/e/N] (e edits the message) ")) ?? "";
-      if (!this.interactive && !this.declinedByCommand) out("Commit all " + plan.files.length + " changed files on " + plan.current + "? [y/e/N] " + answer);
+      const question = "Commit all " + plan.files.length + " changed files on " + plan.current + (push ? " and push " + plan.current + " to origin?" : "?");
+      const answer = (await this.reply(bold(question) + " [y/e/N] (e edits the message) ")) ?? "";
+      if (!this.interactive && !this.declinedByCommand) out(question + " [y/e/N] " + answer);
       if (/^\s*e(dit)?\s*$/i.test(answer)) {
         const edited = (await this.read(bold("Commit message") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
         if (edited) message = edited.slice(0, 200);
@@ -728,7 +732,12 @@ class Session {
       break;
     }
     await commitChanges(plan, message);
-    out(green("Committed on " + plan.current + ": " + message) + dim(" Not pushed" + (plan.remote ? "; /pr pushes a branch and opens a pull request." : ".")));
+    if (!push) { out(green("Committed on " + plan.current + ": " + message) + dim(" Not pushed" + (plan.remote ? "; /push pushes it, /pr opens a pull request." : "."))); return; }
+    try { await pushBranch(plan); } catch (error) {
+      out(green("Committed on " + plan.current + ": " + message) + red(" The push failed: " + String((error as Error).message ?? error).split("\n").slice(-2).join(" ").slice(0, 300)));
+      return;
+    }
+    out(green("Committed on " + plan.current + " and pushed to origin: " + message));
   }
 
   private async pullRequest(arg: string, signal: AbortSignal): Promise<void> {
@@ -750,12 +759,15 @@ class Session {
     }
     text.commit ||= text.title;
     out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
+    if (plan.first) out(yellow("This repository has no commits yet, so there is no base branch for a pull request. /pr makes the first commit on " + plan.current + " and pushes it; the next /pr opens a pull request."));
     for (;;) {
       out(dim("Commit: ") + text.commit);
       out(dim("Title:  ") + text.title);
       if (text.body) out(dim(text.body.slice(0, 2000)));
-      const answer = (await this.reply(bold("Commit all " + plan.files.length + " changed files, push to origin and open a pull request?") + " [y/e/N] (e edits the text) ")) ?? "";
-      if (!this.interactive && !this.declinedByCommand) out("Commit all " + plan.files.length + " changed files, push to origin and open a pull request? [y/e/N] " + answer);
+      const question = plan.first ? "First commit: commit all " + plan.files.length + " files on " + plan.current + " and push " + plan.current + " to origin?"
+        : "Commit all " + plan.files.length + " changed files, push to origin and open a pull request?";
+      const answer = (await this.reply(bold(question) + " [y/e/N] (e edits the text) ")) ?? "";
+      if (!this.interactive && !this.declinedByCommand) out(question + " [y/e/N] " + answer);
       if (/^\s*e(dit)?\s*$/i.test(answer)) {
         const commit = (await this.read(bold("Commit message") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
         const title = (await this.read(bold("Pull request title") + dim(" (Enter keeps it): ")))?.split("\n")[0].trim();
@@ -768,6 +780,7 @@ class Session {
     }
     const result = await createPullRequest(plan, text.title, undefined, text.body, text.commit);
     this.prDraft = undefined;
+    if (result.first) { out(green("Pushed the first commit to " + result.branch + ": " + text.commit) + dim(" No pull request: this is the base branch. The next /pr opens one.")); return; }
     out(green(result.created && result.url ? "Pull request opened: " + result.url
       : "Pushed branch " + result.branch + "." + (result.url ? " Open the pull request: " + result.url : " Open a pull request on your git host.") + (result.created ? "" : " (Log in with the gh CLI to open it automatically.)")));
   }

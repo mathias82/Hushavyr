@@ -495,16 +495,21 @@ test("the pull request plan lists untracked files that the commit will add", asy
   assert.equal(plan.stat, " src/a.js | 2 +-\n 1 file changed\n lock.json | new file");
 });
 
-test("the pull request plan explains a repository without commits", async () => {
-  const { planPullRequest, isCommitRequest } = await import("../git/pullRequest");
+test("the pull request plan makes the first commit of a new repository; commit intent and push intent are detected", async () => {
+  const { planPullRequest, isCommitRequest, wantsPush } = await import("../git/pullRequest");
   for (const p of ["kane commit vale mhnyma", "κάνε commit", "commit", "make a commit", "git commit please"]) assert.ok(isCommitRequest(p), p);
   for (const p of ["explain this commit", "what does commit abc do", "review the code", "fix the commit hook"]) assert.ok(!isCommitRequest(p), p);
+  for (const p of ["kane commit kai push", "commit and push", "push"]) assert.ok(isCommitRequest(p) && wantsPush(p), p);
+  assert.ok(!wantsPush("kane commit vale mhnyma"));
   const { mkdtemp, writeFile } = await import("node:fs/promises");
   const { execFileSync } = await import("node:child_process");
   const dir = await mkdtemp(join(tmpdir(), "hush-pr-"));
   execFileSync("git", ["init", "-q", "-b", "main"], {cwd: dir});
   await writeFile(join(dir, "a.txt"), "x");
-  assert.match(String(await planPullRequest(dir)), /no commits yet/);
+  assert.match(String(await planPullRequest(dir)), /No `origin` remote/);
+  execFileSync("git", ["remote", "add", "origin", "https://example.com/a.git"], {cwd: dir});
+  const plan = await planPullRequest(dir);
+  assert.ok(typeof plan !== "string" && plan.first && plan.current === "main", "a new repository plans the first commit on its branch");
 });
 
 test("per-method focus lists functions with their real lines, largest first, and skips one-liners", () => {

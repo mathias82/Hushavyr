@@ -81,6 +81,7 @@ All commands:
 | `/undo` | Restore the file changed by the last `/fix` or `/edit` |
 | `/prove <N\|file bug>` | Red/green proof in an offline Docker container: a regression test that fails, then a fix that makes it pass. You approve both, and the verified patch reaches your files only on `y` |
 | `/commit [message]` | Commit all changes on the current branch (also the first commit of a new repository). The local model writes the message unless you give one; asks first, stops on secrets, does not push |
+| `/push [message]` | Like `/commit`, then pushes the current branch to origin; no pull request |
 | `/pr [title]` | Commit, push a branch and open a pull request with `gh`, after you confirm. Stops if a changed file looks like it has a secret |
 | `/escalate on\|off` | Allow or block sending code to GitHub Copilot. Off by default |
 | `/escalate suggest on\|off` | Offer `/escalate` when the local model may be wrong (on by default; asks first, default No) |
@@ -146,7 +147,7 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/find` | Finds a class or method in the workspace by name (typos are fine) or by description, with links to the lines |
 | `/edit` | Changes the open or selected code, or a method you name (`/edit OrderService.place add input checks`), with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
 | `/improve` | Asks the local model for real improvements to the open file (bugs, safety, clarity), shows a diff and a summary, and after **Apply** offers to open a pull request |
-| `commit` (plain text, or `/auto commit`) | Commits your changes on the current branch with a message the local model writes from the diff. Asks first, stops on secrets, does not push. Works in a new repository too. |
+| `commit` / `commit and push` (plain text, or `/auto commit`) | Commits your changes on the current branch with a message the local model writes from the diff; **Commit and push** also pushes the branch (no pull request). Asks first and stops on secrets. Works in a new repository too. |
 | `/pr` | Commits your changes to a new branch, pushes it and opens a pull request (`gh`, or a GitHub link). Asks first and stops if it finds credentials. |
 | `/review-changes` | Reviews your uncommitted changes: only the changed methods (with a few lines around them), not whole files |
 | `/scan` | Reviews the whole project: AI, Semgrep, Gitleaks, the optional analyzers, built-in rules, data flow and CVEs |
