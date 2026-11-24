@@ -127,6 +127,30 @@ test("manifests in direct subfolders are detected and a bare package.json gets a
   assert.match(nested.note, /package-lock-only/);
 });
 
+test("finds copied-in browser libraries by their banner and ignores plugins that mention them", async () => {
+  const {findVendoredLibraries, vendoredLibrary} = await import("../../deps/dependencyAudit");
+  assert.deepEqual(vendoredLibrary("/*! jQuery v1.11.3 | (c) 2005, 2015 jQuery Foundation"), {pkg: "jquery", version: "1.11.3"});
+  assert.deepEqual(vendoredLibrary("/*! jQuery UI - v1.11.4 - 2015-03-11"), {pkg: "jquery-ui", version: "1.11.4"});
+  assert.equal(vendoredLibrary("/*! jQuery Validation Plugin v1.13.1 requires jQuery 1.7+"), undefined);
+  assert.equal(vendoredLibrary("/*! Buttons for DataTables 1.2.0\n * SpryMedia"), undefined);
+  assert.equal(vendoredLibrary("/*!\n Responsive 1.0.6\n*/\nthrow\"DataTables Responsive requires DataTables 1.10.1 or newer\""), undefined);
+  assert.deepEqual(vendoredLibrary("/*!\n * jQuery JavaScript Library v1.12.3\n"), {pkg: "jquery", version: "1.12.3"});
+  assert.equal(vendoredLibrary("x".repeat(500) + "/*! jQuery v1.11.3"), undefined);
+  const root = mkdtempSync(joinPath(tmpdir(), "hush-vendored-"));
+  mkdirSync(joinPath(root, "html", "DataTables-1.10.12", "js"), {recursive: true});
+  mkdirSync(joinPath(root, "node_modules", "jquery"), {recursive: true});
+  writeFileSync(joinPath(root, "html", "jquery.min.js"), "/*! jQuery v1.11.3 | (c) jQuery Foundation */");
+  writeFileSync(joinPath(root, "html", "copy.js"), "/*! jQuery v1.11.3 */");
+  writeFileSync(joinPath(root, "html", "DataTables-1.10.12", "js", "jquery.dataTables.js"), "/*! DataTables 1.10.12\n * ©2008-2015 SpryMedia */");
+  writeFileSync(joinPath(root, "node_modules", "jquery", "jquery.js"), "/*! jQuery v3.7.1 */");
+  const libs = (await findVendoredLibraries(root)).map(l => l.pkg + "@" + l.version).sort();
+  assert.deepEqual(libs, ["datatables.net@1.10.12", "jquery@1.11.3"]);
+  const {planDependencyFix} = await import("../../deps/dependencyAudit");
+  const plan = planDependencyFix("html/jquery.min.js", {id: "CVE-2020-11023", pkg: "jquery", installed: "1.11.3", fixed: "3.5.0"}, "/*! jQuery v1.11.3 */");
+  assert.equal(plan?.manual, true, "a copied-in library is never edited by the model");
+  assert.match(plan!.advice, /replace the copied-in jquery\.min\.js with jquery 3\.5\.0/);
+});
+
 import {dbAgeHours, dbIsStale, formatDbAge} from "../../deps/dependencyAudit";
 import {osvDbAgeHours} from "../../scan/codeScanners";
 test("CVE database age uses the download time and flags anything over a day as stale", async () => {

@@ -1,6 +1,6 @@
 import {join} from "node:path";
-import {access,readFile,readdir} from "node:fs/promises";
-import {homedir} from "node:os";
+import {access,mkdtemp,open,readFile,readdir,rm,writeFile} from "node:fs/promises";
+import {homedir,tmpdir} from "node:os";
 import {exec} from "../util/exec";
 export interface DependencyVulnerability {id:string;pkg:string;installed:string;fixed?:string;severity:string;title:string;target:string;source?:"osv"}
 export interface DependencyAudit {status:"ok"|"missing"|"failed"|"unsupported";manager?:string;findings:number;note:string;vulnerabilities?:DependencyVulnerability[]}
@@ -24,8 +24,80 @@ export function parseTrivyVulnerabilities(parsed:unknown):DependencyVulnerabilit
  return found.sort((a,b)=>rank(a.severity)-rank(b.severity)||a.id.localeCompare(b.id));
 }
 async function exists(path:string):Promise<boolean>{try{await access(path);return true}catch{return false}}
+
+/** License banners of browser libraries that projects often copy in instead of installing (name -> npm package). */
+// The name must start a comment line: "Buttons for DataTables 1.2.0" or "requires DataTables 1.10.1" are other packages.
+const BANNER_START=/(?:^|\n)[ \t]*(?:\/\*+!?|\*|\/\/!?)?[ \t]*/.source,VERSION=/(\d+\.\d+\.\d+)/.source;
+const banner=(name:string)=>new RegExp(BANNER_START+name+VERSION);
+const VENDORED_BANNERS:[RegExp,string][]=[
+ [banner("jQuery UI - v"),"jquery-ui"],
+ [banner("jQuery (?:JavaScript Library )?v"),"jquery"],
+ [banner("Bootstrap v"),"bootstrap"],
+ [banner("DataTables "),"datatables.net"],
+ [/\/\/! moment\.js\s*\n\/\/! version : (\d+\.\d+\.\d+)/,"moment"],
+ [banner("@license AngularJS v"),"angular"],
+ [banner("handlebars v"),"handlebars"],
+ [banner("Underscore[.]js "),"underscore"],
+ [banner("Knockout JavaScript library v"),"knockout"],
+ [banner("Select2 "),"select2"],
+];
+export interface VendoredLibrary {pkg:string;version:string;path:string}
+/** Library and version from the banner at the top of a copied-in .js file; only the first 400 characters count so plugin headers that mention jQuery do not match. */
+export function vendoredLibrary(text:string):{pkg:string;version:string}|undefined{
+ const head=text.slice(0,400);
+ for(const [re,pkg] of VENDORED_BANNERS){const m=re.exec(head);if(m)return {pkg,version:m[1]}}
+ return undefined;
+}
+/** Copied-in browser libraries (jquery.min.js and similar) that no manifest lists; one entry per package version. */
+export async function findVendoredLibraries(root:string,limit=20000):Promise<VendoredLibrary[]>{
+ const found=new Map<string,VendoredLibrary>();let seen=0;
+ const walk=async(dir:string,rel:string,depth:number):Promise<void>=>{
+  if(depth>10||seen>limit)return;
+  let entries;try{entries=await readdir(dir,{withFileTypes:true})}catch{return}
+  for(const e of entries){
+   if(++seen>limit)return;
+   const path=rel?rel+"/"+e.name:e.name;
+   if(e.isDirectory()){if(!/^\.|^node_modules$|^bower_components$/.test(e.name))await walk(join(dir,e.name),path,depth+1);continue}
+   if(!e.isFile()||!/\.js$/i.test(e.name))continue;
+   let text="";try{const h=await open(join(dir,e.name),"r");try{const b=Buffer.alloc(400);const {bytesRead}=await h.read(b,0,400,0);text=b.toString("utf8",0,bytesRead)}finally{await h.close()}}catch{continue}
+   const lib=vendoredLibrary(text);
+   if(lib&&!found.has(lib.pkg+"@"+lib.version))found.set(lib.pkg+"@"+lib.version,{...lib,path});
+  }
+ };
+ await walk(root,"",0);
+ return [...found.values()];
+}
+/** Trivy reads the copied-in libraries from a temporary CycloneDX SBOM, offline like the manifest scan. */
+async function scanVendored(libs:readonly VendoredLibrary[],signal?:AbortSignal):Promise<DependencyVulnerability[]>{
+ const dir=await mkdtemp(join(tmpdir(),"hushavyr-vendored-"));
+ try{
+  const purl=(l:VendoredLibrary)=>"pkg:npm/"+l.pkg+"@"+l.version;
+  const bom={bomFormat:"CycloneDX",specVersion:"1.5",version:1,metadata:{component:{type:"application",name:"vendored","bom-ref":"root"}},
+   components:libs.map(l=>({type:"library",name:l.pkg,version:l.version,purl:purl(l),"bom-ref":purl(l)}))};
+  const file=join(dir,"vendored.cdx.json");
+  await writeFile(file,JSON.stringify(bom));
+  const {stdout}=await exec("trivy",["sbom","--offline-scan","--skip-db-update","--skip-java-db-update","--scanners","vuln","--format","json","--quiet",file],{
+   timeout:120000,maxBuffer:8*1024*1024,windowsHide:true,signal,env:{...process.env,TRIVY_DISABLE_VEX_NOTICE:"true"}});
+  const where=new Map(libs.map(l=>[l.pkg+"@"+l.version,l.path]));
+  return parseTrivyVulnerabilities(JSON.parse(stdout)).map(v=>({...v,target:where.get(v.pkg+"@"+v.installed)??v.target}));
+ }finally{await rm(dir,{recursive:true,force:true})}
+}
 /** Offline-only scanner: Trivy must have a locally cached vulnerability database. */
 export async function auditDependencies(root:string,signal?:AbortSignal):Promise<DependencyAudit>{
+ const manifestAudit=await auditManifests(root,signal);
+ const libs=await findVendoredLibraries(root);
+ if(!libs.length||manifestAudit.status==="missing"||manifestAudit.status==="failed")return manifestAudit;
+ const names=libs.map(l=>l.pkg+" "+l.version).join(", ");
+ let vendored:DependencyVulnerability[];
+ try{vendored=await scanVendored(libs,signal)}catch(e){
+  if((e as NodeJS.ErrnoException).code==="ENOENT")return {status:"missing",findings:0,manager:"vendored js",note:"Copied-in libraries found ("+names+"). Install Trivy and provision its vulnerability database locally first"};
+  return manifestAudit.status==="ok"?manifestAudit:{status:"failed",manager:"vendored js",findings:0,note:"Offline scan of copied-in libraries failed; check local database availability and scanner setup"};
+ }
+ const sorted=[...(manifestAudit.vulnerabilities??[]),...vendored].sort((a,b)=>{const r=(s:string)=>{const i=SEVERITY_ORDER.indexOf(s);return i<0?SEVERITY_ORDER.length:i};return r(a.severity)-r(b.severity)||a.id.localeCompare(b.id)});
+ const note="Copied-in libraries checked: "+names+(manifestAudit.status==="ok"?". "+manifestAudit.note:"");
+ return {status:"ok",manager:[manifestAudit.manager,"vendored js"].filter(Boolean).join(", "),findings:manifestAudit.findings+vendored.length,vulnerabilities:sorted,note};
+}
+async function auditManifests(root:string,signal?:AbortSignal):Promise<DependencyAudit>{
  const supported:[string,string][]=[["pom.xml","maven"],["package-lock.json","npm"],["requirements.txt","pip"],["poetry.lock","poetry"],["Pipfile.lock","pipenv"],["build.gradle","gradle"],["build.gradle.kts","gradle"],["yarn.lock","yarn"],["pnpm-lock.yaml","pnpm"],["go.mod","go"],["Cargo.lock","cargo"],["composer.lock","composer"],["Gemfile.lock","bundler"],["packages.lock.json","nuget"]];
  // Trivy scans recursively, so manifests in direct subfolders (api/, backend/) count too.
  const dirs=[root];
@@ -178,6 +250,7 @@ export function dependencyFix(target:string,pkg:string,installed:string,fixed:st
  if(file==="pom.xml"){const [g,a]=pkg.split(":");return a?(direct?"set `<version>"+v+"</version>` for `"+a+"` in pom.xml":"pin it in `<dependencyManagement>`: `<groupId>"+g+"</groupId><artifactId>"+a+"</artifactId><version>"+v+"</version>`"):undefined;}
  if(/\.gradle(\.kts)?$|^gradle\.lockfile$/.test(file))return direct?"use `"+pkg+":"+v+"` in build.gradle":"add `constraints { implementation(\""+pkg+":"+v+"\") }` to build.gradle";
  if(/\.csproj$|^packages\.lock\.json$/.test(file))return "`dotnet add package "+pkg+" --version "+v+"`";
+ if(/\.js$/.test(file))return "replace the copied-in "+file+" with "+pkg+" "+v+" or later from its official release, then retest the pages that use it";
  return "upgrade "+pkg+" to "+v+" or later";
 }
 export interface DependencyFinding {id:string;pkg:string;installed:string;fixed?:string}
@@ -201,12 +274,15 @@ export interface DependencyFixPlan {
  updated?:string;
  /** Command that refreshes the lockfile afterwards. */
  then?:string;
+ /** A copied-in library file: replacing it is a manual step, never an AI edit of the library. */
+ manual?:boolean;
 }
 const INSTALL:Record<string,string>={"package.json":"npm install","Cargo.toml":"cargo update","composer.json":"composer update","Gemfile":"bundle install","go.mod":"go mod tidy","pyproject.toml":"poetry lock","Pipfile":"pipenv lock"};
 /** Plans the upgrade; manifestPath/manifestText come from resolveManifest (undefined text: edit the target itself). */
 export function planDependencyFix(target:string,finding:DependencyFinding,manifestText:string|undefined,manifestPath=manifestFor(target)):DependencyFixPlan|undefined{
  const version=finding.fixed?firstFixedVersion(finding.fixed,finding.installed):undefined;
  if(!version)return undefined;
+ if(/\.js$/i.test(target))return {manifest:target,advice:dependencyFix(target,finding.pkg,finding.installed,finding.fixed,false)!,manual:true};
  const manifest=manifestText===undefined||manifestPath.includes("*")?target:manifestPath;
  const direct=manifestText!==undefined&&isDirectDependency(manifestText,finding.pkg);
  const advice=dependencyFix(target,finding.pkg,finding.installed,finding.fixed,direct)??"upgrade "+finding.pkg+" to "+version;

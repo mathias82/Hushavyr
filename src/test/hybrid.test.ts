@@ -495,6 +495,16 @@ test("the pull request plan lists untracked files that the commit will add", asy
   assert.equal(plan.stat, " src/a.js | 2 +-\n 1 file changed\n lock.json | new file");
 });
 
+test("the pull request plan explains a repository without commits", async () => {
+  const { planPullRequest } = await import("../git/pullRequest");
+  const { mkdtemp, writeFile } = await import("node:fs/promises");
+  const { execFileSync } = await import("node:child_process");
+  const dir = await mkdtemp(join(tmpdir(), "hush-pr-"));
+  execFileSync("git", ["init", "-q", "-b", "main"], {cwd: dir});
+  await writeFile(join(dir, "a.txt"), "x");
+  assert.match(String(await planPullRequest(dir)), /no commits yet/);
+});
+
 test("per-method focus lists functions with their real lines, largest first, and skips one-liners", () => {
   const text = ["class A {", "  int first(int x) {", "    int y = x;", "    return y;", "  }", "  int one() { return 1; }", "  void loop(int n) {",
     "    for (int i = 0; i < n; i++) {", "      log(i);", "    }", "  }", "}"].join("\n");

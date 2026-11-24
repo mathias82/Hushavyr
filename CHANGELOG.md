@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Copied-in JavaScript libraries:** `/dependencies` now finds libraries copied into the project instead of installed (for example `jquery-1.11.3.min.js` or a `DataTables-1.10.12/` folder), reads their version from the license banner, and checks them offline with Trivy. Supported: jQuery, jQuery UI, Bootstrap, DataTables, Moment, AngularJS, Handlebars, Underscore, Knockout, Select2. The fix advice is to replace the file with a fixed release. Hushavyr never asks the model to edit a library file. Before this, a PHP project with only copied-in libraries showed "No supported dependency manifest found".
+- **`/pr` in a repository without commits:** explains that a first commit is needed, instead of failing with a git error about `HEAD`.
 - **Model download behind a company proxy:** when a proxy or firewall answers instead of ollama.com, Hushavyr now says the network blocks the download and how to get around it (another network, `HTTPS_PROXY` for `ollama serve`, or asking IT to allow `registry.ollama.ai`), instead of printing the proxy's HTML page.
 - **Models from Hugging Face:** model size is now read from names such as `hf.co/<user>/<model>-30b-…-GGUF:Q4_K_M` or `…-14B-…`, so these models get the same second-pass and review-depth defaults as the Ollama library model of that size.
 - **Per-method review pass (experimental):** `HUSHAVYR_PER_METHOD=1` adds one review pass per function. Off by default: on the tuned fixtures it found no extra bugs with the 30b model (F1 0.84 both ways) and took twice as long.

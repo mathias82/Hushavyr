@@ -562,6 +562,7 @@ class Session {
     const manifest = await resolveManifest(f.path);
     const plan = planDependencyFix(f.path, finding, manifest.text, manifest.path);
     if (!plan) { out(yellow(finding.pkg + " has no fixed version yet: remove or replace it, or /dismiss it if it does not apply.")); return; }
+    if (plan.manual) { out(yellow("Do it manually: ") + plan.advice.replace(/`/g, "")); return; }
     const display = relative(this.cwd, plan.manifest);
     const text = await readFile(plan.manifest, "utf8");
     let updated = plan.updated;

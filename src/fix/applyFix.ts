@@ -116,6 +116,7 @@ export async function applyDependencyFix(uriText: string, message: string): Prom
     void vscode.window.showInformationMessage("Hushavyr: " + finding.pkg + " has no fixed version yet. Remove or replace the package, or dismiss the finding if it does not apply.");
     return;
   }
+  if (plan.manual) { void vscode.window.showInformationMessage("Hushavyr: " + plan.advice.replace(/`/g, "")); return; }
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(plan.manifest));
   const original = doc.getText();
   const after = plan.then ? " Then run `" + plan.then + "` to update the lockfile." : "";

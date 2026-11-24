@@ -28,6 +28,10 @@ export async function planPullRequest(root: string, exec: Exec = defaultExec): P
   try { await exec("git", ["rev-parse", "--is-inside-work-tree"], root); } catch { return "This folder is not a git repository."; }
   const files = statusPaths(await exec("git", ["status", "--porcelain", "--untracked-files=all"], root));
   if (!files.length) return "There are no changes to put in a pull request.";
+  // A pull request needs a base branch with at least one commit.
+  try { await exec("git", ["rev-parse", "--verify", "--quiet", "HEAD"], root); } catch {
+    return "This repository has no commits yet, so there is no base branch for a pull request. Make the first commit and push it (`git add -A && git commit -m \"Initial commit\" && git push -u origin HEAD`), then run /pr again.";
+  }
   const current = (await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], root)).trim();
   let remote = "";
   try { remote = (await exec("git", ["remote", "get-url", "origin"], root)).trim(); } catch { return "No `origin` remote is configured."; }
