@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { staticReview, semgrepToFindings } from "../scan/staticReview";
-import { mergeFindings, runLocalReview, LENSES } from "../review/localReview";
+import { mergeFindings, methodFocus, runLocalReview, LENSES } from "../review/localReview";
 import { callContext, definitionSnippet, isTestFileOf } from "../review/callContext";
 import { collectImports, reachability, vulnerableSymbols, findVulnerableCall } from "../scan/reachability";
 import { toSarif, sarifLevel } from "../scan/sarif";
@@ -493,4 +493,10 @@ test("the pull request plan lists untracked files that the commit will add", asy
   const plan = await planPullRequest("/r", exec);
   assert.ok(typeof plan !== "string");
   assert.equal(plan.stat, " src/a.js | 2 +-\n 1 file changed\n lock.json | new file");
+});
+
+test("per-method focus lists functions with their real lines, largest first, and skips one-liners", () => {
+  const text = ["class A {", "  int first(int x) {", "    int y = x;", "    return y;", "  }", "  int one() { return 1; }", "  void loop(int n) {",
+    "    for (int i = 0; i < n; i++) {", "      log(i);", "    }", "  }", "}"].join("\n");
+  assert.deepEqual(methodFocus([{path: "A.java", text, startLine: 10}]).map(m => [m.name, m.start, m.end]), [["loop", 16, 20], ["first", 11, 14]]);
 });

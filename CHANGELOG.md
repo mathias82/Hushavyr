@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- **Models from Hugging Face:** model size is now read from names such as `hf.co/<user>/<model>-30b-…-GGUF:Q4_K_M` or `…-14B-…`, so these models get the same second-pass and review-depth defaults as the Ollama library model of that size.
+- **Per-method review pass (experimental):** `HUSHAVYR_PER_METHOD=1` adds one review pass per function. Off by default: on the tuned fixtures it found no extra bugs with the 30b model (F1 0.84 both ways) and took twice as long.
+
 ## 1.0.21
 - **`/review diff` (terminal):** reviews only your uncommitted changes. Each changed line is widened to the method around it, so a small change in a large file is reviewed in seconds. New files are reviewed whole.
 - **VS Code `/review-changes`:** sends only the changed methods (with a few lines around them) to the local model, with their real line numbers, instead of whole files.

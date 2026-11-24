@@ -196,6 +196,8 @@ test("small models check only hedged findings; 14b keeps the full second pass; 3
   assert.equal(verifyModeFor("qwen2.5-coder:3b"), "hedged");
   assert.equal(verifyModeFor("qwen2.5-coder:14b"), "batch");
   assert.equal(verifyModeFor("qwen3-coder:30b"), "none");
+  assert.equal(verifyModeFor("hf.co/user/securecoder-30b-pro-GGUF:Q4_K_M"), "none", "Hugging Face names carry the size in the repo name");
+  assert.equal(verifyModeFor("hf.co/user/Nova-Qwen2.5-14B-Coder-GGUF:Q4_K_M"), "batch");
   assert.equal(verifyModeFor("codellama"), "batch");
 });
 

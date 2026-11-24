@@ -7,6 +7,7 @@ import { Finding } from "./review";
 import { flowSeverity, flowTitle, taintFlows } from "../scan/taint";
 import { targetedFindings } from "./targetedChecks";
 import { ReviewTrace } from "./reviewTrace";
+import { extractSymbols } from "../search/codeSearch";
 
 export type ReviewDepth = "fast" | "thorough" | "light";
 export type VerifyMode = "batch" | "recheck" | "hedged" | "none";
@@ -77,6 +78,39 @@ async function lensFindings(client: Pick<LocalOllama, "generate">, prompt: strin
 // A model stuck repeating itself (e.g. endless asserts in regressionTest) is cut here, well before
 // Node's 300 s fetch header timeout; validateReview keeps the findings that were complete.
 const REVIEW_TOKENS = 2048;
+
+/** Functions worth their own focused pass (real 1-based lines), largest first, at most `max`. */
+export function methodFocus(source: ReviewInput, max = 6): {path: string; name: string; start: number; end: number}[] {
+  return reviewSources(source).flatMap(s => extractSymbols(s.path, s.text)
+    .filter(f => f.kind === "function" && f.endLine - f.line >= 2)
+    .map(f => ({path: s.path, name: f.name, start: f.line + (s.startLine ?? 1) - 1, end: f.endLine + (s.startLine ?? 1) - 1})))
+    .sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, max);
+}
+
+const methodLens = (m: {path: string; name: string; start: number; end: number}): string =>
+  "FOCUS FOR THIS PASS: only the function " + m.name + " in " + m.path + " lines " + m.start + "-" + m.end + ". Trace each statement with concrete inputs " +
+  "(empty, zero, null, boundary, concurrent callers, hostile input) and report a finding only for a line inside this range that gives a wrong result, " +
+  "crashes or is exploitable. Return an empty findings array when this function is correct.";
+
+async function methodFindings(client: Pick<LocalOllama, "generate">, prompt: string, source: ReviewInput,
+  cancelled: () => boolean, onProgress?: (message: string) => void, trace?: ReviewTrace): Promise<ReviewResult[]> {
+  const methods = methodFocus(source);
+  if (methods.length < 2) return [];
+  const results: ReviewResult[] = [];
+  for (const m of methods) {
+    if (cancelled()) break;
+    onProgress?.("Method pass: " + m.name + "...");
+    trace?.at("method");
+    try {
+      const result = validateReview(await client.generate(prompt + "\n\n" + methodLens(m), {schema: reviewSchema, maxTokens: REVIEW_TOKENS}), source, rejectedInto(trace, "method"));
+      const inside = {...result, findings: result.findings.filter(f => f.path === m.path && (f.line ?? 0) >= m.start && (f.line ?? 0) <= m.end)};
+      trace?.record("method", inside.findings, result.error);
+      results.push(inside);
+    } catch { /* one failed method pass must not discard the others */ }
+  }
+  return results;
+}
+const perMethod = (): boolean => process.env.HUSHAVYR_PER_METHOD === "1";
 /** At most two local inference calls, plus model-metadata checks. Every attempt goes through the same evidence gate. */
 async function collectFindings(
   client: Pick<LocalOllama, "generate">,
@@ -97,6 +131,15 @@ async function collectFindings(
   trace?.record("general", first.findings, first.error);
   onProgress?.("General pass: " + candidates(first));
   if (depth === "light") return first;
+  if (depth === "fast" && perMethod()) {
+    const passes = [first, ...await methodFindings(client, prompt, source, cancelled, onProgress, trace)];
+    if (cancelled()) return;
+    if (passes.length > 1) {
+      const merged = {...first, findings: mergeFindings(...passes.map(p => p.findings)),
+        proposed: passes.reduce((n, p) => n + (p.proposed ?? 0), 0), rejected: passes.reduce((n, p) => n + p.rejected, 0)};
+      if (merged.findings.length) return merged;
+    }
+  }
   if (depth === "thorough") {
     const passes = [first, ...await lensFindings(client, prompt, source, cancelled, onProgress, trace)];
     if (cancelled()) return;

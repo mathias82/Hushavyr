@@ -9,12 +9,19 @@ export function recommendedModel(memoryBytes: number): string {
   return gb >= 24 ? "qwen3-coder:30b" : gb >= 20 ? "qwen2.5-coder:14b" : gb >= 12 ? "qwen2.5-coder:7b" : "qwen2.5-coder:3b";
 }
 
+/** Parameter count in billions from a model name: "qwen3-coder:30b", "devstral:24b", or a Hugging Face name like
+ * "hf.co/user/Coder-14B-GGUF:Q4_K_M". NaN when the name has no size. */
+export function modelSize(model: string): number {
+  const m = /:(\d+(?:\.\d+)?)b\b/i.exec(model) ?? /[-_./](\d+(?:\.\d+)?)b(?![a-z0-9])/i.exec(model);
+  return Number(m?.[1]);
+}
+
 /** How the second local pass checks a model's findings, measured on the 120-fixture benchmark: a full skeptical pass ("batch")
  * suits 14b and larger; 7b and smaller reject their own real bugs in it (7b: P 1.00 R 0.16), so only hedged findings
  * ("Potential ...", "may ...") are checked (7b: P 0.83 R 0.49, versus P 0.45 R 0.61 with no check). 30b and larger need no second pass: on the 96 tuned fixtures
  * qwen3-coder:30b scored P 0.78 R 0.92 in 6 s per case without it, versus P 0.80 R 0.82 in 13 s with it. */
 export function verifyModeFor(model: string): "batch" | "hedged" | "none" {
-  const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
+  const size = modelSize(model);
   return Number.isFinite(size) && size <= 8 ? "hedged" : size >= 30 ? "none" : "batch";
 }
 
@@ -23,7 +30,7 @@ export const JUDGE_MODEL = "qwen2.5-coder:32b";
 /** True when the main model is smaller than the judge and the machine can hold it next to the main model
  * (measured: on 24 GB the 32b model alone runs partly on the CPU and a review exceeds 5 minutes). */
 export function judgeFits(model: string, memoryBytes = totalmem()): boolean {
-  const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
+  const size = modelSize(model);
   return memoryBytes / 1024 ** 3 >= 48 && Number.isFinite(size) && size < 32;
 }
 /** The judge client when the setting allows it, it fits and it is already installed (never downloaded implicitly). */
@@ -38,7 +45,7 @@ export async function localJudge(client: LocalOllama, model: string, setting = "
  * but more false positives (P 0.70 versus 0.78) in 2.5 times the time. */
 export function autoDepth(memoryBytes = totalmem(), model = ""): "thorough" | "fast" | "light" {
   const gb = memoryBytes / 1024 ** 3;
-  const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
+  const size = modelSize(model);
   return gb >= 20 ? size >= 30 ? "fast" : "thorough" : gb >= 12 ? "fast" : "light";
 }
 
