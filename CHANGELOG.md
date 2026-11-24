@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.23
+- **Chat `/commit` and `/push`:** the same commit, and commit and push, as in the terminal, now also as Chat commands (`@ai-privacy /push [message]`). Before, only the plain text "commit and push" worked in Chat.
+
 ## 1.0.22
 - **Copied-in JavaScript libraries:** `/dependencies` now finds libraries copied into the project instead of installed (for example `jquery-1.11.3.min.js` or a `DataTables-1.10.12/` folder), reads their version from the license banner, and checks them offline with Trivy. Supported: jQuery, jQuery UI, Bootstrap, DataTables, Moment, AngularJS, Handlebars, Underscore, Knockout, Select2. The fix advice is to replace the file with a fixed release. Hushavyr never asks the model to edit a library file. Before this, a PHP project with only copied-in libraries showed "No supported dependency manifest found".
 - **Commit, and commit and push, without a pull request:** `/commit [message]` in the terminal, or "commit" / "κάνε commit" in VS Code chat, commits every change on the current branch with a message the local model writes from the diff. `/push [message]`, "commit and push" / "kane commit kai push", or the chat **Commit and push** button also push that branch to origin, with no pull request. Both ask first, stop on secrets, and work for the first commit of a new repository. In chat an open file no longer blocks the request with "Context exceeds 20 KB".

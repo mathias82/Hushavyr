@@ -133,6 +133,10 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       await openPullRequest("", "", text => stream.markdown(text), () => token.isCancellationRequested, true, wantsPush(request.prompt));
       return;
     }
+    if (request.command === "commit" || request.command === "push") {
+      await openPullRequest(request.prompt.trim(), "", text => stream.markdown(text), () => token.isCancellationRequested, true, request.command === "push");
+      return;
+    }
     if (request.command === "auto" && userReferences.length === 0) {
       try {
         const result = await autoPrompt(request.prompt, token);
