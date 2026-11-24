@@ -14,6 +14,8 @@ import {acceptManifestEdit, dependencyEditInstruction, findDependencyLine, group
 import type {Finding} from "../review/review";
 import {enclosingFunction, findingFix, fitFix, fixPrompt, fixWindow, methodFix, methodFixInstruction, parseReplacement, replacementSchema} from "../fix/fixEdit";
 import {runLocalReview} from "../review/localReview";
+import {changedSources} from "../review/changedScope";
+import {changedLineMap} from "../git/changedFiles";
 import {autoDepth, localJudge, verifyModeFor} from "../model/model";
 import {localEndpoint, LocalOllama} from "../model/ollama";
 import {explainFindingPrompt} from "../vscode/reportFindings";
@@ -408,6 +410,7 @@ class Session {
   }
 
   private async review(arg: string, signal: AbortSignal): Promise<void> {
+    if (/^(?:diff|changes)$/i.test(arg.trim()) && !existsSync(this.path(arg.trim()).abs)) return await this.reviewChanges(signal);
     const target = /^(?:all|\.|)$/i.test(arg) ? "." : arg;
     if ((await stat(this.path(target).abs).catch(() => undefined))?.isDirectory()) {
       out(dim("/review checks one file with the local AI; for a whole folder this runs /scan. Then /review <file> or /explain N on any finding."));
@@ -422,7 +425,7 @@ class Session {
     const instruction = withTeamRules("Review this code file. Find concrete potential bugs with severity, evidence, fixes, and regression tests.", await loadTeamRules(this.cwd).catch(() => ""));
     out(dim("Reviewing " + (hit ? describeHit(hit) : file.display) + " with " + this.model + " and the static rules… (Ctrl+C cancels)"));
     const result = await runLocalReview(this.client, instruction, sources, () => signal.aborted, this.client,
-      {depth: autoDepth(), verify: verifyModeFor(this.model), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
+      {depth: autoDepth(undefined, this.model), verify: verifyModeFor(this.model), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
     if (!result || signal.aborted) return;
     if (result.error) out(yellow(result.error));
     const stored = (f: Finding, possible: boolean): Stored => ({path: file.abs, display: file.display, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence, ...(possible ? {possible} : {})});
@@ -430,6 +433,39 @@ class Session {
     this.printFindings();
     await this.offerEscalation(reviewDifficulty(result, part.text), file, "Find bugs and security issues in this fragment.", signal,
       (result.disputed?.[0] ?? result.findings.find(f => f.verification !== "supported") ?? result.findings[0])?.line);
+  }
+
+  /** /review diff: only the methods changed since the last commit (new files whole), so the local model reads less. */
+  private async reviewChanges(signal: AbortSignal): Promise<void> {
+    const changed = await changedLineMap(this.cwd);
+    if (!changed.size) { out(dim("No uncommitted code changes in " + (basename(this.cwd)) + " (git diff HEAD and new files). Nothing to review.")); return; }
+    await this.ensureModel(signal);
+    const instruction = withTeamRules("Review this change for bugs and security issues. Find concrete potential bugs with severity, evidence, fixes, and regression tests.", await loadTeamRules(this.cwd).catch(() => ""));
+    const started = Date.now();
+    const found: Stored[] = [];
+    let files = 0, lines = 0, total = 0;
+    for (const [path, lineSet] of changed) {
+      if (signal.aborted) return;
+      const abs = resolve(this.cwd, path);
+      const info = await stat(abs).catch(() => undefined);
+      if (!info?.isFile() || info.size > MAX_CONTEXT_BYTES) { out(dim("  skipped " + path + (info ? ": larger than " + MAX_CONTEXT_BYTES / 1000 + " KB" : ""))); continue; }
+      const text = await readFile(abs, "utf8");
+      if (text.includes("\0")) continue;
+      const sources = changedSources(path, text, lineSet);
+      if (!sources.length) continue;
+      const read = sources.reduce((n, s) => n + s.text.split(/\r?\n/).length, 0);
+      files++; lines += read; total += text.split(/\r?\n/).length;
+      out(dim("Reviewing " + path + (sources.length === 1 && sources[0].startLine === 1 && read === text.split(/\r?\n/).length ? "" : " (" + sources.map(s => s.startLine + "-" + (s.startLine! + s.text.split(/\r?\n/).length - 1)).join(", ") + ")") + " with " + this.model + "…"));
+      const result = await runLocalReview(this.client, instruction, sources, () => signal.aborted, this.client,
+        {depth: autoDepth(undefined, this.model), verify: verifyModeFor(this.model), judge: () => localJudge(this.client, this.model, this.config.reviewJudge, undefined, signal), staticFindings: staticReview(sources, RULES, undefined, signal).then(r => r.findings), onProgress: message => out(dim("  " + message))});
+      if (!result || signal.aborted) return;
+      if (result.error) out(yellow(path + ": " + result.error));
+      const stored = (f: Finding, possible: boolean): Stored => ({path: abs, display: path, line: f.line ?? 1, level: f.severity, message: f.title, title: f.title, fix: f.fix, evidence: f.evidence, ...(possible ? {possible} : {})});
+      found.push(...result.findings.map(f => stored(f, false)), ...(result.disputed ?? []).map(f => stored(f, true)));
+    }
+    this.findings = await this.withoutDismissed([...found.filter(f => !f.possible), ...found.filter(f => f.possible)]);
+    this.printFindings();
+    out(dim("Reviewed " + lines + " changed line(s) of " + total + " in " + files + " file(s) in " + Math.round((Date.now() - started) / 1000) + "s. Nothing left this machine."));
   }
 
   private finding(arg: string): Stored {

@@ -325,3 +325,33 @@ test("hushavyr /pr without a title: the local model writes the commit message an
     assert.match(output, /Pushed branch hushavyr\/use-a-parameterized-query-for-book-|Pull request opened/);
   } finally { server.close(); }
 });
+
+test("hushavyr /review diff sends only the changed methods (real line numbers) and new files whole; no changes sends nothing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hushavyr-diff-"));
+  const git = (...args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, {cwd: dir}, (error, out) => error ? reject(error) : resolve(out)));
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "T");
+  const method = (name: string, body: string) => ["  int " + name + "(int a) {", ...Array.from({length: 8}, (_, i) => "    a += " + i + "; // " + name), "    " + body, "    return a;", "  }", ""];
+  const original = ["class Calc {", ...method("first", "a *= 2;"), ...method("second", "a *= 3;"), ...method("third", "a *= 4;"), "}", ""].join("\n");
+  await writeFile(join(dir, "Calc.java"), original);
+  await git("add", "-A");
+  await git("commit", "-qm", "init");
+  const {server, endpoint, prompts} = await fakeOllama();
+  try {
+    const clean = await session(dir, endpoint, ["/review diff"], {HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-diff-cfg-" + Date.now())});
+    assert.match(clean, /No uncommitted code changes/);
+    assert.equal(prompts.length, 0, "nothing reaches the model without changes");
+    await writeFile(join(dir, "Calc.java"), original.replace("a *= 3;", "a /= 0;"));
+    await writeFile(join(dir, "Extra.java"), "class Extra {\n  int one() { return 1; }\n}\n");
+    const output = await session(dir, endpoint, ["/review diff"], {HUSHAVYR_CONFIG_DIR: join(tmpdir(), "hushavyr-diff-cfg2-" + Date.now())});
+    const review = prompts.filter(p => p.includes('SOURCE "Calc.java"'));
+    assert.ok(review.length, "Calc.java was reviewed");
+    assert.match(review[0], /\n15:   int second\(int a\) \{/, "the changed method keeps its real line numbers");
+    assert.match(review[0], /a \/= 0;/);
+    assert.doesNotMatch(review[0], /\/\/ first|\/\/ third/, "unchanged methods are not sent");
+    assert.ok(prompts.some(p => p.includes('SOURCE "Extra.java"') && p.includes("1: class Extra {")), "a new file is reviewed whole");
+    assert.match(output, /Reviewing Calc\.java \(15-26\)/);
+    assert.match(output, /Reviewed \d+ changed line\(s\) of \d+ in 2 file\(s\) in \d+s\. Nothing left this machine\./);
+  } finally { server.close(); }
+});

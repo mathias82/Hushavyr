@@ -1,9 +1,9 @@
 /** Pure helpers for the hushavyr terminal: command parsing, model choice, diffs and edits. No I/O. */
-import {CURATED_MODELS, recommendedModel} from "../model/model";
+import {chooseModel} from "../model/model";
 
 export interface TerminalCommand {name: string; usage: string; help: string}
 export const COMMANDS: readonly TerminalCommand[] = [
-  {name: "review", usage: "/review <file|name|folder>", help: "Local AI review of a file, class or method (name or description): bugs and security issues, with static rules (a folder runs /scan)"},
+  {name: "review", usage: "/review <file|name|folder|diff>", help: "Local AI review of a file, class or method (name or description): bugs and security issues, with static rules (a folder runs /scan; diff reviews only the methods you changed)"},
   {name: "explain", usage: "/explain <file|name|N> [question]", help: "Explain a file, class or method, or finding N from the last report"},
   {name: "fix", usage: "/fix <N>", help: "Fix finding N with local AI: shows a diff, changes the file only after you approve"},
   {name: "edit", usage: "/edit <file|name> <request>", help: "Change a file, class or method as you ask (OrderService.total, typos allowed): shows a diff, changes it only after you approve"},
@@ -50,13 +50,7 @@ export function completeCommand(line: string): string[] {
   return COMMANDS.map(c => "/" + c.name).filter(c => c.startsWith(line.toLowerCase()));
 }
 
-/** The configured model, else the best one for this machine if it is downloaded, else a downloaded code model, else the recommendation. */
-export function chooseModel(configured: string | undefined, installed: readonly string[], memoryBytes: number): string {
-  if (configured?.trim()) return configured.trim();
-  const best = recommendedModel(memoryBytes);
-  if (!installed.length || installed.includes(best)) return best;
-  return CURATED_MODELS.find(m => installed.includes(m)) ?? installed.find(m => /coder|code/i.test(m)) ?? installed[0];
-}
+export {chooseModel};
 
 const LANGUAGES: Record<string, string> = {java: "java", kt: "kotlin", py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
   ts: "typescript", tsx: "typescript", go: "go", rs: "rust", cs: "csharp", php: "php", rb: "ruby", c: "c", h: "c", cpp: "cpp", swift: "swift", scala: "scala",

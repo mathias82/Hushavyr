@@ -72,6 +72,7 @@ All commands:
 | `/gitleaks [history] [folder]` | Secrets with Gitleaks; `history` checks every past commit, so a deleted password is still found |
 | `/find <name or description>` | Find a class or method: by name, with typos allowed (`/find order servce`), or by description (`/find where the discount is computed`) |
 | `/review <file\|name\|folder>` | Local AI review of a file, class or method for bugs and security issues, together with the static rules; a folder runs `/scan` |
+| `/review diff` | Reviews only your uncommitted changes: each changed line is widened to the method around it, so a small change in a big file takes seconds |
 | `/findings` | Show the last report again |
 | `/explain <N\|file\|name\|description>` | Explain finding N, a file, a class or method, or the code you describe |
 | `/fix <N>` | Fix finding N with local AI: shows a colored diff and writes the file only if you answer `y`. For a dependency CVE it upgrades the package in the manifest (`package.json`, `pom.xml`, `go.mod`, …) |
@@ -124,8 +125,8 @@ Setup picks the model for your machine and also lists the models you already hav
 | --- | --- | --- |
 | under 12 GB | `qwen2.5-coder:3b` | Light mode: one short pass with an 8k context; the built-in rules and the verifier do most of the work. Runs on 8 GB laptops. |
 | 12–20 GB | `qwen2.5-coder:7b` | Fast; one pass. |
-| 20–30 GB | `qwen2.5-coder:14b` | Thorough: general, security and robustness passes. |
-| 30 GB or more | `qwen3-coder:30b` | Best reviews. A mixture-of-experts model (about 3B active parameters), so it is faster than the 14b. |
+| 20–24 GB | `qwen2.5-coder:14b` | Thorough: general, security and robustness passes. |
+| 24 GB or more | `qwen3-coder:30b` | Best reviews. A mixture-of-experts model (about 3B active parameters): about 20 GB of memory, and twice as fast as the 14b. Close other large apps on a 24 GB machine. |
 
 **How a review is checked:** each finding must point at real lines of your code, and the file's own test (`FooTest.java`, `foo.test.ts`, `test_foo.py`…) and the callers of its functions are added as context. A second local pass then checks every finding and drops the ones it finds unsupported (with 7b and smaller models it checks only findings stated as possibilities, because a full second pass made them drop their real bugs). A dropped finding gets one more narrow check of the lines around it; if the two checks disagree, the finding is not counted, but the review names it as a possible issue and may suggest `/escalate` for that line.
 
@@ -145,7 +146,7 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 | `/edit` | Changes the open or selected code, or a method you name (`/edit OrderService.place add input checks`), with the local model. Follow-ups like *"can you add them"* after `/explain` also work. You see a diff and nothing changes until you click **Apply**. You can also **Try another local model** or **Escalate** (opt-in, names removed). |
 | `/improve` | Asks the local model for real improvements to the open file (bugs, safety, clarity), shows a diff and a summary, and after **Apply** offers to open a pull request |
 | `/pr` | Commits your changes to a new branch, pushes it and opens a pull request (`gh`, or a GitHub link). Asks first and stops if it finds credentials. |
-| `/review-changes` | Reviews your uncommitted changes |
+| `/review-changes` | Reviews your uncommitted changes: only the changed methods (with a few lines around them), not whole files |
 | `/scan` | Reviews the whole project: AI, Semgrep, Gitleaks, the optional analyzers, built-in rules, data flow and CVEs |
 | `/scan-changed` | Same as `/scan`, but only for files that changed since the last scan |
 | `/security` | Fast project security scan without AI: rules, credentials, and request input that reaches SQL, shell, eval, files or URLs |
@@ -207,26 +208,29 @@ Patterns are regular expressions on code (string literals are blanked); `call` a
 | Proves a fix with a failing test | Yes, in an offline Docker sandbox | Rarely |
 | Output for CI | SARIF, CLI exit codes, PR comments | Varies |
 
-**Measured:** on Hushavyr's 120 benchmark fixtures (bugs and clean twins, about 20 per language in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects). 24 of them are held out: they were never used to tune Hushavyr. Fast review mode, default settings, on a 24 GB MacBook:
+**Measured:** on Hushavyr's 216 benchmark fixtures (bugs and clean twins in Java, JavaScript, TypeScript, Python, Go and C#; synthetic code, not real projects). 96 were used to tune Hushavyr; 120 are held out and were never used for tuning, so they show how it does on code it has not seen. Fast review mode, default settings, on a 24 GB MacBook:
 
-| Reviewer | Precision | Recall | F1 | Held-out P / R / F1 |
-| --- | --- | --- | --- | --- |
-| Hushavyr, `qwen2.5-coder:14b` | 0.67 | 0.77 | **0.72** | 0.46 / 0.50 / 0.48 |
-| Hushavyr, `qwen2.5-coder:7b` | 0.83 | 0.49 | 0.62 | 1.00 / 0.33 / 0.50 |
-| GPT 6.1 (cloud) | 0.75 | 0.95 | **0.84** | 0.65 / 0.92 / 0.76 |
-| Claude Sonnet 5.5 (cloud) | 0.63 | 1.00 | 0.77 | 0.57 / 1.00 / 0.73 |
+| Reviewer | Tuned P / R / F1 | Held-out P / R / F1 |
+| --- | --- | --- |
+| Hushavyr, `qwen3-coder:30b` (24 GB or more) | 0.78 / 0.92 / **0.84** | 0.54 / 0.53 / **0.54** |
+| Hushavyr, `qwen2.5-coder:14b` | 0.71 / 0.84 / 0.77 | 0.27 / 0.27 / 0.27 |
+| Hushavyr, `qwen2.5-coder:7b` | 0.79 / 0.52 / 0.63 | 0.73 / 0.13 / 0.23 |
+| GPT 6.1 (cloud) | 0.89 / 0.96 / **0.92** | 0.66 / 0.98 / **0.79** |
+| Claude Sonnet 5.5 (cloud) | 0.79 / 1.00 / 0.88 | 0.59 / 0.95 / 0.73 |
 
-F1 combines precision and recall into one score; it is the fairest single number for comparing reviewers. The held-out set has only 12 bugs, so one bug moves its recall by 0.08.
+F1 combines precision and recall into one score; it is the fairest single number for comparing reviewers. The 7b tuned score counts 84 of 96 fixtures (12 runs timed out).
 
-Precision and recall per language (P / R):
+F1 per language (all fixtures):
 
 | Reviewer | Java | Python | TypeScript | JavaScript | Go | C# |
 | --- | --- | --- | --- | --- | --- | --- |
-| Hushavyr 14b | 0.80 / 0.73 | 0.67 / 0.80 | 0.50 / 0.80 | 0.62 / 0.80 | 0.86 / 0.60 | 0.75 / 0.90 |
-| Hushavyr 7b | 0.86 / 0.55 | 0.89 / 0.80 | 1.00 / 0.30 | 0.83 / 0.50 | 0.63 / 0.50 | 1.00 / 0.30 |
-| GPT 6.1 | 1.00 / 0.91 | 0.75 / 0.90 | 0.77 / 1.00 | 0.59 / 1.00 | 0.77 / 1.00 | 0.75 / 0.90 |
+| Hushavyr 30b | 0.67 | 0.68 | 0.69 | 0.70 | 0.57 | 0.77 |
+| Hushavyr 14b | 0.65 | 0.51 | 0.36 | 0.52 | 0.43 | 0.58 |
+| Hushavyr 7b | 0.42 | 0.67 | 0.30 | 0.40 | 0.38 | 0.36 |
+| GPT 6.1 | 0.95 | 0.92 | 0.86 | 0.78 | 0.79 | 0.77 |
+| Claude Sonnet 5.5 | 0.95 | 0.74 | 0.84 | 0.80 | 0.68 | 0.77 |
 
-Findings the local checks disagree on are listed under **Possible**, not counted above; with them the 14b reaches recall 0.82 and the 7b 0.56. The cloud models find more bugs, above all in code the local models were not tuned on. The 7b keeps only findings it states as facts, so its precision is higher but it misses half the bugs (lower F1); use the 14b when your machine has the memory. `qwen2.5-coder:32b` could not be measured on 24 GB (every review took over 5 minutes), so Hushavyr uses it as a judge only on machines with 48 GB or more. Run it yourself with `node dist/benchmark.js` and `node benchmarks/cloud-reference.mjs`.
+The cloud models still find clearly more bugs, above all in code Hushavyr was not tuned on. `qwen3-coder:30b` is the best local model: on unseen code it doubles the 14b's F1 and reviews in about 6 seconds per fixture. It uses one review pass without the second local check, because the check removed more real bugs than false alarms for it (tuned 0.78 / 0.92 without it, 0.80 / 0.82 with it). Findings the local checks disagree on (14b, 7b) are listed under **Possible** and not counted above. Run it yourself with `node dist/benchmark.js` (`BENCH_SET=tuned` or `heldout`) and `node benchmarks/cloud-reference.mjs`.
 
 ## FAQ
 
@@ -246,7 +250,7 @@ Yes. Type `hushavyr` in the VS Code terminal to chat with the local AI about you
 No. Review, scanning and fixes run locally, and there is no telemetry. Only the opt-in `/escalate` sends anything: a selection with names replaced by tokens, and only after you approve the exact text.
 
 **Which model should I use?**
-Setup picks one for your RAM: `qwen2.5-coder:7b` under 20 GB, `14b` for 20–30 GB, and `qwen3-coder:30b` from 30 GB up. See [Models and memory](#models-and-memory).
+Setup picks one for your RAM: `qwen2.5-coder:7b` under 20 GB, `14b` for 20–24 GB, and `qwen3-coder:30b` from 24 GB up. See [Models and memory](#models-and-memory).
 
 **Does it scan git history for leaked secrets and API keys?**
 Yes, on request: `@ai-privacy /gitleaks history` or **Hushavyr: Find Secrets in Git History** runs Gitleaks over every commit, locally, with values redacted. Each finding shows the commit. A secret removed later is still exposed in history, so rotate it if it is real. Once a secret is rotated, add its fingerprint to `.gitleaksignore` and it stops being reported. Secrets in tests, fixtures, examples and docs are still reported, at lower severity.

@@ -106,12 +106,45 @@ export function methodFix(method: readonly string[], parsed: string | undefined)
   return text === original ? undefined : text;
 }
 
+/** Index where `block` (trimmed) occurs exactly once in `lines` within [from, to]; -1 when absent or ambiguous. */
+function uniqueBlock(lines: readonly string[], block: readonly string[], from: number, to: number): number {
+  const hits: number[] = [];
+  for (let i = Math.max(0, from); i + block.length - 1 <= to && i + block.length <= lines.length; i++)
+    if (block.every((b, k) => lines[i + k].trim() === b)) hits.push(i);
+  return hits.length === 1 ? hits[0] : -1;
+}
+
+/**
+ * Models often return only the part of the excerpt they changed (e.g. the method without the next method's
+ * signature). When the reply starts and ends with unchanged excerpt lines, replace just that span so the
+ * lines it left out at the edges are kept instead of deleted.
+ */
+function trimToCovered(original: readonly string[], replacement: string, marked: number): {start: number; end: number; text: string} {
+  const whole = {start: 0, end: original.length - 1, text: replacement};
+  const after = replacement.split("\n");
+  const body = after.slice(after.findIndex(l => l.trim()), after.length - [...after].reverse().findIndex(l => l.trim()));
+  if (!body.length) return whole;
+  const trimmed = body.map(l => l.trim());
+  let start = -1, end = -1;
+  for (let k = Math.min(3, body.length); k >= 1 && start < 0; k--) {
+    const at = uniqueBlock(original, trimmed.slice(0, k), 0, marked + k - 1);
+    if (at >= 0 && at <= marked) start = at;
+  }
+  for (let k = Math.min(3, body.length); k >= 1 && start >= 0 && end < 0; k--) {
+    const at = uniqueBlock(original, trimmed.slice(-k), start, original.length - 1);
+    if (at >= 0 && at + k - 1 >= marked) end = at + k - 1;
+  }
+  const edgesBlank = original.every((l, i) => (i >= start && i <= end) || !l.trim());
+  if (start < 0 || end < 0 || edgesBlank) return whole;
+  return {start, end, text: body.join("\n")};
+}
+
 /**
  * Which lines of the excerpt the replacement covers (0-based, inclusive). Models sometimes return only the corrected
  * marked line instead of the whole excerpt; that is applied to the marked line alone. Undefined when unusable.
  */
 export function fitFix(original: readonly string[], replacement: string, marked: number): {start: number; end: number; text: string} | undefined {
-  if (isPlausibleFix(original, replacement)) return {start: 0, end: original.length - 1, text: replacement};
+  if (isPlausibleFix(original, replacement)) return trimToCovered(original, replacement, marked);
   const line = original[marked];
   if (line === undefined || original.length < 2 || replacement.split("\n").length > 3 || !isPlausibleFix([line], replacement)) return undefined;
   // It must be a rewrite of the marked line, not some other line of the excerpt.

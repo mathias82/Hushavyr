@@ -1,6 +1,7 @@
-import {configuredModel, configuredDepth, localJudge, verifyModeFor} from "../model/model";
+import {configuredModel, configuredDepth, installedModel, localJudge, verifyModeFor} from "../model/model";
 import {relatedSources} from "../review/relatedJava";
-import {changedFiles} from "../git/changedFiles";
+import {changedLineMap} from "../git/changedFiles";
+import {changedSources} from "../review/changedScope";
 import * as vscode from "vscode";
 import {classifyInput} from "../escalation/classifier";
 import {confirmPublicPayload, createAutoPrompt, formatRouted, pickCopilotModel} from "./autoPrompt";
@@ -285,15 +286,19 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       }
       let budget = 18_000;
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        for (const relative of await changedFiles(folder.uri.fsPath)) {
-          if (attachments.length >= 4) break;
+        // Only the changed methods (new files whole): less for the local model to read, so the review is faster.
+        for (const [relative, lines] of await changedLineMap(folder.uri.fsPath)) {
+          if (attachments.length >= 8) break;
           const uri = vscode.Uri.joinPath(folder.uri, relative);
           try {
             const text = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
-            const bytes = Buffer.byteLength(text, "utf8");
-            if (!text.trim() || text.includes("\0") || bytes > budget) continue;
-            budget -= bytes + uri.toString().length;
-            attachments.push({path: uri.toString(), text, startLine: 1});
+            if (!text.trim() || text.includes("\0")) continue;
+            for (const part of changedSources(uri.toString(), text, lines)) {
+              const bytes = Buffer.byteLength(part.text, "utf8");
+              if (attachments.length >= 8 || bytes > budget) continue;
+              budget -= bytes + uri.toString().length;
+              attachments.push(part);
+            }
           } catch { /* skip unreadable file */ }
         }
       }
@@ -301,7 +306,7 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
         stream.markdown("No uncommitted code changes found (or they exceed the 20 KB local review budget). Nothing was sent.");
         return;
       }
-      stream.markdown("Reviewing " + attachments.length + " changed file(s) locally: " + attachments.map(a => "`" + vscode.workspace.asRelativePath(vscode.Uri.parse(a.path)) + "`").join(", ") + "\n\n");
+      stream.markdown("Reviewing the changed code locally: " + attachments.map(a => "`" + vscode.workspace.asRelativePath(vscode.Uri.parse(a.path)) + ":" + a.startLine + "-" + ((a.startLine ?? 1) + a.text.split(/\r?\n/).length - 1) + "`").join(", ") + "\n\n");
     }
     for (const ref of userReferences) {
       const value = ref.value;
@@ -469,7 +474,7 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       stream.markdown("Blocked by local privacy policy. Nothing was transmitted.");
       return;
     }
-    const model = configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
+    const model = await installedModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
     const sensitivityNote: Record<string, string> = {
       sensitive: "secrets or personal data detected, kept strictly local",
       uncertain: "no secrets found, but code is never assumed public, so it stays local",
@@ -528,7 +533,7 @@ export function registerChatParticipant(context: vscode.ExtensionContext, review
       } else {
         const verifierModel = config.get<string>("verifierModel", "").trim() || model;
         const verifier = verifierModel === model ? client : new LocalOllama({model: verifierModel, endpoint, timeoutMs});
-        const depth: ReviewDepth = configuredDepth(config);
+        const depth: ReviewDepth = configuredDepth(config, undefined, model);
         const useStatic = config.get<boolean>("staticAnalysis", true);
         let teamRules = "";
         try {

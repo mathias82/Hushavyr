@@ -2,18 +2,20 @@ import {totalmem} from "node:os";
 import {LocalOllama} from "./ollama";
 
 /** Larger local models review noticeably better, but must fit in memory. Qwen3-Coder 30b is a mixture of experts
- * (about 3B active parameters), so it is both stronger and much faster than a dense 32b model. */
+ * (about 3B active parameters), so it is both stronger and much faster than a dense 32b model. Measured on a 24 GB Mac:
+ * it uses about 20 GB and reviews a benchmark case in 6 s (14b: 12 s). */
 export function recommendedModel(memoryBytes: number): string {
   const gb = memoryBytes / 1024 ** 3;
-  return gb >= 30 ? "qwen3-coder:30b" : gb >= 20 ? "qwen2.5-coder:14b" : gb >= 12 ? "qwen2.5-coder:7b" : "qwen2.5-coder:3b";
+  return gb >= 24 ? "qwen3-coder:30b" : gb >= 20 ? "qwen2.5-coder:14b" : gb >= 12 ? "qwen2.5-coder:7b" : "qwen2.5-coder:3b";
 }
 
 /** How the second local pass checks a model's findings, measured on the 120-fixture benchmark: a full skeptical pass ("batch")
  * suits 14b and larger; 7b and smaller reject their own real bugs in it (7b: P 1.00 R 0.16), so only hedged findings
- * ("Potential ...", "may ...") are checked (7b: P 0.83 R 0.49, versus P 0.45 R 0.61 with no check). */
-export function verifyModeFor(model: string): "batch" | "hedged" {
+ * ("Potential ...", "may ...") are checked (7b: P 0.83 R 0.49, versus P 0.45 R 0.61 with no check). 30b and larger need no second pass: on the 96 tuned fixtures
+ * qwen3-coder:30b scored P 0.78 R 0.92 in 6 s per case without it, versus P 0.80 R 0.82 in 13 s with it. */
+export function verifyModeFor(model: string): "batch" | "hedged" | "none" {
   const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
-  return Number.isFinite(size) && size <= 8 ? "hedged" : "batch";
+  return Number.isFinite(size) && size <= 8 ? "hedged" : size >= 30 ? "none" : "batch";
 }
 
 /** The stronger local model that re-judges only the findings the smaller model's own checks disagree on. */
@@ -31,16 +33,19 @@ export async function localJudge(client: LocalOllama, model: string, setting = "
   return installed.includes(JUDGE_MODEL) ? client.withModel(JUDGE_MODEL, 600_000) : undefined;
 }
 
-/** Review passes that fit the machine: several focused passes need memory and time that 8 GB laptops do not have. */
-export function autoDepth(memoryBytes = totalmem()): "thorough" | "fast" | "light" {
+/** Review passes that fit the machine: several focused passes need memory and time that 8 GB laptops do not have.
+ * 30b and larger models use one pass: on the 96 tuned fixtures qwen3-coder:30b found the same bugs with the extra passes
+ * but more false positives (P 0.70 versus 0.78) in 2.5 times the time. */
+export function autoDepth(memoryBytes = totalmem(), model = ""): "thorough" | "fast" | "light" {
   const gb = memoryBytes / 1024 ** 3;
-  return gb >= 20 ? "thorough" : gb >= 12 ? "fast" : "light";
+  const size = Number(/:(\d+(?:\.\d+)?)b\b/i.exec(model)?.[1]);
+  return gb >= 20 ? size >= 30 ? "fast" : "thorough" : gb >= 12 ? "fast" : "light";
 }
 
 /** The reviewDepth setting; "auto" (the default) follows the machine's memory. */
-export function configuredDepth(config: Pick<ModelConfig, "get">, memoryBytes = totalmem()): "thorough" | "fast" | "light" {
+export function configuredDepth(config: Pick<ModelConfig, "get">, memoryBytes = totalmem(), model = ""): "thorough" | "fast" | "light" {
   const value = config.get<string>("reviewDepth", "auto");
-  return value === "thorough" || value === "fast" || value === "light" ? value : autoDepth(memoryBytes);
+  return value === "thorough" || value === "fast" || value === "light" ? value : autoDepth(memoryBytes, model);
 }
 
 interface ModelConfig {
@@ -52,6 +57,21 @@ export function configuredModel(config: ModelConfig, memoryBytes = totalmem()): 
   const set = config.inspect?.("ollamaModel");
   const explicit = config.inspect ? set?.workspaceFolderValue ?? set?.workspaceValue ?? set?.globalValue : config.get<string>("ollamaModel", "");
   return typeof explicit === "string" && explicit.trim() ? explicit.trim() : recommendedModel(memoryBytes);
+}
+/** The configured model, else the best one for this machine if it is downloaded, else a downloaded code model, else the recommendation. */
+export function chooseModel(configured: string | undefined, installed: readonly string[], memoryBytes: number): string {
+  if (configured?.trim()) return configured.trim();
+  const best = recommendedModel(memoryBytes);
+  if (!installed.length || installed.includes(best)) return best;
+  return CURATED_MODELS.find(m => installed.includes(m)) ?? installed.find(m => /coder|code/i.test(m)) ?? installed[0];
+}
+/** configuredModel, but without a chosen model an installed one wins over downloading the recommendation
+ * (so a larger recommendation after an update never starts a surprise download). */
+export async function installedModel(config: ModelConfig, memoryBytes = totalmem(), signal?: AbortSignal): Promise<string> {
+  const model = configuredModel(config, memoryBytes);
+  if (model !== recommendedModel(memoryBytes)) return model;
+  const installed = await configuredClient(config, model, memoryBytes).listModels(signal).catch(() => [] as string[]);
+  return chooseModel(undefined, installed, memoryBytes);
 }
 /** Ollama client from the extension settings (model, loopback endpoint, timeout). */
 export function configuredClient(config: ModelConfig, model = configuredModel(config), memoryBytes = totalmem()): LocalOllama {

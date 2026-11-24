@@ -1,6 +1,6 @@
 // D3: scores cloud models on the synthetic benchmark fixtures only (never user code), next to the local model, with the same prompt.
 // Usage: node benchmarks/cloud-reference.mjs [out.json]   env: CLOUD_MODELS=claude-sonnet-5.5,gpt-6.1-sol  OLLAMA_MODEL=qwen2.5-coder:14b
-// CLOUD_IDS=<regex> runs and scores only the matching fixture ids.
+// CLOUD_IDS=<regex> runs and scores only the matching fixture ids. CLOUD_RAW=<file> keeps the raw responses.
 import {execFileSync, spawn} from "node:child_process";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -53,6 +53,7 @@ const file = join(mkdtempSync(join(tmpdir(), "hush-d3-")), "providers.json");
 const empty = JSON.stringify({findings: []});
 for (const name of Object.keys(providers)) for (const id of allIds) providers[name][id] ??= empty;
 writeFileSync(file, JSON.stringify({providers}));
+if (process.env.CLOUD_RAW) writeFileSync(process.env.CLOUD_RAW, JSON.stringify(Object.fromEntries(Object.entries(providers).map(([n, r]) => [n, Object.fromEntries(ids.map(id => [id, r[id]]))])), null, 2));
 const report = JSON.parse(execFileSync(process.execPath, [bench, "--compare", file], {maxBuffer: 1 << 26}).toString());
 rmSync(dirname(file), {recursive: true, force: true});
 for (const p of report.providers) {

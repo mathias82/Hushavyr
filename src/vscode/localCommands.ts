@@ -1,4 +1,4 @@
-import {configuredClient, configuredModel} from "../model/model";
+import {configuredClient, configuredModel, installedModel} from "../model/model";
 import * as vscode from "vscode";
 import {classifyInput} from "../escalation/classifier";
 import {createAutoPrompt, formatRouted} from "./autoPrompt";
@@ -162,7 +162,7 @@ async function runLocal(prompt: string): Promise<void> {
     void vscode.window.showErrorMessage("Content blocked by privacy policy.");
     return;
   }
-  const model = configuredModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
+  const model = await installedModel(vscode.workspace.getConfiguration("aiPrivacyRouter"));
   try {
     const result = await vscode.window.withProgress({
       location:vscode.ProgressLocation.Notification,

@@ -73,7 +73,8 @@ test("recommendedModel scales with memory", () => {
   const gb = 1024 ** 3;
   assert.equal(recommendedModel(8 * gb), "qwen2.5-coder:3b");
   assert.equal(recommendedModel(16 * gb), "qwen2.5-coder:7b");
-  assert.equal(recommendedModel(24 * gb), "qwen2.5-coder:14b");
+  assert.equal(recommendedModel(22 * gb), "qwen2.5-coder:14b");
+  assert.equal(recommendedModel(24 * gb), "qwen3-coder:30b");
   assert.equal(recommendedModel(64 * gb), "qwen3-coder:30b");
   assert.equal(recommendedModel(32 * gb), "qwen3-coder:30b");
 });
@@ -136,7 +137,7 @@ import {configuredModel, verifyModeFor} from "../../model/model";
 test("uses an explicit model setting, otherwise the best fit for memory", () => {
   const GB = 1024 ** 3;
   const unset = {inspect: () => ({}), get: <T>(_k: string, f: T) => f};
-  assert.equal(configuredModel(unset, 24 * GB), "qwen2.5-coder:14b");
+  assert.equal(configuredModel(unset, 22 * GB), "qwen2.5-coder:14b");
   assert.equal(configuredModel(unset, 8 * GB), "qwen2.5-coder:3b");
   assert.equal(configuredModel({...unset, inspect: () => ({globalValue: "deepseek-coder-v2:16b"})}, 64 * GB), "deepseek-coder-v2:16b");
 });
@@ -147,6 +148,8 @@ test("review depth follows memory unless set", () => {
   assert.equal(autoDepth(8 * gb), "light");
   assert.equal(autoDepth(16 * gb), "fast");
   assert.equal(autoDepth(32 * gb), "thorough");
+  assert.equal(autoDepth(32 * gb, "qwen2.5-coder:14b"), "thorough");
+  assert.equal(autoDepth(32 * gb, "qwen3-coder:30b"), "fast");
   const config = (value: string) => ({get: <T>(_key: string, fallback?: T) => (value || fallback) as T});
   assert.equal(configuredDepth(config(""), 8 * gb), "light");
   assert.equal(configuredDepth(config("auto"), 32 * gb), "thorough");
@@ -188,10 +191,27 @@ test("the 32b judge is offered only to smaller models on machines that can hold 
   assert.equal(await localJudge(client(["qwen2.5-coder:32b"]), "qwen2.5-coder:14b", "off", 48 * gb), undefined);
 });
 
-test("small models check only hedged findings; 14b and larger keep the full second pass", () => {
+test("small models check only hedged findings; 14b keeps the full second pass; 30b and larger skip it", () => {
   assert.equal(verifyModeFor("qwen2.5-coder:7b"), "hedged");
   assert.equal(verifyModeFor("qwen2.5-coder:3b"), "hedged");
   assert.equal(verifyModeFor("qwen2.5-coder:14b"), "batch");
-  assert.equal(verifyModeFor("qwen3-coder:30b"), "batch");
+  assert.equal(verifyModeFor("qwen3-coder:30b"), "none");
   assert.equal(verifyModeFor("codellama"), "batch");
+});
+
+test("VS Code with no model set uses an installed model instead of downloading a larger recommendation", async () => {
+  const {createServer} = await import("node:http");
+  const {installedModel} = await import("../../model/model");
+  const gb = 1024 ** 3;
+  let names = ["qwen2.5-coder:14b"];
+  const server = createServer((_, res) => res.end(JSON.stringify({models: names.map(name => ({name}))})));
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const endpoint = "http://127.0.0.1:" + (server.address() as {port: number}).port;
+  const config = (ollamaModel = "") => ({inspect: () => ({globalValue: ollamaModel}), get: <T>(key: string, fallback: T) => (key === "ollamaEndpoint" ? endpoint : fallback) as T});
+  try {
+    assert.equal(await installedModel(config(), 24 * gb), "qwen2.5-coder:14b");
+    names = ["qwen2.5-coder:14b", "qwen3-coder:30b"];
+    assert.equal(await installedModel(config(), 24 * gb), "qwen3-coder:30b");
+    assert.equal(await installedModel(config("qwen2.5-coder:7b"), 24 * gb), "qwen2.5-coder:7b");
+  } finally { server.close(); }
 });

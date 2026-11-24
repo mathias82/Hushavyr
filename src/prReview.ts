@@ -10,29 +10,11 @@ import {loadDismissals, loadTeamRules, withoutDismissed, withTeamRules} from "./
 import {totalmem} from "node:os";
 import {recommendedModel, verifyModeFor} from "./model/model";
 import {sarifLevel, toSarif} from "./scan/sarif";
+import {changedLines} from "./git/changedFiles";
+export {changedLines};
 
 const SOURCE = /\.(?:java|kt|py|js|jsx|mjs|cjs|ts|tsx|go|rs|cs|rb|php)$/;
 export const COMMENT_MARKER = "<!-- hushavyr-pr-review -->";
-
-/** Added/changed line numbers per file from `git diff -U0`. Deleted files and pure deletions are ignored. */
-export function changedLines(diff: string): Map<string, Set<number>> {
-  const files = new Map<string, Set<number>>();
-  let current: Set<number> | undefined;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++ ")) {
-      const path = line.slice(4).trim();
-      current = path === "/dev/null" ? undefined : new Set<number>();
-      if (current) files.set(path.replace(/^b\//, ""), current);
-      continue;
-    }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (hunk && current) {
-      const start = Number(hunk[1]), count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-      for (let n = start; n < start + count; n++) current.add(n);
-    }
-  }
-  return files;
-}
 
 /** Keeps findings on (or within `slack` lines of) changed lines, so a PR is judged on what it changed. */
 export function onChangedLines(findings: readonly Finding[], changed: ReadonlySet<number>, slack = 2): Finding[] {

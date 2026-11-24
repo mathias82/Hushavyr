@@ -220,10 +220,10 @@ export async function runLocalReview(
   const result = staticCandidates.length && !model.error
     ? {...model, findings: mergeFindings(model.findings, staticCandidates), staticCandidates: staticCandidates.length}
     : model;
-  if (verifier && result.findings.length) progress?.("Second local pass: checking " + result.findings.length + " finding(s) against the source...");
+  const mode = (process.env.HUSHAVYR_VERIFY as VerifyMode | undefined) ?? options.verify ?? "batch";
+  if (verifier && mode !== "none" && result.findings.length) progress?.("Second local pass: checking " + result.findings.length + " finding(s) against the source...");
   trace?.record("preVerify", result.findings);
   trace?.at("verify");
-  const mode = (process.env.HUSHAVYR_VERIFY as VerifyMode | undefined) ?? options.verify ?? "batch";
   const verified = !verifier || mode === "none" ? result : mode === "recheck" ? await recheckEach(verifier, result, source, cancelled)
     : mode === "hedged" ? await verifyHedged(verifier, result, source, cancelled) : await verifyReview(verifier, result, source, cancelled);
   if (!verified || cancelled()) return;

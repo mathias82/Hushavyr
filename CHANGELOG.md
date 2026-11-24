@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.21
+- **`/review diff` (terminal):** reviews only your uncommitted changes. Each changed line is widened to the method around it, so a small change in a large file is reviewed in seconds. New files are reviewed whole.
+- **VS Code `/review-changes`:** sends only the changed methods (with a few lines around them) to the local model, with their real line numbers, instead of whole files.
+- **qwen3-coder:30b from 24 GB:** setup now recommends the 30b mixture-of-experts model on machines with 24 GB or more (was 30 GB). Measured on a 24 GB Mac: about 20 GB of memory, 6 s per benchmark case (14b: 12 s). If you never chose a model and the 30b is not downloaded, VS Code keeps using the model you already have instead of starting a 19 GB download; pick the 30b in **Hushavyr: Setup**.
+- **30b in one pass:** the extra security and robustness passes found no more bugs with the 30b model, only more false positives (precision 0.70 versus 0.78) in 2.5 times the time, so `reviewDepth: auto` runs one pass for 30b and larger models.
+- **30b without the second pass:** the 30b model's findings are no longer re-checked by a second local pass, which mostly dropped real bugs. Tuned fixtures: precision 0.78, recall 0.92 (was 0.80 / 0.82), twice as fast.
+- **`/fix` no longer deletes the next method's signature:** when the local model returned only the fixed method instead of the whole excerpt, the lines it left out (for example the next method's first line) were deleted. Now only the span the answer covers is replaced. Same in VS Code.
+- **README benchmark:** tuned (96) and held-out (120) scores per model (30b, 14b, 7b, GPT 6.1, Sonnet 5.5) and F1 per language. The cloud models are still clearly ahead on unseen code; the 30b is the best local model (held-out F1 0.54, 14b 0.27).
+- **Benchmark:** 96 new held-out fixtures (16 per language), never used for tuning, so 216 fixtures in total. `CLOUD_IDS=<regex>` runs the cloud reference on a subset, `CLOUD_RAW=<file>` keeps the raw cloud answers. A clean held-out fixture (`token-refresh-race-clean`) still had a real race and was fixed.
+
 ## 1.0.20
 - **Chat `/review` → Fix:** after a review with findings, Chat shows **Fix or dismiss a finding** and **Explain a finding** buttons, as after a scan. Before, the fix was only reachable through the Quick Fix on the marked line.
 - **README:** the top demo now shows the chat Fix button (`/review` → Fix → diff → Apply), with an HD MP4.

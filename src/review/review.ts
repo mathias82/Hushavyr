@@ -26,9 +26,12 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function field(obj: Record<string, unknown>, key: string): string {
   return typeof obj[key] === "string" ? (obj[key] as string).trim() : "";
 }
+/** HUSHAVYR_PROMPT=open (benchmark A/B only) asks the model to trace runtime behavior and report every concrete bug instead of
+ * being skeptical: 14b gained F1 0.01 on the tuned fixtures but lost 0.02 on the held-out ones; 30b lost 0.02. */
 export function reviewPrompt(instruction: string, code: ReviewInput): string {
+  const open = process.env.HUSHAVYR_PROMPT === "open";
   return [
-    "You are a skeptical code reviewer. Review each source using its own language and runtime semantics. Use the file name and source syntax to identify the language. Follow relevant boundaries between languages when both sides are supplied. Return ONLY valid JSON, no Markdown.",
+    (open ? "You are a careful code reviewer. First trace how each function behaves at runtime, then report every concrete bug you find." : "You are a skeptical code reviewer.") + " Review each source using its own language and runtime semantics. Use the file name and source syntax to identify the language. Follow relevant boundaries between languages when both sides are supplied. Return ONLY valid JSON, no Markdown.",
     'Schema: {"findings":[{"title":"...","severity":"high|medium|low","path":"exact SOURCE path","startLine":1,"endLine":2,"fix":"...","regressionTest":"..."}]}.',
     "Only report concrete failure mechanisms visible in supplied code. Never claim SQL injection without a SQL query or execution sink in the provided code.",
     "Do not claim a getter throws exceptions unless source code shows that behavior.",
@@ -40,7 +43,7 @@ export function reviewPrompt(instruction: string, code: ReviewInput): string {
     "Inspect each file for a reproducible input -> operation -> incorrect output or side effect. Prioritize actual bugs over style, formatting and speculative vulnerabilities. For each finding include a precise trigger and a testable fix.",
     "A clean review is allowed, but first check boundary values (null, empty, zero, negative, duplicate, concurrent), error propagation, resource cleanup and data escaping where relevant to the language.",
     "Report a boundary value only when the code then returns a wrong result, corrupts state, leaks a resource or performs an unsafe action. Not bugs: an exception that simply reaches the caller for invalid input (malformed JSON or XML, a missing file); input that the parameter type or an earlier visible check already excludes; a sink protected by a visible allow-list, containment or validation check. Read the lines before the sink for such checks.",
-    "If evidence is insufficient, return an empty findings array. Do not invent tests, other files, or execution results.",
+    (open ? "Return an empty findings array only when no concrete bug is visible." : "If evidence is insufficient, return an empty findings array.") + " Do not invent tests, other files, or execution results.",
     "User request: " + instruction,
     sourcePrompt(code)
   ].join("\n\n");

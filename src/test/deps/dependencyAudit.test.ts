@@ -101,6 +101,11 @@ test("reads title and fix from review markers and rejects bad replacements", () 
   const whole = excerpt.join("\n").replace("= \" + id, cb", "= ?\", [id], cb");
   assert.deepEqual(fitFix(excerpt, whole, 3), {start: 0, end: 8, text: whole});
   assert.equal(fitFix(excerpt, "app.listen(3000);", 3), undefined, "a line unrelated to the marked one is refused");
+  // A real qwen3-coder:30b answer returned only the method, without the next method's signature in the excerpt.
+  const java = ["", "    public int total(List<String> skus, int quantity) {", "        int sum = 0;", "        for (int i = 0; i <= skus.size(); i++) {",
+    "            sum += unitPrice(skus.get(i)) * quantity;", "        }", "        return sum;", "    }", "", "    public String label(String sku) {"];
+  const method = java.slice(1, 8).join("\n").replace("i <= skus", "i < skus");
+  assert.deepEqual(fitFix(java, method, 3), {start: 1, end: 7, text: method}, "lines the model left out at the edges are kept");
 });
 test("changed file list drops traversal, lockfiles and build output", () => {
   assert.deepEqual(parseChangedFiles("src/a.ts\n../x.ts\n/etc/p.py\npackage-lock.json\nnode_modules/q/i.js\ndist/b.js\nREADME.md\nsrc/B.java"), ["src/a.ts", "src/B.java"]);
