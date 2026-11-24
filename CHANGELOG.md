@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Model download behind a company proxy:** when a proxy or firewall answers instead of ollama.com, Hushavyr now says the network blocks the download and how to get around it (another network, `HTTPS_PROXY` for `ollama serve`, or asking IT to allow `registry.ollama.ai`), instead of printing the proxy's HTML page.
 - **Models from Hugging Face:** model size is now read from names such as `hf.co/<user>/<model>-30b-…-GGUF:Q4_K_M` or `…-14B-…`, so these models get the same second-pass and review-depth defaults as the Ollama library model of that size.
 - **Per-method review pass (experimental):** `HUSHAVYR_PER_METHOD=1` adds one review pass per function. Off by default: on the tuned fixtures it found no extra bugs with the 30b model (F1 0.84 both ways) and took twice as long.
 

@@ -39,6 +39,10 @@ function pullReason(error: unknown): string {
   if (!text || text === "pull failed" || error instanceof Error && error.name === "AbortError") return "";
   // Ollama loses its key when ~/.ollama is deleted while the server keeps running.
   if (/id_ed25519/.test(text)) return ": Ollama is missing its key file; restart Ollama (" + (process.platform === "linux" ? "sudo systemctl restart ollama" : "quit it from the menu bar or tray and start it again") + "), then try again";
+  // A company proxy or firewall answers instead of ollama.com with an HTML page ("Access Denied").
+  if (/<(?:!doctype|html|head|title)\b/i.test(text) || /\b(?:403|407|503)\b.*(?:denied|forbidden|proxy)/i.test(text))
+    return ": your network blocks ollama.com (a company proxy or firewall answered instead). Download the model on another network, " +
+      "or start Ollama with your proxy (HTTPS_PROXY=http://proxy:port ollama serve), or ask IT to allow registry.ollama.ai";
   return ": " + text;
 }
 

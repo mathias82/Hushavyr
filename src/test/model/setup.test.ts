@@ -40,6 +40,8 @@ test("ensureInstalled reports why Ollama refused the pull", async () => {
     url.endsWith("/api/tags") ? new Response(JSON.stringify({models: []})) : ndjson({status: "pulling manifest"}, {error}));
   await assert.rejects(failing("pull model manifest: file does not exist").ensureInstalled(), /model: pull model manifest: file does not exist\. No cloud/);
   await assert.rejects(failing("open /Users/x/.ollama/id_ed25519: no such file or directory").ensureInstalled(), /restart Ollama/);
+  await assert.rejects(failing('pull model manifest: 503: <!doctype html><html lang="en"><head><title id="pageTitle">Access Denied').ensureInstalled(),
+    (e: Error) => /network blocks ollama\.com.*HTTPS_PROXY/.test(e.message) && !/<html/.test(e.message));
 });
 test("ensureInstalled does not pull when the server is unreachable", async () => {
   let pulls = 0;
