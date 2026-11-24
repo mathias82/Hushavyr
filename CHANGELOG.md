@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.25
+- **Commit email check:** before `/commit` or `/pr` (terminal and VS Code), Hushavyr asks GitHub (through `gh`, as the account that pushes to `origin`) which email the account shows. If your git email is different, GitHub would not credit the commits to you (grey avatar, no contributor), so Hushavyr warns and offers to use the account's email for this repository only (`git config --local user.email`). Answer `n` (or **Keep**) and it does not ask again in that repository. The Source Control ✨ button shows the same warning. It stays silent without `gh`, offline, without push access, or when the account has no public email.
+
 ## 1.0.24
 - **`/push` only pushes:** it pushes the current branch to origin (creating it there the first time) after you confirm, without making a commit. Plain text "commit and push" and the chat **Commit and push** button still do both.
 - **`/gitcommits`:** lists the commits on the current branch that are not on the main branch (hash, date, author, message). Terminal and chat.

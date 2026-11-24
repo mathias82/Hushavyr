@@ -28,6 +28,7 @@ import {runScanner} from "../scan/externalScanners";
 import {branchCommits, branchExists, formatBranchCommits, formatBranches, listBranches, planPush, pushCurrent, switchBranch, validBranchName} from "../git/branches";
 import {commitChanges, isCommitRequest, pushBranch, wantsPush, createPullRequest, planPullRequest, prBody, secretsInChanges, checkReceipt} from "../git/pullRequest";
 import {draftPrText, type PrText} from "../git/prText";
+import {authorMismatch, keepEmail, mismatchText, useEmail} from "../git/identity";
 import {projectRootFor, runnerFor} from "../fix/proofTarget";
 import {proofFixPrompt, proofProfile, proofTestPrompt} from "../fix/proofPrompts";
 import {FixSandbox} from "../fix/fixSandbox";
@@ -750,6 +751,19 @@ class Session {
     }
   }
 
+  /** Warns when GitHub would not credit the commit email and offers this repository's account email; false when the user cancels. */
+  private async checkAuthor(): Promise<boolean> {
+    const m = await authorMismatch(this.cwd);
+    if (!m) return true;
+    out(yellow(mismatchText(m)));
+    const answer = (await this.reply(bold("Use " + m.expected + " for this repository?") + " [y/n] (Enter cancels) ")) ?? "";
+    if (!this.interactive && !this.declinedByCommand) out("Use " + m.expected + " for this repository? [y/n] " + answer);
+    if (/^\s*(?:y|yes|ναι|nai)\s*$/i.test(answer)) { await useEmail(this.cwd, m.expected); out(green("This repository now commits as " + m.expected + ".")); return true; }
+    if (/^\s*(?:n|no|όχι|oxi)\s*$/i.test(answer)) { await keepEmail(this.cwd, m.current); out(dim("Kept " + m.current + ". Hushavyr will not ask again in this repository.")); return true; }
+    out("Cancelled. Nothing was committed.");
+    return false;
+  }
+
   /** Commit on the current branch (the first commit of a new repository works too); `push` then pushes that branch, with no pull request. */
   private async commit(arg: string, signal: AbortSignal, push = false): Promise<void> {
     const plan = await planPullRequest(this.cwd, undefined, true);
@@ -758,6 +772,7 @@ class Session {
     out((plan.stat || plan.files.join("\n")).slice(0, 4000));
     const secrets = await secretsInChanges(plan);
     if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed.")); return; }
+    if (!await this.checkAuthor()) return;
     if (push && !plan.remote) { out(yellow("No `origin` remote is configured. Nothing was committed or pushed.")); return; }
     if (push) out(dim("The code goes to your own git remote (" + plan.remote.replace(/\/\/[^@/]+@/, "//") + "), not to an AI service."));
     let message = arg.split("\n")[0].trim().slice(0, 200);
@@ -799,6 +814,7 @@ class Session {
     out((plan.stat || plan.files.join("\n")).slice(0, 4000));
     const secrets = await secretsInChanges(plan);
     if (secrets.length) { out(red("Stopped: possible credentials in " + secrets.join(", ") + ". Remove them first. Nothing was committed or pushed.")); return; }
+    if (!await this.checkAuthor()) return;
     let text: PrText = {commit: "", title: (arg || this.prDraft?.title || "").split("\n")[0].slice(0, 72), body: this.prDraft?.body ?? ""};
     if (!text.title) {
       out(dim("Writing the commit message and pull request text with " + this.model + " from the diff… (Ctrl+C cancels)"));

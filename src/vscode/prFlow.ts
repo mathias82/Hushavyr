@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {commitChanges, createPullRequest, planPullRequest, pushBranch, secretsInChanges} from "../git/pullRequest";
 import {branchCommits, branchExists, formatBranchCommits, formatBranches, listBranches, planPush, pushCurrent, switchBranch, validBranchName} from "../git/branches";
 import {draftPrText, type PrText} from "../git/prText";
+import {authorMismatch, keepEmail, mismatchText, useEmail} from "../git/identity";
 import {configuredClient} from "../model/model";
 
 /** Commit all changes to a new branch, push and open a PR, after showing the files and asking. `say` reports progress (chat or notification).
@@ -23,6 +24,7 @@ export async function openPullRequest(title: string, body: string, say: (text: s
     say("Stopped: possible credentials in " + secrets.map(f => "`" + f + "`").join(", ") + ". Remove them first. " + nothing);
     return;
   }
+  if (!await checkAuthor(plan.root)) { say("Cancelled. " + nothing); return; }
   let text: PrText = {commit: "", title: title.trim().split("\n")[0].slice(0, 72), body};
   if (!text.title) {
     say("Writing the commit message" + (commitOnly ? "" : " and pull request text") + " with the local model from the diff…\n\n");
@@ -155,6 +157,19 @@ function gitRepository(arg: unknown): GitRepository | undefined {
 }
 
 /** Source Control ✨: the local model writes a commit message from the diff into the commit box; the user still commits. */
+/** Warns when GitHub would not credit the commit email; "Use …" sets this repository's email. False when the dialog is cancelled. */
+export async function checkAuthor(root: string, modal = true): Promise<boolean> {
+  const m = await authorMismatch(root);
+  if (!m) return true;
+  const use = "Use " + m.expected, keep = "Keep " + m.current;
+  const answer = modal
+    ? await vscode.window.showWarningMessage("Hushavyr: GitHub will not credit these commits to you.", {modal: true, detail: mismatchText(m) + "\n\"" + use + "\" changes only this repository (git config --local user.email)."}, use, keep)
+    : await vscode.window.showWarningMessage("Hushavyr: " + mismatchText(m), use, keep);
+  if (answer === use) { await useEmail(root, m.expected); void vscode.window.showInformationMessage("Hushavyr: this repository now commits as " + m.expected + "."); return true; }
+  if (answer === keep) { await keepEmail(root, m.current); return true; }
+  return !modal;
+}
+
 export async function writeCommitMessage(arg?: unknown): Promise<void> {
   if (!vscode.workspace.isTrusted || vscode.env?.remoteName) { void vscode.window.showWarningMessage("Hushavyr: open a trusted local repository first."); return; }
   const repo = gitRepository(arg);
@@ -169,6 +184,7 @@ export async function writeCommitMessage(arg?: unknown): Promise<void> {
       if (controller.signal.aborted) return;
       if (!text?.commit) { void vscode.window.showWarningMessage("Hushavyr: the local model did not return a commit message."); return; }
       repo.inputBox.value = text.commit;
+      void checkAuthor(repo.rootUri.fsPath, false);
     } catch (error) {
       if (!controller.signal.aborted) void vscode.window.showWarningMessage("Hushavyr: the local model could not write the message (" + String((error as Error).message ?? error).split("\n")[0].slice(0, 160) + ").");
     }

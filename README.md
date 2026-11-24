@@ -169,6 +169,8 @@ Type `@ai-privacy` in VS Code Chat, then one of these commands:
 
 In **Source Control**, the ✨ button (**Write Commit Message (Local AI)**) fills the commit message box from your changes with the local model. Nothing leaves your machine.
 
+Before a commit, Hushavyr checks that GitHub will credit it to you: if your git email differs from the email of the GitHub account that pushes to `origin` (read with `gh`), it offers to use that email for this repository only. Same in the terminal.
+
 **Without Chat** (Cursor, Windsurf, VSCodium, or Chat turned off): the main commands are also in the Command Palette, for example **Hushavyr: Review Current File**, **Scan Project**, **Security Scan (No AI)**, **Find Hardcoded Secrets** and **Check Dependencies for CVEs**. The report opens as a Markdown preview with links to each line, and the findings appear in the **Problems** panel. *Review* and *Explain* are also in the editor's right-click menu.
 
 **Fix a finding with local AI (AI auto-fix with approval):** use the 💡 **Fix with local AI** quick fix on any Hushavyr finding in the Problems panel (SQL injection, XSS, command injection, path traversal, hardcoded secrets, review issues), click **Fix or dismiss a finding** after any Chat report (`/scan`, `/security`, `/secrets`, `/dependencies`, `/gitleaks`), or run **Hushavyr: Fix or Dismiss a Finding**. Pick the finding, then **Fix with local AI**, **Explain** or **Dismiss**. The local model writes the change, Hushavyr opens a side-by-side diff, and the file changes only after you click **Apply fix** (undo with Cmd/Ctrl+Z).
