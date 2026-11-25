@@ -9,6 +9,16 @@
 
 Hushavyr is a **free, offline AI code reviewer** and **security scanner (SAST)** for VS Code, Cursor, VSCodium, Windsurf and the terminal. It runs **on your machine** with Ollama, so it is a private alternative to cloud AI code review. It finds bugs, security vulnerabilities (OWASP Top 10, SQL injection, XSS, command injection, path traversal), hardcoded secrets and vulnerable dependencies (CVEs), then explains each finding in the context of your code and **fixes it with local AI**: you see a diff and nothing changes until you approve it. It can prove a fix with a failing test and open the pull request. Your code never goes to a cloud model. The same private AI assistant also runs in **any terminal**: type `hushavyr` to chat about your code, scan it and fix findings, like a local, offline Copilot CLI.
 
+### What it changes on your machine
+
+- **No telemetry.** The AI runs on local Ollama (`127.0.0.1` only). The network is used only for downloads you approve, `/pr` (git push) and `/escalate` (off by default; shows the exact pseudonymized text and sends it to GitHub Copilot only if you approve).
+- **VS Code terminals:** adds the bundled `hushavyr` command to the PATH of VS Code's integrated terminals only (no files are written).
+- **Only when you ask** (Setup, a button or a command, each shown before it runs):
+  - installs Ollama and downloads a local model (several GB, once);
+  - installs optional scanners with Homebrew, pipx or go (Semgrep, Gitleaks, Trivy, Bandit, gosec, OSV-Scanner, SpotBugs + FindSecBugs);
+  - writes a `hushavyr` launcher to `~/.local/bin` (or `WindowsApps`) and, if you click **Add to PATH**, one line to your shell profile; once installed, the launcher is kept pointing at the current extension version;
+  - edits a file only after you click **Apply fix** on a diff, and runs your project's tests only for `/test`, `/prove` or **Hushavyr: Run Existing Regression Tests**.
+
 **Accuracy:** 97.2% on the [OWASP Benchmark for Java](docs/owasp-benchmark.md) and 100% on the [OWASP Benchmark for Python](docs/owasp-benchmark-python.md), both with 0% false positives. On [six real vulnerable apps](docs/real-world-benchmarks.md) (Juice Shop, WebGoat, DVWA, RailsGoat, GoVWA, WebGoat.NET) it finds SQL, NoSQL, command, path, XSS, XXE and deserialization flaws in TypeScript, Java, PHP, Ruby, Go and C#; on Juice Shop 37 of 38 HIGH findings are real.
 
 **Works with:** Java, Kotlin, Python, JavaScript, TypeScript, Go, Rust, C#, PHP and Ruby.

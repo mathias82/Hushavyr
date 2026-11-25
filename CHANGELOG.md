@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.27
+- **Clearer listing:** the README and description now state at the top what Hushavyr changes on your machine (VS Code terminal PATH only; Ollama, models, scanners, the `hushavyr` launcher and shell-profile line only when you ask).
+- Fewer, more accurate Marketplace keywords (no other products' names).
+
 ## 1.0.26
 - **Same slash commands in the terminal and VS Code chat:** every command now works in both, except `/clear` and `/exit` (terminal only) and `/auto` (chat only).
   - Chat (`@ai-privacy`): new `/fix [N]`, `/findings`, `/dismiss N`, `/prove N`, `/undo`, `/model [name]`, `/setup` and `/update-db`.

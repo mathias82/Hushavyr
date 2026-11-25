@@ -14,6 +14,11 @@ on:
         required: true
         type: boolean
         default: false
+      marketplace:
+        description: "Also publish to the VS Code Marketplace (untick to publish to Open VSX only)"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -79,6 +84,7 @@ jobs:
       - name: Install VSCE with OIDC support
         run: npm install --global @vscode/vsce@4.1.0
       - name: Publish verified package
+        if: ${{ inputs.marketplace }}
         run: vsce publish --oidc --skip-duplicate --packagePath hushavyr.vsix
       - name: Publish to Open VSX (Cursor, VSCodium, Windsurf)
         # Open VSX is independent of the VS Code Marketplace: publish even when that step failed.
