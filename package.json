@@ -1,9 +1,9 @@
 {
   "name": "hushavyr",
-  "displayName": "Hushavyr - Private AI Code Review & Security Scanner",
+  "displayName": "Hushavyr - Local AI Code Review & Security Scanner",
   "author": "Matthaios Stavrou",
   "publisher": "mathias82",
-  "description": "Free, private AI code review and security scanner for VS Code. Runs locally with Ollama: finds bugs, OWASP vulnerabilities (SQL injection, XSS), leaked secrets and dependency CVEs, fixes them behind a diff you approve, also from the terminal (`hushavyr`). Your code never leaves your machine; nothing is installed or downloaded without your approval.",
+  "description": "Free local AI code review and security scanner for VS Code with Ollama. Find bugs, OWASP vulnerabilities, leaked secrets and dependency CVEs; review fixes before applying them. Offline scanning, verified fixes and no telemetry. Includes a terminal CLI.",
   "version": "1.0.27",
   "private": true,
   "engines": {
@@ -594,7 +594,12 @@
     "static analysis",
     "sql injection",
     "devsecops",
-    "terminal"
+    "terminal",
+    "dependency scanning",
+    "secret detection",
+    "offline code review",
+    "code security",
+    "ai security scanner"
   ],
   "galleryBanner": {
     "color": "#0B1020",
